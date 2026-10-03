@@ -1,26 +1,18 @@
-build:
-	@go build -o bin/server cmd/main.go
+.PHONY: build run test test-integration clean
 
-test:
-	@go test -v ./...
+build:
+	go build -o bin/fronko ./cmd/fronko
 
 run: build
-	@./bin/server
+	./bin/fronko
 
-migration:
-	@migrate create -ext sql -dir cmd/migrate/migrations $(filter-out $@,$(MAKECMDGOALS))
+test:
+	go test -v -race ./...
 
-migrate-up:
-	@ go run cmd/migrate/main.go up
+# Needs a disposable database: these tests TRUNCATE every table.
+# e.g. TEST_DATABASE_URL=postgres://fronko:...@localhost:55000/fronko_test?sslmode=disable
+test-integration:
+	go test -v -race -count=1 -tags=integration ./internal/repository/...
 
-migrate-down:
-	@ go run cmd/migrate/main.go down
-
-deploy-up:
-	@sudo docker compose up --build -d
-
-deploy-down:
-	@sudo docker compose down
-
-logs:
-	@sudo docker logs -f go_app
+clean:
+	rm -rf bin/
