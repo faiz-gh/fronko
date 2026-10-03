@@ -1,0 +1,35 @@
+services:
+  backend:
+    container_name: backend-local
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      # 'host.docker.internal' lets the container reach Postgres running on the host.
+      # The dev database predates the rename to Fronko, so it keeps its original name.
+      DATABASE_URL: postgres://credensync:1234567890@host.docker.internal:55000/credensync?sslmode=disable
+      JWT_SECRET: local-dev-secret-change-me
+      PORT: "8080"
+      # Served over plain http://localhost:3000, so the cookie can't be Secure.
+      COOKIE_SECURE: "false"
+      # Requests arrive via nginx. Port 8080 is also exposed below for debugging,
+      # where X-Real-IP could be spoofed; that's acceptable locally only.
+      TRUST_PROXY: "true"
+      # Development-only key for encrypting storage credentials. Never reuse it in production.
+      SECRETS_KEY: YK25gq0GTgmd8wFLSqwwb4J34fpK5hygVrWPpPCaBxA=
+      # Lets storage point at a local MinIO (http, private address). Development only.
+      STORAGE_ALLOW_PRIVATE_ENDPOINTS: "true"
+    ports:
+      - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    container_name: frontend-local
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend

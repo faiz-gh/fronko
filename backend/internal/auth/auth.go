@@ -2,11 +2,16 @@ package auth
 
 import (
 	"errors"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// SessionTTL is how long a login lasts; it bounds both the JWT and its cookie.
+const SessionTTL = 24 * time.Hour
 
 type Service struct {
 	jwtSecret []byte
@@ -28,33 +33,28 @@ func (s *Service) CheckPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
-func (s *Service) GenerateJWT(userID string) (string, error) {
+func (s *Service) GenerateJWT(userID int64) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Subject:   userID,
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+		Subject:   fmt.Sprintf("%d", userID),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(SessionTTL)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 	})
 
 	return token.SignedString(s.jwtSecret)
 }
 
-func (s *Service) ValidateJWT(tokenString string) (string, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.New("unexpected signing method")
-		}
+func (s *Service) ValidateJWT(tokenString string) (int64, error) {
+	var claims jwt.RegisteredClaims
+	_, err := jwt.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
 		return s.jwtSecret, nil
-	})
-
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
 	if err != nil {
-		return "", err
+		return 0, err
 	}
 
-	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		if sub, ok := claims["sub"].(string); ok {
-			return sub, nil
-		}
+	userID, err := strconv.ParseInt(claims.Subject, 10, 64)
+	if err != nil {
+		return 0, errors.New("invalid user id in token")
 	}
-
-	return "", errors.New("invalid token")
+	return userID, nil
 }

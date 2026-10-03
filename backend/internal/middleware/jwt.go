@@ -3,38 +3,46 @@ package middleware
 import (
 	"context"
 	"net/http"
-	"strings"
 
-	"github.com/faiz-gh/credensync/backend/internal/auth"
+	"github.com/faiz-gh/fronko/backend/internal/auth"
 )
 
 type contextKey string
 
-const UserIDKey contextKey = "userID"
+const userIDKey contextKey = "userID"
+
+// SessionCookieName is the HttpOnly cookie that carries the JWT.
+const SessionCookieName = "fronko_session"
+
+// UserID returns the authenticated user's ID. Only call it from handlers
+// mounted behind JWTMiddleware.
+func UserID(ctx context.Context) int64 {
+	id, _ := ctx.Value(userIDKey).(int64)
+	return id
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	w.Write([]byte(`{"error":"` + msg + `"}`))
+}
 
 func JWTMiddleware(authService *auth.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
-				http.Error(w, "authorization header missing", http.StatusUnauthorized)
+			cookie, err := r.Cookie(SessionCookieName)
+			if err != nil || cookie.Value == "" {
+				writeError(w, http.StatusUnauthorized, "not signed in")
 				return
 			}
 
-			parts := strings.Split(authHeader, " ")
-			if len(parts) != 2 || parts[0] != "Bearer" {
-				http.Error(w, "invalid authorization format", http.StatusUnauthorized)
-				return
-			}
-
-			token := parts[1]
-			userID, err := authService.ValidateJWT(token)
+			userID, err := authService.ValidateJWT(cookie.Value)
 			if err != nil {
-				http.Error(w, "invalid token", http.StatusUnauthorized)
+				writeError(w, http.StatusUnauthorized, "session expired, please sign in again")
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			ctx := context.WithValue(r.Context(), userIDKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

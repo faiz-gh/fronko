@@ -1,0 +1,31 @@
+# The frontend container serves the SPA and proxies /api and /auth to the
+# backend, so the browser only ever talks to one origin (no CORS needed).
+services:
+  backend:
+    container_name: backend
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      PORT: "8080"
+      # Session cookie is HTTPS-only; serve the site over TLS (e.g. a reverse proxy in front of port 3000).
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # nginx in the frontend container sets X-Real-IP, used for rate limiting.
+      TRUST_PROXY: "true"
+      # Encrypts users' storage keys at rest. Optional: leave unset to disable file uploads.
+      # Keep it safe and stable; losing or changing it makes saved keys unreadable.
+      SECRETS_KEY: ${SECRETS_KEY:-}
+    restart: unless-stopped
+
+  frontend:
+    container_name: frontend
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
