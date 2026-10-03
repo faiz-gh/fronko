@@ -4,8 +4,11 @@ The Fronko web app is a Svelte 5 + SvelteKit single-page app that compiles to st
 
 - **Landing page** (`/`), with a live demo card.
 - **Auth** (`/login`): sign in or create an account.
-- **Dashboard** (`/dashboard`): create, list, share and delete cards.
-- **Card editor** (`/dashboard/{id}`): edit a card with a live preview, and view or export its leads.
+- **Dashboard** (`/dashboard`): an app shell with a sidebar (cards, theme toggle), and an overview with stats, cards and recent leads.
+- **Card editor** (`/dashboard/{id}`): edit a card with a live preview. Photo and brochures come from the file library. You can also view or export the card's leads.
+- **Leads** (`/dashboard/leads`): all leads across cards, filtered by card, searchable, paginated and exportable.
+- **Files** (`/dashboard/files`): the photo and PDF library stored in the user's own S3 bucket.
+- **Settings** (`/dashboard/settings`): connect that bucket (R2, B2, AWS S3, MinIO).
 - **Public card** (`/p/{slug}`): the page an NFC tap or QR scan opens. Visitors can save the contact as a vCard, share it, show a QR code, or send their own details back as a lead.
 
 It talks to the [Go backend](../backend/README.md). The endpoints are listed in the [API reference](../backend/API.md).

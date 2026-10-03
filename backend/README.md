@@ -93,6 +93,9 @@ cd backend
 export DATABASE_URL='postgres://fronko:password@localhost:5432/fronko?sslmode=disable'
 export JWT_SECRET="$(openssl rand -base64 32)"
 export COOKIE_SECURE=false   # plain http in local dev
+# Optional: enables photo/brochure storage. Add STORAGE_ALLOW_PRIVATE_ENDPOINTS=true
+# to connect to a local S3 server (MinIO, SeaweedFS) over http.
+export SECRETS_KEY="$(openssl rand -base64 32)"
 
 # Apply the schema
 migrate -path migrations -database "$DATABASE_URL" up
@@ -301,9 +304,15 @@ A rejected request gets `429 Too Many Requests` with a `Retry-After` header in s
 ## Testing
 
 ```bash
-make test               # unit tests (middleware: rate limiter, same-origin)
-make test-integration   # repository integration tests
+make test               # unit tests
+make test-integration   # repository integration tests (needs a database, see below)
 ```
+
+Unit tests cover:
+- `middleware`: rate limiter, same-origin check.
+- `secrets`: sealing round trip, tamper, wrong AAD and wrong key.
+- `storage`: endpoint validation, private-address dialing, the connection probe against a fake S3 server.
+- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals.
 
 The integration tests (`internal/repository/repository_test.go`) sit behind the `integration` build tag. They read **`TEST_DATABASE_URL`**, not `DATABASE_URL`, because they `TRUNCATE` every table. Point them at a disposable database that already has the migrations applied:
 
@@ -314,6 +323,16 @@ make test-integration
 ```
 
 If `TEST_DATABASE_URL` is unset, the tests are skipped.
+
+A throwaway database is the easiest option:
+
+```bash
+docker run -d --rm --name fronko-test-db -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_DB=fronko_test -p 55999:5432 postgres:18
+cat migrations/*.up.sql | docker exec -i fronko-test-db psql -q -U test -d fronko_test
+TEST_DATABASE_URL='postgres://test:test@localhost:55999/fronko_test?sslmode=disable' make test-integration
+docker stop fronko-test-db
+```
 
 ## Docker image
 
@@ -340,3 +359,7 @@ For the full stack (backend + nginx-served frontend), see `deploy/` and the [roo
 - **`collect_leads` isn't enforced by the server.** The frontend hides the lead form when a card's `data.collect_leads` is `false`, but `POST /api/profiles/{id}/leads` still accepts submissions.
 - **`lead_count` is only filled in by `GET /api/me/profiles`.** Create, update and single-profile responses return `0`.
 - **No email or password recovery yet.** See the backlog in the root README.
+- **Anyone with a file's link can open it.** `/api/files/{id}` needs no sign-in, which is how public cards show photos and brochures. IDs are 128-bit random values and only appear on cards that use them, but a link that is shared stays usable until the file is deleted.
+- **Uploads are buffered in memory**, up to 20 MB per request, so they can be type-checked before writing to the bucket. The upload rate limit keeps this bounded per IP.
+- **Deleting a file doesn't edit cards.** Cards that referenced it simply stop showing it; the editor shows the stale entry until removed.
+- **Changing or losing `SECRETS_KEY` breaks saved storage keys.** Users have to re-enter them. Rotation isn't automated yet; the version byte in each ciphertext is there for it.

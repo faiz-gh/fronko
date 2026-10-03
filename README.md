@@ -8,28 +8,29 @@ Built as a high-performance alternative to proprietary platforms like Mobilo and
 
 * **⚡ Frictionless Exchange:** The recipient does not need an app. Tapping an NFC card or scanning a QR code instantly renders a lightning-fast web profile.
 
-* **📱 Native VCF Generation:** One-tap "Save to Contacts" dynamically generates `.vcf` files based on the detecting operating system (iOS/Android).
+* **📱 One-tap Save to Contacts:** Visitors download a vCard 3.0 (`.vcf`), which both iOS and Android import directly.
 
-* **🎨 Modular Profile Builder:** Drag-and-drop interface for users to build their landing page with contact info, social links, calendars, and rich media blocks.
+* **🎨 Card Editor:** A live-preview editor for profile details, contact info, social links (with brand icons), a photo, PDF brochures, an accent colour and a light or dark theme. You can keep several cards, each with its own link and QR code.
 
-* **🤝 Lead Capture Engine:** Built-in form for recipients to share their information back, creating a two-way networking exchange.
+* **🤝 Lead Capture:** A built-in form lets recipients share their details back. Leads land in one inbox with card filters, search, pagination and CSV export.
 
-* **☁️ Bring Your Own Storage:** Fully S3-compatible object storage support. Designed for zero-egress providers like Cloudflare R2 or Backblaze B2.
+* **☁️ Bring Your Own Storage:** Photos and brochures go to each user's own S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3, MinIO). Keys are encrypted at rest and buckets stay private.
 
 ## 🏗️ Architecture & Data Flow
 
-When a networking event happens, speed is everything. Fronko is architected to process the tap, detect the OS, and render the profile in milliseconds.
+When a networking event happens, speed is everything. A tap or scan opens a static, app-less web page that loads the card with a single API call.
 
 ```mermaid
 graph TD
-    A[Physical Trigger: NFC Tap / QR Scan] -->|Triggers URL| B(Device OS Detection)
-    B -->|Renders Web View| C{App-Less Web Profile}
-    E[App Interface: Profile Builder] -->|Updates Profile Data| D[(Backend Database)]
-    D -->|Populates Profile View| C
-    C -->|User saves contact| F[Contact Download: .vcf]
-    C -->|Recipient enters info| G[Lead Capture Form]
-    G -->|Saves Lead| D
-    D -->|Pushes Lead Data| H[External CRM: HubSpot/Salesforce]
+    A[NFC tap / QR scan] -->|opens /p/slug| C{App-less public card}
+    E[Dashboard: card editor] -->|saves card data| D[(PostgreSQL)]
+    E -->|uploads photo / PDFs| S[(User's own S3 bucket)]
+    D -->|card + file metadata| C
+    S -->|short-lived signed links| C
+    C -->|Save contact| F[vCard download]
+    C -->|Share your contact| G[Lead form]
+    G -->|stores lead| D
+    D -->|leads inbox, CSV export| E
 ```
 
 ### 💻 The Tech Stack
@@ -40,7 +41,7 @@ graph TD
 
 * **Database:** PostgreSQL. Strict relational integrity for users, with `JSONB` support for dynamic profile blocks.
 
-* **Storage:** Cloudflare R2 (Primary) / Backblaze B2 (Fallback) via AWS S3 SDK.
+* **Storage:** Each user's own S3-compatible bucket (R2, B2, S3, MinIO), reached through aws-sdk-go-v2. Credentials are sealed with AES-256-GCM.
 
 * **Deployment:** Multi-container Docker Compose (Nginx for static frontend serving).
 
@@ -101,7 +102,7 @@ docker compose up -d --build
 ### Local development
 
 * **Without Docker:** run the backend and frontend separately. See [backend → Run locally](backend/README.md#run-locally) and [frontend → Getting started](frontend/README.md#getting-started).
-* **With Docker against a Postgres on your machine:** `docker compose -f docker-compose.local.yml up --build`. Edit its hard-coded `DATABASE_URL` first.
+* **With Docker against a Postgres on your machine:** `docker compose -f docker-compose.local.yml up --build`. Edit its hard-coded `DATABASE_URL` first. This file also sets a development `SECRETS_KEY` and `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`, so storage can point at a local S3 server such as MinIO or SeaweedFS on `http://host.docker.internal:9000`.
 
 ## 🪣 Connecting storage (photos & brochures)
 
@@ -134,6 +135,8 @@ Planned, but not built yet:
 
 * **Account email & verification:** add an `email` column to users, send a one-time code (OTP) to confirm it at sign-up, and support password recovery by email. Needs an SMTP/transactional email provider.
 * **Shared rate limiting:** rate limits are kept in memory per backend instance. Running several instances needs a shared store such as Redis.
+* **CRM integrations:** push new leads to HubSpot or Salesforce.
+* **Richer profile blocks:** more content types on the public card (calendars, embeds, galleries) and a block-based layout.
 
 ## 🤝 Contributing
 
