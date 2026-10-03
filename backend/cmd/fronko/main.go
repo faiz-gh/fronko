@@ -126,7 +126,7 @@ func run() error {
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           middleware.SameOrigin(mux),
+		Handler:           middleware.CORS(cfg.CORSAllowedOrigins, middleware.SameOrigin(cfg.CORSAllowedOrigins, mux)),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,

@@ -15,6 +15,7 @@ import {
 	siYoutube,
 	type SimpleIcon
 } from 'simple-icons';
+import { fileUrl } from '$lib/api/files';
 
 /** The shape stored in the profile's JSONB `data` column. */
 export interface CardData {
@@ -157,7 +158,7 @@ export function safeUrl(input: string): string | null {
 
 /** The card's photo: an uploaded file first, then a pasted URL. Null means show initials. */
 export function avatarSrc(card: Pick<CardData, 'avatar_file' | 'avatar_url'>): string | null {
-	if (card.avatar_file) return `${location.origin}/api/files/${encodeURIComponent(card.avatar_file)}`;
+	if (card.avatar_file) return new URL(fileUrl(card.avatar_file), location.origin).href;
 	return safeUrl(card.avatar_url);
 }
 

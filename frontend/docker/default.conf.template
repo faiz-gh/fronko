@@ -1,5 +1,7 @@
+# Rendered by the nginx image's entrypoint (envsubst) into conf.d/default.conf.
+# Only defined env vars are substituted, so nginx's own $variables are untouched.
 server {
-    listen 80;
+    listen ${PORT};
     server_name _;
     root /usr/share/nginx/html;
     index index.html;
@@ -7,6 +9,11 @@ server {
     # SPA fallback for client-side routes
     location / {
         try_files $uri $uri/ /index.html;
+    }
+
+    # Runtime settings written at container start; must never be cached.
+    location = /config.js {
+        add_header Cache-Control "no-store";
     }
 
     # Hashed build assets never change, so cache them aggressively
@@ -19,7 +26,7 @@ server {
     location /api/ {
         # Photo and PDF uploads (the backend enforces 5 MB / 20 MB per type).
         client_max_body_size 25m;
-        proxy_pass http://backend:8080;
+        proxy_pass ${BACKEND_UPSTREAM};
         proxy_set_header Host $http_host; # keeps the port, so it matches the browser's Origin
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -27,7 +34,7 @@ server {
     }
 
     location /auth/ {
-        proxy_pass http://backend:8080;
+        proxy_pass ${BACKEND_UPSTREAM};
         proxy_set_header Host $http_host; # keeps the port, so it matches the browser's Origin
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

@@ -20,6 +20,7 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { Switch } from '$lib/components/ui/switch';
 	import FormSection from '$lib/components/app/form-section.svelte';
+	import StorageProviderIcon from '$lib/components/app/storage-provider-icon.svelte';
 	import { plural, timeAgo } from '$lib/format';
 	import { session } from '$lib/session.svelte';
 	import { storage } from '$lib/storage.svelte';
@@ -228,7 +229,10 @@
 							<CircleCheckIcon class="size-4" />
 						</span>
 						<span class="flex min-w-0 flex-col">
-							<span class="font-medium">Connected to {PRESETS[status.provider ?? 'other'].label}</span>
+							<span class="flex items-center gap-1.5 font-medium">
+								<StorageProviderIcon provider={status.provider ?? 'other'} class="size-3.5 shrink-0" />
+								Connected to {PRESETS[status.provider ?? 'other'].label}
+							</span>
 							<span class="text-muted-foreground truncate text-xs">
 								{status.bucket} · {plural(status.file_count, 'file')}
 								{#if status.verified_at}· verified {timeAgo(status.verified_at)}{/if}
@@ -255,10 +259,11 @@
 								aria-checked={provider === key}
 								onclick={() => choosePreset(key as StorageProvider)}
 								class={cn(
-									'rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors',
+									'flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors',
 									provider === key ? 'border-foreground ring-foreground ring-1' : 'hover:border-foreground/30'
 								)}
 							>
+								<StorageProviderIcon provider={key as StorageProvider} class="size-4 shrink-0" />
 								{p.label}
 							</button>
 						{/each}
