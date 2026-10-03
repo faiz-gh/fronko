@@ -1,6 +1,6 @@
 # Fronko API Reference
 
-Every endpoint is served by the Go backend. In deployment, the browser reaches them through the frontend's nginx (or the Vite dev proxy) on the **same origin** as the SPA, so no CORS is configured.
+Every endpoint is served by the Go backend. By default the browser reaches them through the frontend's nginx (or the Vite dev proxy) on the **same origin** as the SPA. If the API is served on its own domain, list the frontend's origin in `CORS_ALLOWED_ORIGINS`; those origins get credentialed CORS responses (see the [configuration reference](README.md#configuration)).
 
 - **Content type.** Requests and responses use `application/json`.
 - **Auth.** Protected endpoints (`/api/me/*`) need the `fronko_session` cookie, which login or register sets. Browsers send it automatically. With `curl`, use a cookie jar (`-c`/`-b`).

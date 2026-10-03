@@ -111,9 +111,13 @@ frontend/
 │       │   ├── settings/+page.svelte # Storage connection (S3 keys)
 │       │   └── [id]/+page.svelte  # Card editor + leads
 │       └── p/[slug]/+page.svelte  # Public card
-├── static/robots.txt
+├── static/
+│   ├── robots.txt
+│   └── config.js                  # Runtime settings placeholder (overwritten in Docker)
+├── docker/
+│   ├── default.conf.template      # nginx server + API proxy (env-templated)
+│   └── 40-runtime-config.sh       # Writes config.js from API_URL at container start
 ├── components.json                # shadcn-svelte CLI config
-├── nginx.conf                     # Production server + API proxy
 ├── Dockerfile
 └── vite.config.ts
 ```
@@ -127,7 +131,7 @@ frontend/
 | `/dashboard` | Signed in | Overview: stats (cards, leads all time, leads in the last 7 days), a grid of cards with copy link, QR code and delete actions, and the latest leads across all cards |
 | `/dashboard/leads` | Signed in | Every lead across your cards. Filter by card (`?card=ID`, kept in the URL so it can be linked to), search, page size and pages, and CSV export of everything that matches. Clicking a lead's card filters to that card |
 | `/dashboard/files` | Signed in | The shared **file library**: drag-and-drop upload with progress, Photos/PDFs tabs, thumbnails, inline rename, "Used on" (which cards use each file), delete with a usage warning, pagination. Shows a "Connect storage" state until a bucket is connected |
-| `/dashboard/settings` | Signed in | **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
+| `/dashboard/settings` | Signed in | **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
 | `/dashboard/{id}` | Signed in | Editor. The **Card** tab has sections for Profile, Contact, Links (add, reorder, remove), Appearance (accent, light/dark theme) and Sharing (public slug, lead collection). A sticky preview pane on the right switches between the card and its QR code; below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
 | `/p/{slug}` | Public | The visitor-facing card. "Save contact" downloads a `.vcf`, plus share (Web Share API, falling back to the clipboard), a QR code, and a lead form when `collect_leads` is on |
 
@@ -139,7 +143,8 @@ Once signed in, the layout renders the app shell. From 1024px up, a fixed sideba
 
 All requests go through `apiClient` in `src/lib/api/client.ts`:
 
-- **Relative URLs** (`/api/...`, `/auth/...`). In development Vite proxies them, and in production nginx does. Requests are always same-origin, so the HttpOnly cookie is sent automatically.
+- **Base URL from runtime config.** `API_URL` comes from `window.__FRONKO_CONFIG__.apiUrl`, set by `/config.js` (loaded first in `app.html`). Empty (the default, and always in dev) means relative URLs: Vite or nginx proxies `/api` and `/auth`, so requests are same-origin. When set, e.g. `https://api.fronko.com`, requests go there directly and the backend must allow this site in `CORS_ALLOWED_ORIGINS`.
+- **Credentials.** Requests use `credentials: 'include'` so the HttpOnly cookie is sent in both setups. Build any other backend URL with `apiUrl(path)` from `client.ts`. `uploadFile` (XHR, for progress) does the same and sets `withCredentials`.
 - **JSON in and out.** `Content-Type: application/json` is set whenever there's a body, and a `204` resolves to `undefined`.
 - **Errors** throw `ApiError(message, status)`:
   - `message` is the backend's `{"error": "..."}` text, which is written for users and can go straight into a toast or alert.
@@ -261,11 +266,19 @@ npm run build      # → build/
 
 The output is fully static: `index.html` is the SPA fallback, and hashed assets go under `_app/immutable/`.
 
-**Docker.** `Dockerfile` builds with `node:24-alpine` and serves `build/` from `nginx:alpine`. `nginx.conf`:
+**Docker.** `Dockerfile` builds with `node:24-alpine` and serves `build/` from `nginx:alpine`. The image is configured at start-up through environment variables, so one build works anywhere:
+
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `PORT` | `3000` | Port nginx listens on (`EXPOSE 3000`) |
+| `BACKEND_UPSTREAM` | `http://backend:8080` | Where nginx proxies `/api/` and `/auth/` |
+| `API_URL` | empty | Public backend URL for the browser, written to `/config.js` by `docker/40-runtime-config.sh`. Empty keeps API calls same-origin through nginx |
+
+The nginx image renders `docker/default.conf.template` with `envsubst` (only defined variables, so nginx's own `$uri` etc. are untouched). The config:
 
 - falls back to `index.html` for client-side routes (`try_files $uri $uri/ /index.html`)
-- caches `/_app/immutable/` for a year (`immutable`)
-- proxies `/api/` and `/auth/` to `http://backend:8080`, preserving `Host` (so the backend's same-origin check matches the browser's `Origin`) and setting `X-Real-IP` (used by the backend's rate limiter when `TRUST_PROXY=true`)
+- caches `/_app/immutable/` for a year (`immutable`), and serves `/config.js` with `no-store`
+- proxies `/api/` and `/auth/` to `BACKEND_UPSTREAM`, preserving `Host` (so the backend's same-origin check matches the browser's `Origin`) and setting `X-Real-IP` (used by the backend's rate limiter when `TRUST_PROXY=true`)
 
 The `backend` hostname comes from the Docker Compose network. See `deploy/docker-compose.yml` and the [root README](../README.md).
 
