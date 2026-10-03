@@ -1,4 +1,4 @@
-import { ApiError, apiClient } from './client';
+import { ApiError, apiClient, apiUrl } from './client';
 import { session } from '$lib/session.svelte';
 
 export type FileKind = 'image' | 'pdf';
@@ -36,7 +36,7 @@ export const ACCEPT = { image: IMAGE_TYPES.join(','), pdf: 'application/pdf' } a
 
 /** Where a file is served from; the server redirects to a short-lived signed URL. */
 export function fileUrl(id: string): string {
-	return `/api/files/${encodeURIComponent(id)}`;
+	return apiUrl(`/api/files/${encodeURIComponent(id)}`);
 }
 
 export function listFiles(query: { kind?: FileKind; page?: number; pageSize?: number } = {}): Promise<FilePage> {

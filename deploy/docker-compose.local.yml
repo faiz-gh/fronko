@@ -19,6 +19,7 @@ services:
       SECRETS_KEY: YK25gq0GTgmd8wFLSqwwb4J34fpK5hygVrWPpPCaBxA=
       # Lets storage point at a local MinIO (http, private address). Development only.
       STORAGE_ALLOW_PRIVATE_ENDPOINTS: "true"
+      CORS_ALLOWED_ORIGINS: ${FRONTEND_URL:-}
     ports:
       - "8080:8080"
     extra_hosts:
@@ -29,7 +30,12 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+    environment:
+      PORT: "3000"
+      BACKEND_UPSTREAM: http://backend:8080
+      API_URL: ${BACKEND_URL:-}
+    # Bound on the host so you can open http://localhost:3000 locally.
     ports:
-      - "3000:80"
+      - "3000:3000"
     depends_on:
       - backend

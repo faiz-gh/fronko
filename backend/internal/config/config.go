@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/faiz-gh/fronko/backend/internal/secrets"
 )
@@ -18,6 +19,9 @@ type Config struct {
 	TrustProxy bool
 	// SecretsKey encrypts users' storage credentials at rest. Nil disables file storage.
 	SecretsKey []byte
+	// CORSAllowedOrigins may call the API from the browser with the session cookie
+	// (e.g. the frontend on its own domain). Empty when nginx proxies everything same-origin.
+	CORSAllowedOrigins []string
 	// StorageAllowPrivate lets storage endpoints use http and private addresses (local MinIO only).
 	StorageAllowPrivate bool
 }
@@ -36,6 +40,8 @@ func Load() (*Config, error) {
 		Port:         port,
 		CookieSecure: os.Getenv("COOKIE_SECURE") != "false",
 		TrustProxy:   os.Getenv("TRUST_PROXY") == "true",
+
+		CORSAllowedOrigins: strings.Split(os.Getenv("CORS_ALLOWED_ORIGINS"), ","),
 
 		StorageAllowPrivate: os.Getenv("STORAGE_ALLOW_PRIVATE_ENDPOINTS") == "true",
 	}

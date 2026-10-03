@@ -15,9 +15,20 @@ interface ClientOptions {
 }
 
 /**
- * Thin fetch wrapper for the Go backend. Requests use relative paths: in dev
- * Vite proxies /api and /auth, and in Docker nginx does, so it's always
- * same-origin and the HttpOnly session cookie is sent automatically.
+ * Public backend URL from the runtime config. Empty (the default) means
+ * same-origin: in dev Vite proxies /api and /auth, and in Docker nginx does.
+ * When set, the backend must list this site in CORS_ALLOWED_ORIGINS.
+ */
+export const API_URL = (window.__FRONKO_CONFIG__?.apiUrl ?? '').replace(/\/+$/, '');
+
+/** Absolute or relative URL for a backend path such as `/api/files/x`. */
+export function apiUrl(path: string): string {
+	return API_URL + path;
+}
+
+/**
+ * Thin fetch wrapper for the Go backend. Credentials are included so the
+ * HttpOnly session cookie is sent even when the API is on another origin.
  */
 export async function apiClient<T>(
 	endpoint: string,
@@ -30,7 +41,7 @@ export async function apiClient<T>(
 
 	let response: Response;
 	try {
-		response = await fetch(endpoint, { ...options, headers });
+		response = await fetch(apiUrl(endpoint), { credentials: 'include', ...options, headers });
 	} catch {
 		throw new ApiError('Could not reach the server. Check your connection and try again.', 0);
 	}
