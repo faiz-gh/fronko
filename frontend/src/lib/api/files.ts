@@ -81,7 +81,9 @@ export function uploadFile(
 ): Promise<LibraryFile> {
 	return new Promise((resolve, reject) => {
 		const xhr = new XMLHttpRequest();
-		xhr.open('POST', '/api/me/files');
+		xhr.open('POST', apiUrl('/api/me/files'));
+		// Send the session cookie when the API is on another origin (BACKEND_URL).
+		xhr.withCredentials = true;
 		xhr.responseType = 'json';
 		xhr.upload.onprogress = (e) => {
 			if (e.lengthComputable) onProgress?.(e.loaded / e.total);
