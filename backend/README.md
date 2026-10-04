@@ -252,14 +252,20 @@ Request
      └─ SameOrigin                    (rejects cross-origin POST/PUT/DELETE not in CORS_ALLOWED_ORIGINS)
           └─ ServeMux
                ├─ GET  /health
-               ├─ /auth/login, /auth/register → authLimiter → handler
+               ├─ /auth/login, /auth/register,
+               │  /auth/password/forgot, /auth/password/reset → authLimiter → handler
                ├─ /auth/logout                → handler
                ├─ GET  /api/profiles/{slug}   → handler
+               ├─ GET  /api/files/{id}        → handler
                ├─ POST /api/profiles/{id}/leads → leadLimiter → handler
-               └─ /api/me/*                   → JWTMiddleware → protected ServeMux → handler
+               ├─ GET  /api/me/user,
+               │  PUT  /api/me/email,
+               │  POST /api/me/email/verify,
+               │  POST /api/me/email/resend   → JWTMiddleware → [authLimiter] → handler   (allowed while unverified)
+               └─ /api/me/*                   → JWTMiddleware → RequireVerified → protected ServeMux → handler
 ```
 
-Protected routes live on their own `ServeMux`, which is mounted at `/api/me/` behind `JWTMiddleware`. Any route added under `/api/me/` is authenticated automatically. Inside a protected handler, call `middleware.UserID(r.Context())` to get the caller's ID.
+Protected routes live on their own `ServeMux`, which is mounted at `/api/me/` behind `JWTMiddleware` and `RequireVerified`. Any route added there is authenticated and requires a verified email automatically. A route that must work before verification is registered on the main mux with a more specific pattern (e.g. `GET /api/me/user`), wrapped in `JWTMiddleware` only. Inside a protected handler, call `middleware.UserID(r.Context())` to get the caller's ID.
 
 ## Authentication & sessions
 
@@ -343,7 +349,7 @@ make test-integration   # repository integration tests (needs a database, see be
 
 Unit tests cover:
 - `auth`: email code format, HMAC binding to user/purpose/key, session version in the JWT.
-- `mail`: message building (headers, multipart) and header-injection rejection.
+- `mail`: message building (headers, multipart), header-injection rejection, the email-changed notice (no code, masked address) and `MaskEmail`.
 - `middleware`: rate limiter, same-origin check, CORS.
 - `secrets`: sealing round trip, tamper, wrong AAD and wrong key.
 - `storage`: endpoint validation, private-address dialing, the connection probe against a fake S3 server.
@@ -356,6 +362,8 @@ export TEST_DATABASE_URL='postgres://fronko:password@localhost:5432/fronko_test?
 migrate -path migrations -database "$TEST_DATABASE_URL" up
 make test-integration
 ```
+
+They cover users (case-insensitive usernames and emails, which unique index a conflict came from), email verification and changes, session-version bumps, the email-code lifecycle (attempt cap, expiry, replacement, and the target address on `change_email` codes), profiles, leads, storage settings and files.
 
 If `TEST_DATABASE_URL` is unset, the tests are skipped.
 
