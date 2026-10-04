@@ -302,6 +302,8 @@ Registration (and `PUT /api/me/email`) sends a verification code, and `POST /aut
 
 **Changing a verified email** takes the current password, then a code sent to the new address (`POST /api/me/email/change`, then `/change/confirm`). The new address is held on the `change_email` code row, so the current email keeps working until the change is confirmed. On confirmation the old address gets a notice with the new one masked. The unique index is the final check if two accounts race for the same address.
 
+**Users created by an organisation** (`POST /api/org/users`) get a welcome email with their username and temporary password (`mail.MemberInviteMessage`). Sending a password by email is acceptable here only because it's single-use in practice: `must_change_password` locks the account to verification and choosing a new password until it's replaced. Their verification code is sent on first sign-in rather than at creation, so it hasn't expired by the time they use it. A temporary password set later by an admin (`POST /api/org/users/{id}/password`) is not emailed.
+
 Mail is sent in a background goroutine (30 s timeout, errors logged), so request timing doesn't depend on the SMTP server or reveal whether an address has an account. Forgot-password always answers 204.
 
 ## Security measures
@@ -359,11 +361,11 @@ make test-integration   # repository integration tests (needs a database, see be
 
 Unit tests cover:
 - `auth`: email code format, HMAC binding to user/purpose/key, session version in the JWT.
-- `mail`: message building (headers, multipart), header-injection rejection, the email-changed notice (no code, masked address) and `MaskEmail`.
+- `mail`: message building (headers, multipart), header-injection rejection, the email-changed notice (no code, masked address), the member invite (sign-in details in text and escaped HTML) and `MaskEmail`.
 - `middleware`: rate limiter, same-origin check, CORS, the principal and suspension check in `JWTMiddleware`, `RequirePasswordSet`, and the role gates.
 - `secrets`: sealing round trip, tamper, wrong AAD and wrong key.
 - `storage`: endpoint validation, private-address dialing, the connection probe against a fake S3 server.
-- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals (avatar, cover, brochures), lead phone normalization and validation, upload areas by role, and the optional quota field.
+- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals (avatar, cover, brochures), lead phone normalization and validation, upload areas by role, the optional quota field, and organisation-name validation.
 
 The integration tests (`internal/repository/repository_test.go`) sit behind the `integration` build tag. They read **`TEST_DATABASE_URL`**, not `DATABASE_URL`, because they `TRUNCATE` every table. Point them at a disposable database that already has the migrations applied:
 

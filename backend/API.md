@@ -204,7 +204,7 @@ Creates an organisation with this account as its owner, emails a verification co
 | `username` | Trimmed. 3–32 chars of `[a-zA-Z0-9_.-]`. Unique **case-insensitively** |
 | `email` | Trimmed and lower-cased. A bare address, at most 254 chars. Unique **case-insensitively** |
 | `password` | 8–72 bytes (bcrypt's limit) |
-| `organization` | Optional, at most 80 chars. Defaults to the username; the owner can rename it later |
+| `organization` | Optional, at most 80 chars, no control characters. Defaults to the username; the owner can rename it later |
 
 **Responses**
 
@@ -599,7 +599,7 @@ Owner and admins only (`403` for members). Admins manage members; only the owner
 
 ### `PUT /api/org`
 
-👑 Owner only. `{"name": "Acme", "default_quota_bytes": null}`. Both fields are sent; the name is 1–80 chars and the limit 0 to 1 TB or `null`. Returns the organisation.
+👑 Owner only. `{"name": "Acme", "default_quota_bytes": null}`. Both fields are sent; the name is 1–80 chars without control characters (it appears in emails) and the limit 0 to 1 TB or `null`. Returns the organisation.
 
 ### `GET /api/org/users`
 
@@ -632,7 +632,7 @@ Everyone in the organisation (owner first, then admins, then members, by usernam
 { "username": "jane", "email": "jane@example.com", "password": "temporary-pass", "role": "member", "quota_bytes": 1048576 }
 ```
 
-Creates a user with a temporary password and emails them that the account exists. The password isn't in the email; the organisation shares it. On first sign-in they verify their email (a code is sent then), then must choose their own password before anything else works.
+Creates a user with a temporary password and emails them their username and that temporary password ("<org> added you to Fronko"). On first sign-in they verify their email (a code is sent then), then must choose their own password before anything else works, so the emailed password stops working as soon as they've set up the account.
 
 | Field | Rules |
 | ----- | ----- |
@@ -668,7 +668,7 @@ Returns the updated OrgUser. `400` `"manage your own account in Settings"` when 
 
 ### `POST /api/org/users/{id}/password`
 
-`{"password": "new-temporary"}`. Sets a new temporary password, signs the user out everywhere, and makes them choose their own on next sign-in. Returns the OrgUser.
+`{"password": "new-temporary"}`. Sets a new temporary password, signs the user out everywhere, and makes them choose their own on next sign-in. Returns the OrgUser. This one isn't emailed; the admin passes it on.
 
 ### `DELETE /api/org/users/{id}`
 

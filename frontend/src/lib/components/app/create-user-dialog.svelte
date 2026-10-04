@@ -94,8 +94,8 @@
 				</span>
 				<Dialog.Title class="text-lg">{created.username} can sign in now</Dialog.Title>
 				<Dialog.Description>
-					We emailed {created.email} to say the account exists. Share the temporary password with them yourself; it isn't
-					in the email. They'll confirm their email and choose their own password the first time they sign in.
+					We emailed their username and temporary password to {created.email}. They'll confirm their email and choose
+					their own password the first time they sign in. You can also copy the details below.
 				</Dialog.Description>
 			</Dialog.Header>
 			<dl class="bg-muted/50 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 rounded-lg border p-4 text-sm">
@@ -174,7 +174,7 @@
 						{#if passwordError}
 							<Field.Error>{passwordError}</Field.Error>
 						{:else}
-							<Field.Description>They'll be asked to replace it after confirming their email.</Field.Description>
+							<Field.Description>We'll email it to them. They replace it after confirming their email.</Field.Description>
 						{/if}
 					</Field.Field>
 					<Field.Field>

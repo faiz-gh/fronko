@@ -168,7 +168,7 @@ Every account belongs to an organisation, and `session.role` is `owner`, `admin`
 | Users | create, edit, suspend, reset, delete, make admin | members only | none |
 | Settings | Organisation (name, default storage limit), Storage | org name (read only) | storage usage; email is managed by the org |
 
-Users the organisation creates sign in with a temporary password, verify their email (`/verify-email`, without "Change email"), then must choose a password on `/set-password` before the dashboard opens.
+Users the organisation creates are emailed their username and a temporary password. They sign in with it, verify their email (`/verify-email`, without "Change email"), then must choose a password on `/set-password` before the dashboard opens.
 
 `/dashboard/+layout.svelte` acts as the auth guard. While the session check is pending it shows a spinner. If the check finds no session, it redirects to `/login?next=<current path>`; if the email isn't verified, to `/verify-email?next=<current path>`; if the password is still the organisation's temporary one, to `/set-password?next=<current path>`. Protected content never renders before the session is known. Pages for admins only (Cards, Users) send members back to `/dashboard`.
 
@@ -276,7 +276,7 @@ App-specific components live in `src/lib/components/app/`:
 | `AppSidebar` | `onnavigate?` | Organisation and role, role-based navigation (members also get their card list), account menu |
 | `CreateCardDialog` | none (opened through `cards.createOpen`) | Name, slug and optional assignee. Creates the card and opens the editor |
 | `CardTile` | `profile`, `onqr`, `ondelete?` | A card in a grid with copy link, QR and menu. Admins get an inline assignee picker |
-| `CreateUserDialog` | `open` (bindable), `oncreated?` | New user with a generated temporary password, storage limit and (owner) admin switch, then shows copyable sign-in details |
+| `CreateUserDialog` | `open` (bindable), `oncreated?` | New user with a generated temporary password, storage limit and (owner) admin switch. The server emails the user their sign-in details; the dialog also shows them, copyable |
 | `UserPicker` | `value`, `onchange`, `filter?`, `allowNone?`, `allLabel?`, `noneLabel?`, `size?`, `disabled?` | Choose a user from `orgUsers`, the organisation (`'none'`), or everyone (`null`, filters only) |
 | `UserAvatar` | `username`, `class?` | Initials avatar for a user |
 | `StorageMeter` | `used`, `quota`, `compact?` | Used vs. limit bar; turns amber at 85% and red when full |
