@@ -152,7 +152,8 @@ These are hard-coded:
 
 ## Database
 
-The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`).
+The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone).
+- `leads.phone_country_code` and `leads.phone_number` (004) store a visitor's number as two digit-only parts. A check constraint requires both or neither, and enforces the E.164 shape.
 - `user_storage` holds one row per user with encrypted key columns (`BYTEA`).
 - `files` stores a random `public_id`, the `bucket` and `object_key`, the sniffed `kind` and `content_type`, the size, the original name and an optional title. The bucket is stored per file, so changing buckets later doesn't silently re-point old files.
 
@@ -183,6 +184,8 @@ erDiagram
         bigint profile_id FK "ON DELETE CASCADE"
         text name
         text email
+        text phone_country_code "nullable, e.g. +91"
+        text phone_number "nullable, digits only"
         text notes "nullable"
         timestamptz created_at
     }

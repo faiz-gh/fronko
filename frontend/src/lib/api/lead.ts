@@ -5,8 +5,21 @@ export interface Lead {
 	profile_id: number;
 	name: string;
 	email: string;
+	/** Dial code ("+91"); absent when the visitor left no number. */
+	phone_country_code?: string;
+	/** National number, digits only. */
+	phone_number?: string;
 	notes: string;
 	created_at: string;
+}
+
+export interface NewLead {
+	name: string;
+	email: string;
+	/** Both phone parts are set together, or both left empty. */
+	phone_country_code: string;
+	phone_number: string;
+	notes: string;
 }
 
 export interface LeadPage {
@@ -19,7 +32,7 @@ export interface LeadPage {
 export interface LeadQuery {
 	/** Only this card's leads. */
 	profileId?: number;
-	/** Case-insensitive match on name, email or message. */
+	/** Case-insensitive match on name, email, phone or message. */
 	q?: string;
 	/** Received at or after this time. */
 	since?: Date;
@@ -32,10 +45,10 @@ export interface LeadQuery {
 /** The server's maximum page size, used when fetching everything (e.g. CSV export). */
 export const MAX_LEAD_PAGE_SIZE = 100;
 
-export function submitLead(profileId: number, name: string, email: string, notes: string): Promise<void> {
+export function submitLead(profileId: number, lead: NewLead): Promise<void> {
 	return apiClient<void>(`/api/profiles/${profileId}/leads`, {
 		method: 'POST',
-		body: JSON.stringify({ name, email, notes })
+		body: JSON.stringify(lead)
 	});
 }
 

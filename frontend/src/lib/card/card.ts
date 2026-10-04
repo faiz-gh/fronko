@@ -1,21 +1,75 @@
 import {
+	siApplemusic,
+	siArtstation,
 	siBehance,
+	siBitbucket,
 	siBluesky,
+	siBuymeacoffee,
+	siCaldotcom,
+	siCalendly,
+	siCashapp,
+	siDevdotto,
+	siDeviantart,
 	siDiscord,
 	siDribbble,
+	siEtsy,
 	siFacebook,
+	siFigma,
+	siFiverr,
 	siGithub,
+	siGitlab,
+	siGlassdoor,
+	siGoodreads,
+	siGooglecalendar,
+	siGoogledrive,
+	siGooglescholar,
+	siHashnode,
+	siHubspot,
+	siHuggingface,
+	siIndeed,
 	siInstagram,
+	siKaggle,
+	siKofi,
+	siLeetcode,
+	siLetterboxd,
+	siLinktree,
 	siMedium,
+	siNotion,
+	siNpm,
+	siOrcid,
+	siPatreon,
+	siPaypal,
+	siPeerlist,
+	siPinterest,
+	siProducthunt,
+	siQuora,
+	siReddit,
+	siResearchgate,
+	siSignal,
+	siSnapchat,
+	siSoundcloud,
+	siSpotify,
+	siStackoverflow,
+	siStrava,
+	siSubstack,
 	siTelegram,
 	siThreads,
 	siTiktok,
+	siTumblr,
+	siTwitch,
+	siUnsplash,
+	siUpwork,
+	siVenmo,
+	siVimeo,
+	siWellfound,
 	siWhatsapp,
 	siX,
+	siXing,
 	siYoutube,
-	type SimpleIcon
+	siZoho
 } from 'simple-icons';
 import { fileUrl } from '$lib/api/files';
+import { e164, parseLegacyPhone } from '$lib/phone';
 
 /** The shape stored in the profile's JSONB `data` column. */
 export interface CardData {
@@ -26,9 +80,18 @@ export interface CardData {
 	avatar_url: string;
 	/** A photo from the file library (public file id); takes precedence over avatar_url. */
 	avatar_file: string;
+	/** Cover banner from the file library (public file id), cropped to 3:1. */
+	cover_file: string;
 	email: string;
-	phone: string;
+	/** ISO country of the phone number ("IN"); picks the right flag when dial codes are shared. */
+	phone_country: string;
+	/** Dial code with a leading "+", digits only ("+91"). */
+	phone_country_code: string;
+	/** National number, digits only ("9876543210"). */
+	phone_number: string;
 	website: string;
+	/** Booking page (Calendly, Cal.com, …), shown as a "Book a meeting" button. */
+	calendar_url: string;
 	location: string;
 	links: CardLink[];
 	/** PDF brochures from the file library, shown as downloads. */
@@ -73,9 +136,13 @@ export function emptyCard(name = ''): CardData {
 		bio: '',
 		avatar_url: '',
 		avatar_file: '',
+		cover_file: '',
 		email: '',
-		phone: '',
+		phone_country: '',
+		phone_country_code: '',
+		phone_number: '',
 		website: '',
+		calendar_url: '',
 		location: '',
 		links: [],
 		documents: [],
@@ -96,6 +163,8 @@ export function newId(): string {
 /**
  * Coerces whatever is stored in `data` into a complete CardData. Older profiles
  * stored links as plain strings; those are upgraded to {label, url} objects.
+ * Older profiles also stored the phone as one free-text `phone` string; that is
+ * split into dial code and number here, and the old key is gone after a save.
  */
 export function normalizeCard(raw: unknown): CardData {
 	const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
@@ -121,6 +190,10 @@ export function normalizeCard(raw: unknown): CardData {
 			}).slice(0, MAX_DOCUMENTS)
 		: [];
 
+	const phone = str(d.phone_number)
+		? { country: str(d.phone_country), code: str(d.phone_country_code), number: str(d.phone_number) }
+		: parseLegacyPhone(str(d.phone));
+
 	return {
 		name: str(d.name),
 		title: str(d.title),
@@ -128,9 +201,13 @@ export function normalizeCard(raw: unknown): CardData {
 		bio: str(d.bio),
 		avatar_url: str(d.avatar_url),
 		avatar_file: str(d.avatar_file),
+		cover_file: str(d.cover_file),
 		email: str(d.email),
-		phone: str(d.phone),
+		phone_country: phone.country,
+		phone_country_code: phone.code,
+		phone_number: phone.number,
 		website: str(d.website),
+		calendar_url: str(d.calendar_url),
 		location: str(d.location),
 		links,
 		documents,
@@ -154,6 +231,11 @@ export function safeUrl(input: string): string | null {
 	} catch {
 		return null;
 	}
+}
+
+/** The card's cover banner, or null to show the accent gradient. */
+export function coverSrc(card: Pick<CardData, 'cover_file'>): string | null {
+	return card.cover_file ? new URL(fileUrl(card.cover_file), location.origin).href : null;
 }
 
 /** The card's photo: an uploaded file first, then a pasted URL. Null means show initials. */
@@ -195,36 +277,130 @@ export function isValidSlug(slug: string): boolean {
 // Social link detection
 // ----------------------------------------------------------------------------
 
+/** An SVG path on a 24×24 viewBox; matches simple-icons' shape. */
+export interface BrandGlyph {
+	path: string;
+}
+
 interface Brand {
 	name: string;
-	icon: SimpleIcon | null;
+	icon: BrandGlyph | null;
 	hosts: string[];
 }
 
+// simple-icons dropped LinkedIn for trademark reasons; this is its former path.
+const LINKEDIN: BrandGlyph = {
+	path: 'M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 4.268v6.293zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z'
+};
+
 const BRANDS: Brand[] = [
+	// Professional
+	{ name: 'LinkedIn', icon: LINKEDIN, hosts: ['linkedin.com', 'lnkd.in'] },
 	{ name: 'GitHub', icon: siGithub, hosts: ['github.com'] },
-	// simple-icons dropped LinkedIn for trademark reasons; fall back to the generic icon.
-	{ name: 'LinkedIn', icon: null, hosts: ['linkedin.com'] },
-	{ name: 'X', icon: siX, hosts: ['x.com', 'twitter.com'] },
-	{ name: 'Instagram', icon: siInstagram, hosts: ['instagram.com'] },
-	{ name: 'YouTube', icon: siYoutube, hosts: ['youtube.com', 'youtu.be'] },
-	{ name: 'Facebook', icon: siFacebook, hosts: ['facebook.com', 'fb.com'] },
-	{ name: 'TikTok', icon: siTiktok, hosts: ['tiktok.com'] },
+	{ name: 'GitLab', icon: siGitlab, hosts: ['gitlab.com'] },
+	{ name: 'Bitbucket', icon: siBitbucket, hosts: ['bitbucket.org'] },
+	{ name: 'Stack Overflow', icon: siStackoverflow, hosts: ['stackoverflow.com'] },
+	{ name: 'Indeed', icon: siIndeed, hosts: ['indeed.com', 'indeed.co.uk', 'indeed.co.in', 'indeed.ca', 'indeed.me'] },
+	{ name: 'Glassdoor', icon: siGlassdoor, hosts: ['glassdoor.com', 'glassdoor.co.in', 'glassdoor.co.uk'] },
+	{ name: 'Wellfound', icon: siWellfound, hosts: ['wellfound.com', 'angel.co'] },
+	{ name: 'Xing', icon: siXing, hosts: ['xing.com'] },
+	{ name: 'Upwork', icon: siUpwork, hosts: ['upwork.com'] },
+	{ name: 'Fiverr', icon: siFiverr, hosts: ['fiverr.com'] },
+	{ name: 'Peerlist', icon: siPeerlist, hosts: ['peerlist.io'] },
+	{ name: 'Product Hunt', icon: siProducthunt, hosts: ['producthunt.com'] },
+	{ name: 'Google Scholar', icon: siGooglescholar, hosts: ['scholar.google.com'] },
+	{ name: 'ResearchGate', icon: siResearchgate, hosts: ['researchgate.net'] },
+	{ name: 'ORCID', icon: siOrcid, hosts: ['orcid.org'] },
+	{ name: 'Notion', icon: siNotion, hosts: ['notion.so', 'notion.site'] },
+	{ name: 'Google Drive', icon: siGoogledrive, hosts: ['drive.google.com', 'docs.google.com'] },
+	// Developer
+	{ name: 'DEV', icon: siDevdotto, hosts: ['dev.to'] },
+	{ name: 'Hashnode', icon: siHashnode, hosts: ['hashnode.com', 'hashnode.dev'] },
+	{ name: 'LeetCode', icon: siLeetcode, hosts: ['leetcode.com'] },
+	{ name: 'Kaggle', icon: siKaggle, hosts: ['kaggle.com'] },
+	{ name: 'Hugging Face', icon: siHuggingface, hosts: ['huggingface.co'] },
+	{ name: 'npm', icon: siNpm, hosts: ['npmjs.com'] },
+	// Design & creative
+	{ name: 'Figma', icon: siFigma, hosts: ['figma.com'] },
 	{ name: 'Dribbble', icon: siDribbble, hosts: ['dribbble.com'] },
 	{ name: 'Behance', icon: siBehance, hosts: ['behance.net'] },
-	{ name: 'Medium', icon: siMedium, hosts: ['medium.com'] },
+	{ name: 'ArtStation', icon: siArtstation, hosts: ['artstation.com'] },
+	{ name: 'DeviantArt', icon: siDeviantart, hosts: ['deviantart.com'] },
+	{ name: 'Unsplash', icon: siUnsplash, hosts: ['unsplash.com'] },
+	{ name: 'Etsy', icon: siEtsy, hosts: ['etsy.com'] },
+	// Social
+	{ name: 'X', icon: siX, hosts: ['x.com', 'twitter.com'] },
+	{ name: 'Instagram', icon: siInstagram, hosts: ['instagram.com'] },
+	{ name: 'Facebook', icon: siFacebook, hosts: ['facebook.com', 'fb.com'] },
 	{ name: 'Threads', icon: siThreads, hosts: ['threads.net', 'threads.com'] },
 	{ name: 'Bluesky', icon: siBluesky, hosts: ['bsky.app'] },
+	{ name: 'TikTok', icon: siTiktok, hosts: ['tiktok.com'] },
+	{ name: 'Snapchat', icon: siSnapchat, hosts: ['snapchat.com'] },
+	{ name: 'Pinterest', icon: siPinterest, hosts: ['pinterest.com', 'pin.it'] },
+	{ name: 'Reddit', icon: siReddit, hosts: ['reddit.com'] },
+	{ name: 'Tumblr', icon: siTumblr, hosts: ['tumblr.com'] },
+	{ name: 'Quora', icon: siQuora, hosts: ['quora.com'] },
+	{ name: 'Linktree', icon: siLinktree, hosts: ['linktr.ee'] },
+	{ name: 'Goodreads', icon: siGoodreads, hosts: ['goodreads.com'] },
+	{ name: 'Letterboxd', icon: siLetterboxd, hosts: ['letterboxd.com', 'boxd.it'] },
+	{ name: 'Strava', icon: siStrava, hosts: ['strava.com'] },
+	// Video, music & writing
+	{ name: 'YouTube', icon: siYoutube, hosts: ['youtube.com', 'youtu.be'] },
+	{ name: 'Twitch', icon: siTwitch, hosts: ['twitch.tv'] },
+	{ name: 'Vimeo', icon: siVimeo, hosts: ['vimeo.com'] },
+	{ name: 'Spotify', icon: siSpotify, hosts: ['spotify.com', 'spotify.link'] },
+	{ name: 'Apple Music', icon: siApplemusic, hosts: ['music.apple.com'] },
+	{ name: 'SoundCloud', icon: siSoundcloud, hosts: ['soundcloud.com'] },
+	{ name: 'Medium', icon: siMedium, hosts: ['medium.com'] },
+	{ name: 'Substack', icon: siSubstack, hosts: ['substack.com'] },
+	// Messaging
 	{ name: 'WhatsApp', icon: siWhatsapp, hosts: ['wa.me', 'whatsapp.com'] },
 	{ name: 'Telegram', icon: siTelegram, hosts: ['t.me', 'telegram.me'] },
-	{ name: 'Discord', icon: siDiscord, hosts: ['discord.gg', 'discord.com'] }
+	{ name: 'Signal', icon: siSignal, hosts: ['signal.me', 'signal.group'] },
+	{ name: 'Discord', icon: siDiscord, hosts: ['discord.gg', 'discord.com'] },
+	// Support & payments
+	{ name: 'Patreon', icon: siPatreon, hosts: ['patreon.com'] },
+	{ name: 'Buy Me a Coffee', icon: siBuymeacoffee, hosts: ['buymeacoffee.com'] },
+	{ name: 'Ko-fi', icon: siKofi, hosts: ['ko-fi.com'] },
+	{ name: 'PayPal', icon: siPaypal, hosts: ['paypal.me', 'paypal.com'] },
+	{ name: 'Cash App', icon: siCashapp, hosts: ['cash.app'] },
+	{ name: 'Venmo', icon: siVenmo, hosts: ['venmo.com'] }
 ];
 
-export function detectBrand(url: string): Brand | null {
+function matchHost<T extends { hosts: string[] }>(url: string, list: T[]): T | null {
 	const safe = safeUrl(url);
 	if (!safe) return null;
 	const host = new URL(safe).hostname.replace(/^www\./, '');
-	return BRANDS.find((b) => b.hosts.some((h) => host === h || host.endsWith(`.${h}`))) ?? null;
+	return list.find((b) => b.hosts.some((h) => host === h || host.endsWith(`.${h}`))) ?? null;
+}
+
+export function detectBrand(url: string): Brand | null {
+	return matchHost(url, BRANDS);
+}
+
+// ----------------------------------------------------------------------------
+// Booking links
+// ----------------------------------------------------------------------------
+
+/** A null icon means "use the generic calendar icon". */
+const CALENDAR_PROVIDERS: Brand[] = [
+	{ name: 'Calendly', icon: siCalendly, hosts: ['calendly.com'] },
+	{ name: 'Cal.com', icon: siCaldotcom, hosts: ['cal.com'] },
+	{ name: 'Google Calendar', icon: siGooglecalendar, hosts: ['calendar.google.com', 'calendar.app.google'] },
+	{ name: 'HubSpot', icon: siHubspot, hosts: ['meetings.hubspot.com'] },
+	{
+		name: 'Zoho Bookings',
+		icon: siZoho,
+		hosts: ['bookings.zoho.com', 'bookings.zoho.eu', 'bookings.zoho.in', 'zohobookings.com', 'zohobookings.eu', 'zohobookings.in']
+	},
+	{ name: 'Microsoft Bookings', icon: null, hosts: ['outlook.office.com', 'outlook.office365.com', 'outlook.live.com'] },
+	{ name: 'SavvyCal', icon: null, hosts: ['savvycal.com'] },
+	{ name: 'TidyCal', icon: null, hosts: ['tidycal.com'] },
+	{ name: 'zcal', icon: null, hosts: ['zcal.co'] }
+];
+
+export function detectCalendar(url: string): Brand | null {
+	return matchHost(url, CALENDAR_PROVIDERS);
 }
 
 export function linkLabel(link: CardLink): string {
@@ -250,7 +426,7 @@ export function buildVCard(card: CardData, profileUrl: string): string {
 	if (card.company) lines.push(`ORG:${vEscape(card.company)}`);
 	if (card.title) lines.push(`TITLE:${vEscape(card.title)}`);
 	if (card.email) lines.push(`EMAIL;TYPE=INTERNET:${vEscape(card.email)}`);
-	if (card.phone) lines.push(`TEL;TYPE=CELL:${vEscape(card.phone)}`);
+	if (card.phone_number) lines.push(`TEL;TYPE=CELL:${vEscape(e164(card.phone_country_code, card.phone_number))}`);
 	const website = safeUrl(card.website);
 	if (website) lines.push(`URL:${vEscape(website)}`);
 	lines.push(`URL:${vEscape(profileUrl)}`);

@@ -112,10 +112,14 @@ The owner's ID and the timestamps are left out on purpose. `files` lists only th
   "profile_id": 42,
   "name": "Jane Doe",
   "email": "jane@example.com",
+  "phone_country_code": "+91",
+  "phone_number": "9876543210",
   "notes": "Great talk!",
   "created_at": "2026-10-03T12:10:00Z"
 }
 ```
+
+`phone_country_code` and `phone_number` are left out when the visitor didn't give a number. Both are digits only (the dial code keeps its `+`).
 
 ### `data`
 
@@ -431,19 +435,26 @@ A visitor shares their details with the profile owner. The path takes the numeri
 **Request**
 
 ```json
-{ "name": "Jane Doe", "email": "jane@example.com", "notes": "Great talk!" }
+{
+  "name": "Jane Doe",
+  "email": "jane@example.com",
+  "phone_country_code": "+91",
+  "phone_number": "98765 43210",
+  "notes": "Great talk!"
+}
 ```
 
 | Field | Rules (all values are trimmed first) |
 | ----- | ------------------------------------ |
 | `name` | Required, 1–120 bytes |
 | `email` | Required, at most 254 bytes. Must be a bare address: `Jane <jane@x.com>` is rejected |
+| `phone_country_code`, `phone_number` | Optional, but both or neither. Spaces, `-`, `.` and parentheses are stripped. The dial code must be `+` and 1–3 digits (`+` is added if missing). The number must be 4–14 digits, with at most 15 digits in total (E.164). They are stored without separators |
 | `notes` | Optional, at most 2000 bytes |
 
 | Status | Body |
 | ------ | ---- |
 | `201` | `{"status": "ok"}` |
-| `400` | `"please enter your name"`, `"please enter a valid email address"` or `"message is too long"` |
+| `400` | `"please enter your name"`, `"please enter a valid email address"`, `"please enter a valid mobile number with its country code"` or `"message is too long"` |
 | `404` | `"profile not found"` |
 | `429` | Rate limited |
 

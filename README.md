@@ -10,9 +10,9 @@ Built as a high-performance alternative to proprietary platforms like Mobilo and
 
 * **📱 One-tap Save to Contacts:** Visitors download a vCard 3.0 (`.vcf`), which both iOS and Android import directly.
 
-* **🎨 Card Editor:** A live-preview editor for profile details, contact info, social links (with brand icons), a photo, PDF brochures, an accent colour and a light or dark theme. You can keep several cards, each with its own link and QR code.
+* **🎨 Card Editor:** A live-preview editor for profile details, contact info (with a country-code phone picker), a booking link (Calendly, Cal.com, Google Calendar…), social links (with brand icons for about 65 sites), a cropped photo and cover banner, PDF brochures, an accent colour and a light or dark theme. You can keep several cards, each with its own link and QR code.
 
-* **🤝 Lead Capture:** A built-in form lets recipients share their details back. Leads land in one inbox with card filters, search, pagination and CSV export.
+* **🤝 Lead Capture:** A built-in form lets recipients share their details back, with an optional mobile number. Leads land in one inbox with card filters, search, pagination and CSV export.
 
 * **☁️ Bring Your Own Storage:** Photos and brochures go to each user's own S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3, MinIO). Keys are encrypted at rest and buckets stay private.
 

@@ -17,7 +17,9 @@
 		location: 'Lisbon, Portugal',
 		bio: 'Designing calm software for busy teams. Say hi at a conference near you.',
 		email: 'amara@example.com',
-		phone: '+351 900 000 000',
+		phone_country: 'PT',
+		phone_country_code: '+351',
+		phone_number: '900000000',
 		website: 'northwind.example',
 		accent: 'violet',
 		links: [

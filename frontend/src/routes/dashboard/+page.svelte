@@ -84,7 +84,9 @@
 		title: 'What you do',
 		company: 'Where you work',
 		email: 'you@example.com',
-		phone: '+1 555 010 0000',
+		phone_country: 'US',
+		phone_country_code: '+1',
+		phone_number: '5550100000',
 		links: [{ id: '1', label: 'LinkedIn', url: 'https://linkedin.com' }]
 	};
 </script>

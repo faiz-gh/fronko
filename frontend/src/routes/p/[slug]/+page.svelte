@@ -3,7 +3,6 @@
 	import { toast } from 'svelte-sonner';
 	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
-	import QrCodeIcon from '@lucide/svelte/icons/qr-code';
 	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import { getProfileBySlug, type PublicProfile } from '$lib/api/profile';
@@ -18,8 +17,9 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import ProfileCard from '$lib/components/app/profile-card.svelte';
-	import QrDialog from '$lib/components/app/qr-dialog.svelte';
+	import PhoneInput from '$lib/components/app/phone-input.svelte';
 	import { ACCENTS, downloadVCard, normalizeCard, publicUrl } from '$lib/card/card';
+	import { isValidPhone } from '$lib/phone';
 	import { cn } from '$lib/utils';
 
 	const slug = page.params.slug ?? '';
@@ -42,16 +42,19 @@
 	}
 	load();
 
-	let qrOpen = $state(false);
-
 	// ---- Lead form -------------------------------------------------------------
 	let open = $state(false);
 	let leadName = $state('');
 	let leadEmail = $state('');
 	let leadNotes = $state('');
+	let leadCountry = $state('');
+	let leadPhoneCode = $state('');
+	let leadPhone = $state('');
 	let submitting = $state(false);
 	let submitError = $state('');
 	let submitted = $state(false);
+	// The number is optional, but if one is typed it must be valid.
+	const leadPhoneInvalid = $derived(!!leadPhone && !isValidPhone(leadPhoneCode, leadPhone));
 
 	async function handleLeadSubmit(event: SubmitEvent) {
 		event.preventDefault();
@@ -59,7 +62,13 @@
 		submitError = '';
 		submitting = true;
 		try {
-			await submitLead(profile.id, leadName, leadEmail, leadNotes);
+			await submitLead(profile.id, {
+				name: leadName,
+				email: leadEmail,
+				phone_country_code: leadPhoneCode,
+				phone_number: leadPhone,
+				notes: leadNotes
+			});
 			submitted = true;
 		} catch (e) {
 			submitError = e instanceof Error ? e.message : 'Failed to send';
@@ -74,6 +83,8 @@
 			submitted = false;
 			leadName = '';
 			leadEmail = '';
+			leadPhoneCode = '';
+			leadPhone = '';
 			leadNotes = '';
 		}
 	}
@@ -150,9 +161,6 @@
 									Share your contact
 								</Button>
 							{/if}
-							<Button size="lg" variant="outline" class="h-11 px-3.5" onclick={() => (qrOpen = true)} aria-label="Show QR code">
-								<QrCodeIcon />
-							</Button>
 							<Button
 								size="lg"
 								variant="outline"
@@ -176,10 +184,6 @@
 		</footer>
 	</div>
 </div>
-
-{#if profile}
-	<QrDialog bind:open={qrOpen} slug={profile.slug} name={card?.name ?? ''} dark={card?.theme === 'dark'} />
-{/if}
 
 <Dialog.Root bind:open {onOpenChange}>
 	<Dialog.Content class={cn('sm:max-w-md', card?.theme === 'dark' && 'dark')}>
@@ -220,6 +224,22 @@
 							maxlength={254}
 						/>
 					</Field.Field>
+					<Field.Field data-invalid={leadPhoneInvalid || undefined}>
+						<Field.Label for="lead-phone">
+							Mobile number <span class="text-muted-foreground font-normal">(optional)</span>
+						</Field.Label>
+						<PhoneInput
+							id="lead-phone"
+							bind:country={leadCountry}
+							bind:code={leadPhoneCode}
+							bind:number={leadPhone}
+							invalid={leadPhoneInvalid}
+							contentClass={card?.theme === 'dark' ? 'dark' : undefined}
+						/>
+						{#if leadPhoneInvalid}
+							<Field.Error>Enter a valid number for this country.</Field.Error>
+						{/if}
+					</Field.Field>
 					<Field.Field data-invalid={!!submitError || undefined}>
 						<Field.Label for="lead-notes">Message <span class="text-muted-foreground font-normal">(optional)</span></Field.Label>
 						<Textarea
@@ -235,7 +255,11 @@
 					</Field.Field>
 				</Field.Group>
 				<Dialog.Footer>
-					<Button type="submit" class="w-full sm:w-auto" disabled={submitting || !leadName.trim() || !leadEmail.trim()}>
+					<Button
+						type="submit"
+						class="w-full sm:w-auto"
+						disabled={submitting || !leadName.trim() || !leadEmail.trim() || leadPhoneInvalid}
+					>
 						{#if submitting}
 							<Spinner data-icon="inline-start" />
 						{/if}

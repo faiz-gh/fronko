@@ -36,12 +36,16 @@
 	import DeleteCardDialog from '$lib/components/app/delete-card-dialog.svelte';
 	import FilePickerDialog from '$lib/components/app/file-picker-dialog.svelte';
 	import FormSection from '$lib/components/app/form-section.svelte';
+	import ImageCropDialog from '$lib/components/app/image-crop-dialog.svelte';
 	import LeadsTable from '$lib/components/app/leads-table.svelte';
+	import PhoneInput from '$lib/components/app/phone-input.svelte';
 	import ProfileCard from '$lib/components/app/profile-card.svelte';
 	import QrCode from '$lib/components/app/qr-code.svelte';
 	import QrDialog from '$lib/components/app/qr-dialog.svelte';
 	import {
 		ACCENTS,
+		coverSrc,
+		detectCalendar,
 		isValidSlug,
 		MAX_DOCUMENTS,
 		newId,
@@ -53,6 +57,7 @@
 	} from '$lib/card/card';
 	import { downloadQrPng, downloadQrSvg } from '$lib/card/qr';
 	import { cards } from '$lib/cards.svelte';
+	import { isValidPhone } from '$lib/phone';
 	import { storage } from '$lib/storage.svelte';
 	import { timeAgo } from '$lib/format';
 	import { cn } from '$lib/utils';
@@ -89,9 +94,21 @@
 	let docPickerOpen = $state(false);
 	let photoProgress = $state<number | null>(null);
 	let photoInput: HTMLInputElement | undefined = $state();
+	let coverPickerOpen = $state(false);
+	let coverProgress = $state<number | null>(null);
+	let coverInput: HTMLInputElement | undefined = $state();
+	// A freshly picked image waiting in the crop dialog.
+	let cropPhoto = $state<File | null>(null);
+	let cropCover = $state<File | null>(null);
 	const websiteInvalid = $derived(!!card?.website.trim() && !safeUrl(card.website));
 	const emailInvalid = $derived(!!card?.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(card.email.trim()));
-	const invalid = $derived(slugInvalid || avatarInvalid || websiteInvalid || emailInvalid);
+	const phoneInvalid = $derived(!!card?.phone_number && !isValidPhone(card.phone_country_code, card.phone_number));
+	const calendarInvalid = $derived(!!card?.calendar_url.trim() && !safeUrl(card.calendar_url));
+	const calendarProvider = $derived(card ? detectCalendar(card.calendar_url) : null);
+	const cover = $derived(card ? coverSrc(card) : null);
+	const invalid = $derived(
+		slugInvalid || avatarInvalid || websiteInvalid || emailInvalid || phoneInvalid || calendarInvalid
+	);
 	const canSave = $derived(dirty && !saving && !invalid);
 
 	// Kept current by the cards store (the single-card endpoint doesn't count leads).
@@ -202,12 +219,18 @@
 		card.avatar_url = '';
 	}
 
-	async function uploadPhoto(file: File) {
+	/** Checks a picked image, then opens the crop dialog for it. */
+	function pickImage(file: File, target: 'photo' | 'cover') {
 		const problem = checkUpload(file, 'image');
 		if (problem) {
 			toast.error(problem);
 			return;
 		}
+		if (target === 'photo') cropPhoto = file;
+		else cropCover = file;
+	}
+
+	async function uploadPhoto(file: File) {
 		photoProgress = 0;
 		try {
 			usePhoto(await uploadFile(file, { onProgress: (p) => (photoProgress = p) }));
@@ -215,6 +238,23 @@
 			toast.error(e instanceof Error ? e.message : 'Upload failed');
 		} finally {
 			photoProgress = null;
+		}
+	}
+
+	function useCover(file: LibraryFile) {
+		if (!card) return;
+		remember(file);
+		card.cover_file = file.id;
+	}
+
+	async function uploadCover(file: File) {
+		coverProgress = 0;
+		try {
+			useCover(await uploadFile(file, { onProgress: (p) => (coverProgress = p) }));
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Upload failed');
+		} finally {
+			coverProgress = null;
 		}
 	}
 
@@ -436,7 +476,7 @@
 										tabindex="-1"
 										onchange={(e) => {
 											const f = e.currentTarget.files?.[0];
-											if (f) uploadPhoto(f);
+											if (f) pickImage(f, 'photo');
 											e.currentTarget.value = '';
 										}}
 									/>
@@ -463,6 +503,56 @@
 									{/if}
 								{/if}
 							</Field.Field>
+							<Field.Field class="sm:col-span-2">
+								<Field.Label>Cover image</Field.Label>
+								<div class="flex flex-wrap items-center gap-4">
+									<div
+										class="relative aspect-3/1 w-48 shrink-0 overflow-hidden rounded-lg border"
+										style:background={cover ? undefined : ACCENTS[card.accent]}
+									>
+										{#if cover}
+											<img src={cover} alt="" class="size-full object-cover" />
+										{/if}
+										{#if coverProgress !== null}
+											<span class="bg-background/70 absolute inset-0 grid place-items-center">
+												<Spinner class="size-5" />
+											</span>
+										{/if}
+									</div>
+									<div class="flex flex-wrap gap-2">
+										<Button
+											variant="outline"
+											onclick={() => coverInput?.click()}
+											disabled={!storage.ready || coverProgress !== null}
+										>
+											<UploadIcon data-icon="inline-start" />
+											{coverProgress !== null ? `Uploading ${Math.round(coverProgress * 100)}%` : 'Upload cover'}
+										</Button>
+										<Button variant="outline" onclick={() => (coverPickerOpen = true)} disabled={!storage.ready}>
+											<ImagesIcon data-icon="inline-start" />
+											From library
+										</Button>
+										{#if card.cover_file}
+											<Button variant="ghost" onclick={() => card && (card.cover_file = '')}>Remove</Button>
+										{/if}
+									</div>
+									<input
+										bind:this={coverInput}
+										type="file"
+										accept={ACCEPT.image}
+										class="sr-only"
+										tabindex="-1"
+										onchange={(e) => {
+											const f = e.currentTarget.files?.[0];
+											if (f) pickImage(f, 'cover');
+											e.currentTarget.value = '';
+										}}
+									/>
+								</div>
+								<Field.Description>
+									A wide banner behind your photo, cropped to 3:1. Without one, the accent colour is used.
+								</Field.Description>
+							</Field.Field>
 						</Field.Group>
 					</FormSection>
 
@@ -485,9 +575,20 @@
 									<Field.Error>Enter a valid email address.</Field.Error>
 								{/if}
 							</Field.Field>
-							<Field.Field>
-								<Field.Label for="phone">Phone</Field.Label>
-								<Input id="phone" type="tel" bind:value={card.phone} placeholder="+1 555 010 0000" />
+							<Field.Field data-invalid={phoneInvalid || undefined}>
+								<Field.Label for="phone">Mobile number</Field.Label>
+								<PhoneInput
+									id="phone"
+									bind:country={card.phone_country}
+									bind:code={card.phone_country_code}
+									bind:number={card.phone_number}
+									invalid={phoneInvalid}
+								/>
+								{#if phoneInvalid}
+									<Field.Error>
+										{card.phone_country_code ? 'Enter a valid number for this country.' : 'Pick the country code for this number.'}
+									</Field.Error>
+								{/if}
 							</Field.Field>
 							<Field.Field class="sm:col-span-2" data-invalid={websiteInvalid || undefined}>
 								<Field.Label for="website">Website</Field.Label>
@@ -501,13 +602,36 @@
 									<Field.Error>Enter a valid web address.</Field.Error>
 								{/if}
 							</Field.Field>
+							<Field.Field class="sm:col-span-2" data-invalid={calendarInvalid || undefined}>
+								<Field.Label for="calendar">Booking link</Field.Label>
+								<div class="flex items-center gap-2">
+									<span class="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-lg">
+										<BrandIcon url={card.calendar_url} kind="calendar" />
+									</span>
+									<Input
+										id="calendar"
+										bind:value={card.calendar_url}
+										placeholder="calendly.com/you"
+										aria-invalid={calendarInvalid || undefined}
+									/>
+								</div>
+								{#if calendarInvalid}
+									<Field.Error>Enter a valid web address.</Field.Error>
+								{:else}
+									<Field.Description>
+										{calendarProvider
+											? `${calendarProvider.name} link. Shown as a “Book a meeting” button.`
+											: 'Calendly, Cal.com, Google Calendar or any booking page. Shown as a “Book a meeting” button.'}
+									</Field.Description>
+								{/if}
+							</Field.Field>
 						</Field.Group>
 					</FormSection>
 
 					<FormSection
 						id="links"
 						title="Links"
-						description="Socials, portfolio, booking page. Known sites get their icon automatically."
+						description="Socials, portfolio, profiles. Known sites get their icon automatically."
 					>
 						<div class="flex flex-col gap-2">
 							{#each card.links as link, i (link.id)}
@@ -646,6 +770,9 @@
 										</button>
 									{/each}
 								</div>
+								{#if card.cover_file}
+									<Field.Description>With a cover image, the accent frames your photo and the banner.</Field.Description>
+								{/if}
 							</Field.Field>
 							<Field.Field>
 								<Field.Label>Card theme</Field.Label>
@@ -824,6 +951,30 @@
 		title="Choose a photo"
 		selected={card.avatar_file ? [card.avatar_file] : []}
 		onselect={usePhoto}
+	/>
+	<FilePickerDialog
+		bind:open={coverPickerOpen}
+		kind="image"
+		title="Choose a cover image"
+		selected={card.cover_file ? [card.cover_file] : []}
+		onselect={useCover}
+	/>
+	<ImageCropDialog
+		bind:file={cropPhoto}
+		title="Crop photo"
+		aspect={1}
+		shape="round"
+		outputWidth={512}
+		outputHeight={512}
+		onconfirm={uploadPhoto}
+	/>
+	<ImageCropDialog
+		bind:file={cropCover}
+		title="Crop cover image"
+		aspect={3}
+		outputWidth={1500}
+		outputHeight={500}
+		onconfirm={uploadCover}
 	/>
 	<FilePickerDialog
 		bind:open={docPickerOpen}

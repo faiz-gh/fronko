@@ -6,10 +6,21 @@
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
 	import ArrowUpRightIcon from '@lucide/svelte/icons/arrow-up-right';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import * as Avatar from '$lib/components/ui/avatar';
 	import BrandIcon from './brand-icon.svelte';
 	import { fileUrl, formatBytes, type PublicFile } from '$lib/api/files';
-	import { ACCENTS, avatarSrc, initials, linkLabel, safeUrl, type CardData } from '$lib/card/card';
+	import {
+		ACCENTS,
+		avatarSrc,
+		coverSrc,
+		detectCalendar,
+		initials,
+		linkLabel,
+		safeUrl,
+		type CardData
+	} from '$lib/card/card';
+	import { e164 } from '$lib/phone';
 	import { cn } from '$lib/utils';
 
 	let {
@@ -41,6 +52,9 @@
 		})
 	);
 	const avatar = $derived(avatarSrc(card));
+	const cover = $derived(coverSrc(card));
+	const calendar = $derived(safeUrl(card.calendar_url));
+	const calendarName = $derived(calendar ? detectCalendar(calendar)?.name : undefined);
 	const documents = $derived(
 		card.documents.flatMap((d) => {
 			const meta = files?.[d.file];
@@ -53,7 +67,7 @@
 	const quick = $derived(
 		[
 			card.email.trim() && { label: 'Email', href: `mailto:${card.email.trim()}`, icon: MailIcon },
-			card.phone.trim() && { label: 'Call', href: `tel:${card.phone.replace(/[^\d+]/g, '')}`, icon: PhoneIcon },
+			card.phone_number && { label: 'Call', href: `tel:${e164(card.phone_country_code, card.phone_number)}`, icon: PhoneIcon },
 			website && { label: 'Website', href: website, icon: GlobeIcon }
 		].filter((q) => !!q)
 	);
@@ -69,10 +83,17 @@
 	style="--card-accent: {ACCENTS[card.accent]}"
 >
 	<div class="bg-card text-card-foreground ring-foreground/10 overflow-hidden rounded-3xl shadow-xl ring-1">
-		<div
-			class="h-28 bg-(--card-accent) @2xl:h-40"
-			style="background-image: radial-gradient(120% 140% at 100% 0%, oklch(1 0 0 / 0.28), transparent 55%), radial-gradient(90% 120% at 0% 100%, oklch(0 0 0 / 0.22), transparent 60%)"
-		></div>
+		{#if cover}
+			<!-- With a cover photo, the accent becomes a frame: a stripe under the banner and a ring around the avatar. -->
+			<div class="bg-muted aspect-3/1 border-b-4 border-(--card-accent) @2xl:aspect-auto @2xl:h-56">
+				<img src={cover} alt="" class="size-full object-cover" />
+			</div>
+		{:else}
+			<div
+				class="h-28 bg-(--card-accent) @2xl:h-40"
+				style="background-image: radial-gradient(120% 140% at 100% 0%, oklch(1 0 0 / 0.28), transparent 55%), radial-gradient(90% 120% at 0% 100%, oklch(0 0 0 / 0.22), transparent 60%)"
+			></div>
+		{/if}
 
 		<div
 			class={cn(
@@ -82,7 +103,12 @@
 		>
 			<div class="flex flex-col gap-5">
 				<div class="-mt-12 flex flex-col items-center gap-3 text-center @2xl:-mt-16 @2xl:items-start @2xl:gap-4 @2xl:text-left">
-					<Avatar.Root class="ring-card size-24 text-2xl ring-4 @2xl:size-32 @2xl:text-3xl">
+					<Avatar.Root
+						class={cn(
+							'size-24 text-2xl ring-4 @2xl:size-32 @2xl:text-3xl',
+							cover ? 'bg-card ring-(--card-accent)' : 'ring-card'
+						)}
+					>
 						{#if avatar}
 							<Avatar.Image src={avatar} alt={name} class="object-cover" />
 						{/if}
@@ -129,6 +155,26 @@
 							</a>
 						{/each}
 					</div>
+				{/if}
+
+				{#if calendar}
+					<a
+						href={calendar}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="group flex h-12 items-center gap-3 rounded-xl border-2 border-(--card-accent) px-4 text-sm font-semibold transition-colors hover:bg-(--card-accent) hover:text-white"
+					>
+						<span class="text-(--card-accent) transition-colors group-hover:text-white">
+							<BrandIcon url={calendar} kind="calendar" class="size-[18px]" />
+						</span>
+						<span class="flex-1">Book a meeting</span>
+						{#if calendarName}
+							<span class="text-muted-foreground text-xs font-normal transition-colors group-hover:text-white/80">
+								{calendarName}
+							</span>
+						{/if}
+						<ChevronRightIcon class="size-4 transition-transform group-hover:translate-x-0.5" />
+					</a>
 				{/if}
 
 				{#if actions}
