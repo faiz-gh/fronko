@@ -20,13 +20,18 @@
 	// Guard before rendering anything so protected content never flashes.
 	// While the session check is in flight (status 'unknown') we just wait.
 	$effect(() => {
+		const next = encodeURIComponent(page.url.pathname);
 		if (session.status === 'anonymous') {
-			goto(`/login?next=${encodeURIComponent(page.url.pathname)}`, { replaceState: true });
+			goto(`/login?next=${next}`, { replaceState: true });
+		} else if (session.isAuthenticated && !session.emailVerified) {
+			goto(`/verify-email?next=${next}`, { replaceState: true });
 		}
 	});
 
+	const ready = $derived(session.isAuthenticated && session.emailVerified);
+
 	$effect(() => {
-		if (session.isAuthenticated && session.username) {
+		if (ready && session.username) {
 			cards.load(session.username);
 			storage.load(session.username);
 		}
@@ -45,11 +50,11 @@
 	});
 </script>
 
-{#if session.status === 'unknown'}
+{#if session.status === 'unknown' || (session.isAuthenticated && !ready)}
 	<div class="grid min-h-svh place-items-center">
 		<Spinner class="text-muted-foreground size-6" />
 	</div>
-{:else if session.isAuthenticated}
+{:else if ready}
 	<!-- Desktop: fixed sidebar; the page scrolls beside it. -->
 	<aside class="bg-sidebar text-sidebar-foreground border-sidebar-border fixed inset-y-0 left-0 z-30 hidden w-68 border-r lg:block">
 		<AppSidebar />

@@ -6,11 +6,26 @@ import (
 )
 
 type User struct {
-	ID           int64     `json:"id"`
-	Username     string    `json:"username"`
-	PasswordHash string    `json:"-"` // Never exposed in JSON
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           int64  `json:"id"`
+	Username     string `json:"username"`
+	PasswordHash string `json:"-"` // Never exposed in JSON
+	// Email is nil only for accounts created before emails were required.
+	Email           *string    `json:"email"`
+	EmailVerifiedAt *time.Time `json:"email_verified_at"`
+	// SessionVersion is carried in session tokens; bumping it revokes them all.
+	SessionVersion int       `json:"-"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// EmailCode is a one-time code sent by email. Only its HMAC is stored.
+type EmailCode struct {
+	UserID    int64
+	Purpose   string
+	CodeHash  string
+	Attempts  int
+	ExpiresAt time.Time
+	CreatedAt time.Time
 }
 
 type Profile struct {

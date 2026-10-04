@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -26,7 +27,8 @@ func mapError(err error) error {
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23505": // unique_violation
-			return ErrConflict
+			// Keep the driver error too, so callers can tell which constraint hit.
+			return fmt.Errorf("%w: %w", ErrConflict, err)
 		case "23503": // foreign_key_violation
 			return ErrNotFound
 		}
@@ -48,21 +50,29 @@ func New(db *pgxpool.Pool) *Repository {
 
 func (r *Repository) CreateUser(ctx context.Context, user *models.User) error {
 	query := `
-		INSERT INTO users (username, password_hash)
-		VALUES ($1, $2)
-		RETURNING user_id, created_at, updated_at`
-	err := r.db.QueryRow(ctx, query, user.Username, user.PasswordHash).Scan(
-		&user.ID, &user.CreatedAt, &user.UpdatedAt,
+		INSERT INTO users (username, email, password_hash)
+		VALUES ($1, $2, $3)
+		RETURNING user_id, session_version, created_at, updated_at`
+	err := r.db.QueryRow(ctx, query, user.Username, user.Email, user.PasswordHash).Scan(
+		&user.ID, &user.SessionVersion, &user.CreatedAt, &user.UpdatedAt,
 	)
 	return mapError(err)
 }
 
-// GetUserByUsername matches case-insensitively, consistent with users_username_lower_idx.
-func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
-	query := `SELECT user_id, username, password_hash, created_at, updated_at FROM users WHERE LOWER(username) = LOWER($1)`
+// IsEmailConflict reports whether a CreateUser/SetUserEmail error came from
+// the email unique index rather than the username one.
+func IsEmailConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.ConstraintName == "users_email_lower_idx"
+}
+
+const userColumns = `user_id, username, password_hash, email, email_verified_at, session_version, created_at, updated_at`
+
+func (r *Repository) getUser(ctx context.Context, where string, arg any) (*models.User, error) {
 	var user models.User
-	err := r.db.QueryRow(ctx, query, username).Scan(
-		&user.ID, &user.Username, &user.PasswordHash, &user.CreatedAt, &user.UpdatedAt,
+	err := r.db.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE `+where, arg).Scan(
+		&user.ID, &user.Username, &user.PasswordHash, &user.Email, &user.EmailVerifiedAt,
+		&user.SessionVersion, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
 		return nil, mapError(err)
@@ -70,16 +80,107 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*m
 	return &user, nil
 }
 
+// GetUserByUsername matches case-insensitively, consistent with users_username_lower_idx.
+func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
+	return r.getUser(ctx, `LOWER(username) = LOWER($1)`, username)
+}
+
+// GetUserByEmail matches case-insensitively, consistent with users_email_lower_idx.
+func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	return r.getUser(ctx, `LOWER(email) = LOWER($1)`, email)
+}
+
 func (r *Repository) GetUserByID(ctx context.Context, id int64) (*models.User, error) {
-	query := `SELECT user_id, username, password_hash, created_at, updated_at FROM users WHERE user_id = $1`
-	var user models.User
-	err := r.db.QueryRow(ctx, query, id).Scan(
-		&user.ID, &user.Username, &user.PasswordHash, &user.CreatedAt, &user.UpdatedAt,
-	)
+	return r.getUser(ctx, `user_id = $1`, id)
+}
+
+// GetSessionState is the per-request check behind the JWT middleware.
+func (r *Repository) GetSessionState(ctx context.Context, userID int64) (sessionVersion int, verified bool, err error) {
+	err = r.db.QueryRow(ctx,
+		`SELECT session_version, email_verified_at IS NOT NULL FROM users WHERE user_id = $1`, userID,
+	).Scan(&sessionVersion, &verified)
+	return sessionVersion, verified, mapError(err)
+}
+
+// SetUserEmail replaces the address and marks it unverified.
+func (r *Repository) SetUserEmail(ctx context.Context, userID int64, email string) error {
+	tag, err := r.db.Exec(ctx,
+		`UPDATE users SET email = $2, email_verified_at = NULL, updated_at = now() WHERE user_id = $1`, userID, email)
+	if err != nil {
+		return mapError(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *Repository) MarkEmailVerified(ctx context.Context, userID int64) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE users SET email_verified_at = now(), updated_at = now() WHERE user_id = $1`, userID)
+	return mapError(err)
+}
+
+// UpdatePassword sets a new hash and bumps the session version, which signs
+// out every existing session. It returns the new version.
+func (r *Repository) UpdatePassword(ctx context.Context, userID int64, hash string) (int, error) {
+	var version int
+	err := r.db.QueryRow(ctx, `
+		UPDATE users SET password_hash = $2, session_version = session_version + 1, updated_at = now()
+		WHERE user_id = $1
+		RETURNING session_version`, userID, hash).Scan(&version)
+	return version, mapError(err)
+}
+
+// ----------------------------------------------------------------------------
+// Email Code Methods
+// ----------------------------------------------------------------------------
+
+// UpsertEmailCode replaces any live code for the same user and purpose.
+func (r *Repository) UpsertEmailCode(ctx context.Context, c *models.EmailCode) error {
+	query := `
+		INSERT INTO email_codes (user_id, purpose, code_hash, expires_at)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (user_id, purpose) DO UPDATE
+		SET code_hash = EXCLUDED.code_hash, attempts = 0, expires_at = EXCLUDED.expires_at, created_at = now()
+		RETURNING attempts, created_at`
+	err := r.db.QueryRow(ctx, query, c.UserID, c.Purpose, c.CodeHash, c.ExpiresAt).Scan(&c.Attempts, &c.CreatedAt)
+	return mapError(err)
+}
+
+func (r *Repository) GetEmailCode(ctx context.Context, userID int64, purpose string) (*models.EmailCode, error) {
+	c := models.EmailCode{UserID: userID, Purpose: purpose}
+	err := r.db.QueryRow(ctx,
+		`SELECT code_hash, attempts, expires_at, created_at FROM email_codes WHERE user_id = $1 AND purpose = $2`,
+		userID, purpose,
+	).Scan(&c.CodeHash, &c.Attempts, &c.ExpiresAt, &c.CreatedAt)
 	if err != nil {
 		return nil, mapError(err)
 	}
-	return &user, nil
+	return &c, nil
+}
+
+// UseEmailCodeAttempt spends one guess on a live code and returns it for
+// checking. Counting the attempt before the comparison keeps concurrent
+// guesses from exceeding maxAttempts. ErrNotFound means there's no usable code:
+// none was issued, it expired, or its attempts ran out.
+func (r *Repository) UseEmailCodeAttempt(ctx context.Context, userID int64, purpose string, maxAttempts int) (*models.EmailCode, error) {
+	c := models.EmailCode{UserID: userID, Purpose: purpose}
+	err := r.db.QueryRow(ctx, `
+		UPDATE email_codes SET attempts = attempts + 1
+		WHERE user_id = $1 AND purpose = $2 AND attempts < $3 AND expires_at > now()
+		RETURNING code_hash, attempts, expires_at, created_at`,
+		userID, purpose, maxAttempts,
+	).Scan(&c.CodeHash, &c.Attempts, &c.ExpiresAt, &c.CreatedAt)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return &c, nil
+}
+
+func (r *Repository) DeleteEmailCode(ctx context.Context, userID int64, purpose string) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM email_codes WHERE user_id = $1 AND purpose = $2`, userID, purpose)
+	return mapError(err)
 }
 
 // ----------------------------------------------------------------------------

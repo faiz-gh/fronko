@@ -21,10 +21,24 @@ services:
       STORAGE_ALLOW_PRIVATE_ENDPOINTS: "true"
       # Local runs are same-origin through nginx; don't inherit production URLs from .env.
       CORS_ALLOWED_ORIGINS: ""
+      # Mail goes to the local Mailpit below; read it at http://localhost:8025.
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_FROM: "Fronko <no-reply@fronko.local>"
     ports:
       - "8080:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - mailpit
+
+  # Catches every email the backend sends; nothing leaves your machine.
+  # Inbox UI: http://localhost:8025
+  mailpit:
+    container_name: mailpit-local
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
 
   frontend:
     container_name: frontend-local
