@@ -46,3 +46,17 @@ func TestNewSMTPSenderValidatesFrom(t *testing.T) {
 	_, err := NewSMTPSender(SMTPConfig{Host: "smtp.example.com", Port: 587, From: "nope"})
 	assert.Error(t, err)
 }
+
+func TestNoticeHasNoCode(t *testing.T) {
+	msg := EmailChangedNotice("nina@example.com")
+	assert.Contains(t, msg.Text, "n***@example.com")
+	assert.NotContains(t, msg.Text, "nina@")
+	assert.NotContains(t, msg.Text, "expires")
+	assert.NotContains(t, msg.HTML, "expires")
+}
+
+func TestMaskEmail(t *testing.T) {
+	assert.Equal(t, "n***@example.com", MaskEmail("nina@example.com"))
+	assert.Equal(t, "***", MaskEmail("@example.com"))
+	assert.Equal(t, "***", MaskEmail("nope"))
+}

@@ -14,7 +14,7 @@ Built as a high-performance alternative to proprietary platforms like Mobilo and
 
 * **🤝 Lead Capture:** A built-in form lets recipients share their details back, with an optional mobile number. Leads land in one inbox with card filters, search, pagination and CSV export.
 
-* **🔐 Accounts:** Sign up with a username and email, verified by a 6-digit emailed code. Sign in with either. Forgotten passwords are reset with an emailed code, and changing a password in **Settings** signs out every other device.
+* **🔐 Accounts:** Sign up with a username and email, verified by a 6-digit emailed code. Sign in with either. Forgotten passwords are reset with an emailed code. In **Settings** you can change your email (password plus a code to the new address; the old one is notified) or your password (which signs out every other device).
 
 * **☁️ Bring Your Own Storage:** Photos and brochures go to each user's own S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3, MinIO). Keys are encrypted at rest and buckets stay private.
 
@@ -150,7 +150,6 @@ Fronko is hardware-agnostic. You can purchase any blank NTAG215 or NTAG216 PVC c
 
 Planned, but not built yet:
 
-* **Changing a verified email:** today the address can only be corrected before it's verified.
 * **Shared rate limiting:** rate limits are kept in memory per backend instance. Running several instances needs a shared store such as Redis.
 * **CRM integrations:** push new leads to HubSpot or Salesforce.
 * **Richer profile blocks:** more content types on the public card (calendars, embeds, galleries) and a block-based layout.

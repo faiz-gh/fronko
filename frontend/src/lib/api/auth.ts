@@ -66,3 +66,13 @@ export function changePassword(currentPassword: string, newPassword: string): Pr
 		body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
 	});
 }
+
+/** Starts changing a verified email: checks the password and sends a code to the new address. */
+export function requestEmailChange(email: string, password: string): Promise<void> {
+	return apiClient<void>('/api/me/email/change', { method: 'POST', body: JSON.stringify({ email, password }) });
+}
+
+/** Confirms the new address with its code; the old one is notified. */
+export function confirmEmailChange(code: string): Promise<AuthUser> {
+	return apiClient<AuthUser>('/api/me/email/change/confirm', { method: 'POST', body: JSON.stringify({ code }) });
+}

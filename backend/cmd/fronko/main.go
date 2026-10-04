@@ -142,6 +142,8 @@ func run() error {
 	// Protected Routes (Grouped under /api/me/, verified email required)
 	protected := http.NewServeMux()
 	protected.HandleFunc("PUT /api/me/password", authLimiter.Limit(authHandler.ChangePassword))
+	protected.HandleFunc("POST /api/me/email/change", authLimiter.Limit(authHandler.RequestEmailChange))
+	protected.HandleFunc("POST /api/me/email/change/confirm", authLimiter.Limit(authHandler.ConfirmEmailChange))
 	protected.HandleFunc("GET /api/me/profiles", profileHandler.GetMyProfiles)
 	protected.HandleFunc("POST /api/me/profiles", profileHandler.CreateProfile)
 	protected.HandleFunc("GET /api/me/profiles/{id}", profileHandler.GetMyProfile)

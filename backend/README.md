@@ -53,7 +53,7 @@ backend/
 │   ├── database/db.go            # pgxpool construction and connectivity check
 │   ├── handlers/
 │   │   ├── auth.go               # /auth/login, /auth/register, /auth/logout, /api/me/user
-│   │   ├── account.go            # Email verification, forgot/reset password, change password
+│   │   ├── account.go            # Email verification and change, forgot/reset password, change password
 │   │   ├── files.go              # File library: upload (type sniffing), list, rename, delete, public redirect
 │   │   ├── storage.go            # StorageService (decrypt keys → bucket client) and /api/me/storage
 │   │   ├── profile.go            # Profile CRUD and public slug lookup
@@ -65,7 +65,7 @@ backend/
 │   │   ├── jwt.go                # Cookie → JWT → session-version check → user ID in context; RequireVerified
 │   │   ├── origin.go             # Same-origin check for state-changing requests
 │   │   └── ratelimit.go          # Per-IP token bucket limiter
-│   ├── mail/                     # SMTP sender (implicit TLS / STARTTLS), log fallback, code email templates
+│   ├── mail/                     # SMTP sender (implicit TLS / STARTTLS), log fallback, code and notice templates
 │   ├── models/models.go          # User, EmailCode, Profile, PublicProfile, Lead, StorageSettings, File
 │   ├── repository/repository.go  # All SQL; maps pg errors to ErrNotFound / ErrConflict
 │   ├── secrets/secrets.go        # AES-256-GCM sealing for storage keys at rest
@@ -159,9 +159,9 @@ These are hard-coded:
 
 ## Database
 
-The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`).
+The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`, 006 changing a verified email).
 - `users.email` (005) is nullable only for accounts that predate it; the app makes those users add one. `email_verified_at` gates the app, and `session_version` is copied into each JWT so bumping it revokes every session.
-- `email_codes` (005) holds at most one live code per user and purpose (`verify_email`, `reset_password`): an HMAC of the code, an attempt counter and an expiry.
+- `email_codes` (005) holds at most one live code per user and purpose (`verify_email`, `reset_password`, and `change_email` from 006): an HMAC of the code, an attempt counter and an expiry. For `change_email`, the `email` column (006) holds the new address until it's confirmed.
 - `leads.phone_country_code` and `leads.phone_number` (004) store a visitor's number as two digit-only parts. A check constraint requires both or neither, and enforces the E.164 shape.
 - `user_storage` holds one row per user with encrypted key columns (`BYTEA`).
 - `files` stores a random `public_id`, the `bucket` and `object_key`, the sniffed `kind` and `content_type`, the size, the original name and an optional title. The bucket is stored per file, so changing buckets later doesn't silently re-point old files.
@@ -284,6 +284,8 @@ Protected routes live on their own `ServeMux`, which is mounted at `/api/me/` be
 
 Registration (and `PUT /api/me/email`) sends a verification code, and `POST /auth/password/forgot` sends a reset code, only to a **verified** address. Codes are 6 random digits, stored as an HMAC-SHA256 keyed with `JWT_SECRET` and bound to the user and purpose. They expire after 15 minutes. Each check spends an attempt atomically **before** comparing (`UseEmailCodeAttempt`), so even concurrent guesses get at most 5 tries. A correct code is deleted. A new code can be requested once every 60 seconds, and it replaces the old one.
 
+**Changing a verified email** takes the current password, then a code sent to the new address (`POST /api/me/email/change`, then `/change/confirm`). The new address is held on the `change_email` code row, so the current email keeps working until the change is confirmed. On confirmation the old address gets a notice with the new one masked. The unique index is the final check if two accounts race for the same address.
+
 Mail is sent in a background goroutine (30 s timeout, errors logged), so request timing doesn't depend on the SMTP server or reveal whether an address has an account. Forgot-password always answers 204.
 
 ## Security measures
@@ -320,7 +322,7 @@ Defined as constants in `cmd/fronko/main.go`:
 
 | Limiter | Applies to | Burst | Refill |
 | ------- | ---------- | ----- | ------ |
-| `authLimiter` | `POST /auth/login`, `/auth/register`, `/auth/password/forgot`, `/auth/password/reset`, `PUT /api/me/email`, `POST /api/me/email/verify`, `POST /api/me/email/resend` and `PUT /api/me/password` (one shared bucket per IP) | 10 | 1 per 10s |
+| `authLimiter` | `POST /auth/login`, `/auth/register`, `/auth/password/forgot`, `/auth/password/reset`, `PUT /api/me/email`, `POST /api/me/email/verify`, `POST /api/me/email/resend`, `POST /api/me/email/change`, `POST /api/me/email/change/confirm` and `PUT /api/me/password` (one shared bucket per IP) | 10 | 1 per 10s |
 | `leadLimiter` | `POST /api/profiles/{id}/leads` | 5 | 1 per 15s |
 | `uploadLimiter` | `POST /api/me/files` | 10 | 1 per 6s |
 
@@ -389,7 +391,7 @@ For the full stack (backend + nginx-served frontend), see `deploy/` and the [roo
 
 - **Rate limits are per process.** Several backend replicas each enforce their own budget. Sharing limits across replicas needs a shared store such as Redis.
 - **No per-session logout.** Logging out removes the cookie but doesn't invalidate that JWT; it stays valid until `exp` (up to 24h) unless the password is changed or reset, which revokes every session.
-- **A verified email can't be changed yet.** `PUT /api/me/email` only works before verification.
+- **An email change can't be undone from the old address.** The old address gets a notice, but recovering a hijacked account (someone with the password moved it to their address) needs the server operator.
 - **`collect_leads` isn't enforced by the server.** The frontend hides the lead form when a card's `data.collect_leads` is `false`, but `POST /api/profiles/{id}/leads` still accepts submissions.
 - **`lead_count` is only filled in by `GET /api/me/profiles`.** Create, update and single-profile responses return `0`.
 - **Anyone with a file's link can open it.** `/api/files/{id}` needs no sign-in, which is how public cards show photos and brochures. IDs are 128-bit random values and only appear on cards that use them, but a link that is shared stays usable until the file is deleted.
