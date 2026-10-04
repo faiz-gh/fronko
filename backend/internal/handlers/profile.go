@@ -78,9 +78,9 @@ func (h *ProfileHandler) GetProfileBySlug(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Resolve only the files this card uses, and only ones its owner still has.
+	// Resolve only the files this card uses, and only ones its organisation still has.
 	public := models.PublicProfile{ID: profile.ID, Slug: profile.Slug, Data: profile.Data, Files: []models.PublicFile{}}
-	files, err := h.repo.GetFilesByPublicIDs(r.Context(), profile.UserID, referencedFileIDs(profile.Data))
+	files, err := h.repo.GetOrgFilesByPublicIDs(r.Context(), profile.OrgID, referencedFileIDs(profile.Data))
 	if err != nil {
 		log.Printf("profile files: %v", err)
 	}
@@ -91,11 +91,52 @@ func (h *ProfileHandler) GetProfileBySlug(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, public)
 }
 
-// Protected: GET /api/me/profiles
-func (h *ProfileHandler) GetMyProfiles(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserID(r.Context())
+// getProfile loads a card the signed-in user can see, writing the error response if it can't.
+func (h *ProfileHandler) getProfile(w http.ResponseWriter, r *http.Request, profileID int64) (*models.Profile, bool) {
+	profile, err := h.repo.GetProfile(r.Context(), scopeOf(r), profileID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "profile not found")
+			return nil, false
+		}
+		log.Printf("get profile: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return nil, false
+	}
+	return profile, true
+}
 
-	profiles, err := h.repo.GetProfilesByUserID(r.Context(), userID)
+// checkFiles makes sure every file a card newly points at is one the signed-in
+// user can see. Files the card already used (before) stay allowed, so losing
+// access to one doesn't block saving the rest of the card.
+func (h *ProfileHandler) checkFiles(w http.ResponseWriter, r *http.Request, data, before []byte) bool {
+	existing := map[string]bool{}
+	for _, id := range referencedFileIDs(before) {
+		existing[id] = true
+	}
+	var added []string
+	for _, id := range referencedFileIDs(data) {
+		if !existing[id] {
+			added = append(added, id)
+		}
+	}
+	n, err := h.repo.CountVisibleFiles(r.Context(), scopeOf(r), added)
+	if err != nil {
+		log.Printf("check card files: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return false
+	}
+	if n != len(added) {
+		writeError(w, http.StatusBadRequest, "this card uses a file you don't have access to")
+		return false
+	}
+	return true
+}
+
+// Protected: GET /api/me/profiles. Admins get every card in the organisation;
+// members only the cards assigned to them.
+func (h *ProfileHandler) GetMyProfiles(w http.ResponseWriter, r *http.Request) {
+	profiles, err := h.repo.ListProfiles(r.Context(), scopeOf(r))
 	if err != nil {
 		log.Printf("list profiles: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -107,31 +148,24 @@ func (h *ProfileHandler) GetMyProfiles(w http.ResponseWriter, r *http.Request) {
 
 // Protected: GET /api/me/profiles/{id}
 func (h *ProfileHandler) GetMyProfile(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserID(r.Context())
 	profileID, ok := profileIDFromPath(w, r)
 	if !ok {
 		return
 	}
-
-	profile, err := h.repo.GetProfileForUser(r.Context(), profileID, userID)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "profile not found")
-			return
-		}
-		log.Printf("get profile: %v", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
+	if profile, ok := h.getProfile(w, r, profileID); ok {
+		writeJSON(w, http.StatusOK, profile)
 	}
-
-	writeJSON(w, http.StatusOK, profile)
 }
 
-// Protected: POST /api/me/profiles
+// Protected (admins): POST /api/me/profiles. Optionally assigns the new card
+// to a user straight away.
 func (h *ProfileHandler) CreateProfile(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserID(r.Context())
+	principal := middleware.PrincipalFrom(r.Context())
 
-	var req profileRequest
+	var req struct {
+		profileRequest
+		AssignedUserID *int64 `json:"assigned_user_id"`
+	}
 	if !decodeJSON(w, r, &req) {
 		return
 	}
@@ -139,11 +173,19 @@ func (h *ProfileHandler) CreateProfile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	if req.AssignedUserID != nil && !h.checkAssignee(w, r, *req.AssignedUserID) {
+		return
+	}
+	if !h.checkFiles(w, r, req.Data, nil) {
+		return
+	}
 
 	profile := &models.Profile{
-		UserID: userID,
-		Slug:   req.Slug,
-		Data:   req.Data,
+		OrgID:          principal.OrgID,
+		UserID:         principal.UserID,
+		AssignedUserID: req.AssignedUserID,
+		Slug:           req.Slug,
+		Data:           req.Data,
 	}
 
 	if err := h.repo.CreateProfile(r.Context(), profile); err != nil {
@@ -156,12 +198,15 @@ func (h *ProfileHandler) CreateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, profile)
+	if created, ok := h.getProfile(w, r, profile.ID); ok {
+		writeJSON(w, http.StatusCreated, created)
+	}
 }
 
-// Protected: PUT /api/me/profiles/{id}
+// Protected: PUT /api/me/profiles/{id}. Members can edit everything on their
+// cards except the slug, which may already be printed on cards and QR codes.
 func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserID(r.Context())
+	scope := scopeOf(r)
 	profileID, ok := profileIDFromPath(w, r)
 	if !ok {
 		return
@@ -176,15 +221,26 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profile := &models.Profile{
-		ID:     profileID,
-		UserID: userID,
-		Slug:   req.Slug,
-		Data:   req.Data,
+	current, ok := h.getProfile(w, r, profileID)
+	if !ok {
+		return
+	}
+	if !scope.Admin && req.Slug != current.Slug {
+		writeError(w, http.StatusForbidden, "your organisation manages this card's link")
+		return
+	}
+	if !h.checkFiles(w, r, req.Data, current.Data) {
+		return
 	}
 
-	// The WHERE clause enforces ownership; another user's profile reads as not found.
-	if err := h.repo.UpdateProfile(r.Context(), profile); err != nil {
+	profile := &models.Profile{
+		ID:   profileID,
+		Slug: req.Slug,
+		Data: req.Data,
+	}
+
+	// The WHERE clause enforces access; a card outside the scope reads as not found.
+	if err := h.repo.UpdateProfile(r.Context(), scope, profile); err != nil {
 		switch {
 		case errors.Is(err, repository.ErrNotFound):
 			writeError(w, http.StatusNotFound, "profile not found")
@@ -197,18 +253,19 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, profile)
+	if updated, ok := h.getProfile(w, r, profileID); ok {
+		writeJSON(w, http.StatusOK, updated)
+	}
 }
 
-// Protected: DELETE /api/me/profiles/{id}
+// Protected (admins): DELETE /api/me/profiles/{id}
 func (h *ProfileHandler) DeleteProfile(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserID(r.Context())
 	profileID, ok := profileIDFromPath(w, r)
 	if !ok {
 		return
 	}
 
-	if err := h.repo.DeleteProfile(r.Context(), profileID, userID); err != nil {
+	if err := h.repo.DeleteProfile(r.Context(), profileID, middleware.PrincipalFrom(r.Context()).OrgID); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "profile not found")
 			return
@@ -219,4 +276,51 @@ func (h *ProfileHandler) DeleteProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// checkAssignee makes sure userID is someone in the caller's organisation.
+func (h *ProfileHandler) checkAssignee(w http.ResponseWriter, r *http.Request, userID int64) bool {
+	_, err := h.repo.GetUserInOrg(r.Context(), userID, middleware.PrincipalFrom(r.Context()).OrgID)
+	if errors.Is(err, repository.ErrNotFound) {
+		writeError(w, http.StatusBadRequest, "that user isn't in your organisation")
+		return false
+	}
+	if err != nil {
+		log.Printf("check assignee: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return false
+	}
+	return true
+}
+
+// Protected (admins): PUT /api/org/profiles/{id}/assignee. Hands the card to
+// a user, or back to the organisation with {"user_id": null}. Leads that
+// already arrived stay with whoever held the card at the time.
+func (h *ProfileHandler) SetAssignee(w http.ResponseWriter, r *http.Request) {
+	profileID, ok := profileIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		UserID *int64 `json:"user_id"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.UserID != nil && !h.checkAssignee(w, r, *req.UserID) {
+		return
+	}
+	err := h.repo.SetProfileAssignee(r.Context(), profileID, middleware.PrincipalFrom(r.Context()).OrgID, req.UserID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "profile not found")
+			return
+		}
+		log.Printf("set assignee: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if updated, ok := h.getProfile(w, r, profileID); ok {
+		writeJSON(w, http.StatusOK, updated)
+	}
 }

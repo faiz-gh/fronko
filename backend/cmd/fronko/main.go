@@ -16,6 +16,7 @@ import (
 	"github.com/faiz-gh/fronko/backend/internal/handlers"
 	"github.com/faiz-gh/fronko/backend/internal/mail"
 	"github.com/faiz-gh/fronko/backend/internal/middleware"
+	"github.com/faiz-gh/fronko/backend/internal/models"
 	"github.com/faiz-gh/fronko/backend/internal/repository"
 	"github.com/faiz-gh/fronko/backend/internal/secrets"
 	"github.com/faiz-gh/fronko/backend/internal/storage"
@@ -100,13 +101,14 @@ func run() error {
 	storageSvc := handlers.NewStorageService(repo, box, storage.NewS3(cfg.StorageAllowPrivate), cfg.StorageAllowPrivate)
 	storageHandler := handlers.NewStorageHandler(storageSvc)
 	fileHandler := handlers.NewFileHandler(storageSvc, repo)
+	orgHandler := handlers.NewOrgHandler(repo, authHandler)
 
-	sessions := middleware.SessionCheckerFunc(func(ctx context.Context, userID int64) (int, bool, error) {
-		version, verified, err := repo.GetSessionState(ctx, userID)
+	sessions := middleware.SessionCheckerFunc(func(ctx context.Context, userID int64) (models.SessionState, error) {
+		state, err := repo.GetSessionState(ctx, userID)
 		if errors.Is(err, repository.ErrNotFound) {
 			err = middleware.ErrSessionUserNotFound
 		}
-		return version, verified, err
+		return state, err
 	})
 	jwtMiddleware := middleware.JWTMiddleware(authService, sessions)
 	leadLimiter := middleware.NewRateLimiter(ctx, rate.Every(leadInterval), leadBurst, cfg.TrustProxy)
@@ -139,29 +141,50 @@ func run() error {
 	mux.Handle("POST /api/me/email/verify", account(authLimiter.Limit(authHandler.VerifyEmail)))
 	mux.Handle("POST /api/me/email/resend", account(authLimiter.Limit(authHandler.ResendVerification)))
 
-	// Protected Routes (Grouped under /api/me/, verified email required)
+	// Choosing a new password needs a verified email, but must work while the
+	// organisation's temporary password is still in place.
+	mux.Handle("PUT /api/me/password", jwtMiddleware(middleware.RequireVerified(authLimiter.Limit(authHandler.ChangePassword))))
+
+	// Protected routes: verified email, and a password the user chose.
+	// Owners and admins see their whole organisation; members only their own
+	// cards, leads and files. The role wrappers gate organisation management.
+	admin, owner := middleware.RequireAdmin, middleware.RequireOwner
 	protected := http.NewServeMux()
-	protected.HandleFunc("PUT /api/me/password", authLimiter.Limit(authHandler.ChangePassword))
 	protected.HandleFunc("POST /api/me/email/change", authLimiter.Limit(authHandler.RequestEmailChange))
 	protected.HandleFunc("POST /api/me/email/change/confirm", authLimiter.Limit(authHandler.ConfirmEmailChange))
 	protected.HandleFunc("GET /api/me/profiles", profileHandler.GetMyProfiles)
-	protected.HandleFunc("POST /api/me/profiles", profileHandler.CreateProfile)
+	protected.HandleFunc("POST /api/me/profiles", admin(profileHandler.CreateProfile))
 	protected.HandleFunc("GET /api/me/profiles/{id}", profileHandler.GetMyProfile)
 	protected.HandleFunc("PUT /api/me/profiles/{id}", profileHandler.UpdateProfile)
-	protected.HandleFunc("DELETE /api/me/profiles/{id}", profileHandler.DeleteProfile)
+	protected.HandleFunc("DELETE /api/me/profiles/{id}", admin(profileHandler.DeleteProfile))
 	protected.HandleFunc("GET /api/me/profiles/{id}/leads", leadHandler.GetLeads)
 	protected.HandleFunc("GET /api/me/leads", leadHandler.ListLeads)
 	protected.HandleFunc("GET /api/me/storage", storageHandler.Get)
-	protected.HandleFunc("PUT /api/me/storage", storageHandler.Put)
-	protected.HandleFunc("POST /api/me/storage/test", storageHandler.Test)
-	protected.HandleFunc("DELETE /api/me/storage", storageHandler.Delete)
+	protected.HandleFunc("PUT /api/me/storage", owner(storageHandler.Put))
+	protected.HandleFunc("POST /api/me/storage/test", owner(storageHandler.Test))
+	protected.HandleFunc("DELETE /api/me/storage", owner(storageHandler.Delete))
 	protected.HandleFunc("GET /api/me/files", fileHandler.List)
 	protected.HandleFunc("POST /api/me/files", uploadLimiter.Limit(fileHandler.Upload))
 	protected.HandleFunc("PATCH /api/me/files/{id}", fileHandler.Rename)
 	protected.HandleFunc("DELETE /api/me/files/{id}", fileHandler.Delete)
 
+	protected.HandleFunc("GET /api/org", admin(orgHandler.Get))
+	protected.HandleFunc("PUT /api/org", owner(orgHandler.Update))
+	protected.HandleFunc("GET /api/org/users", admin(orgHandler.ListUsers))
+	protected.HandleFunc("POST /api/org/users", admin(authLimiter.Limit(orgHandler.CreateUser)))
+	protected.HandleFunc("GET /api/org/users/{id}", admin(orgHandler.GetUser))
+	protected.HandleFunc("PATCH /api/org/users/{id}", admin(orgHandler.UpdateUser))
+	protected.HandleFunc("POST /api/org/users/{id}/password", admin(authLimiter.Limit(orgHandler.ResetPassword)))
+	protected.HandleFunc("DELETE /api/org/users/{id}", admin(orgHandler.DeleteUser))
+	protected.HandleFunc("PUT /api/org/profiles/{id}/assignee", admin(profileHandler.SetAssignee))
+	protected.HandleFunc("GET /api/org/files/{id}/grants", admin(fileHandler.Grants))
+	protected.HandleFunc("PUT /api/org/files/{id}/grants", admin(fileHandler.SetGrants))
+
 	// Mount protected routes with middleware
-	mux.Handle("/api/me/", jwtMiddleware(middleware.RequireVerified(protected)))
+	protectedChain := jwtMiddleware(middleware.RequireVerified(middleware.RequirePasswordSet(protected)))
+	mux.Handle("/api/me/", protectedChain)
+	mux.Handle("/api/org", protectedChain)
+	mux.Handle("/api/org/", protectedChain)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,

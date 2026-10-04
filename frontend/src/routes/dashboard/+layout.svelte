@@ -9,6 +9,7 @@
 	import CreateCardDialog from '$lib/components/app/create-card-dialog.svelte';
 	import Logo from '$lib/components/app/logo.svelte';
 	import { cards } from '$lib/cards.svelte';
+	import { orgUsers } from '$lib/org-users.svelte';
 	import { session } from '$lib/session.svelte';
 	import { storage } from '$lib/storage.svelte';
 	import { theme } from '$lib/theme.svelte';
@@ -25,15 +26,18 @@
 			goto(`/login?next=${next}`, { replaceState: true });
 		} else if (session.isAuthenticated && !session.emailVerified) {
 			goto(`/verify-email?next=${next}`, { replaceState: true });
+		} else if (session.isAuthenticated && session.mustChangePassword) {
+			goto(`/set-password?next=${next}`, { replaceState: true });
 		}
 	});
 
-	const ready = $derived(session.isAuthenticated && session.emailVerified);
+	const ready = $derived(session.ready);
 
 	$effect(() => {
 		if (ready && session.username) {
 			cards.load(session.username);
 			storage.load(session.username);
+			if (session.isAdmin) orgUsers.load(session.username);
 		}
 	});
 

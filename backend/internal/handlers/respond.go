@@ -5,6 +5,9 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+
+	"github.com/faiz-gh/fronko/backend/internal/middleware"
+	"github.com/faiz-gh/fronko/backend/internal/repository"
 )
 
 // maxBodyBytes caps request bodies so a client can't stream unbounded JSON.
@@ -53,4 +56,11 @@ func pageParams(w http.ResponseWriter, r *http.Request, defaultSize, maxSize int
 		return 0, 0, false
 	}
 	return page, size, true
+}
+
+// scopeOf is what the signed-in user may see: their whole organisation for
+// owners and admins, only their own things for members.
+func scopeOf(r *http.Request) repository.Scope {
+	p := middleware.PrincipalFrom(r.Context())
+	return repository.Scope{OrgID: p.OrgID, UserID: p.UserID, Admin: p.IsAdmin()}
 }

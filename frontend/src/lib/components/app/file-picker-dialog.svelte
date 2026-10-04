@@ -1,12 +1,13 @@
 <script lang="ts">
 	import CheckIcon from '@lucide/svelte/icons/check';
-	import { listFiles, formatBytes, type FileKind, type LibraryFile } from '$lib/api/files';
+	import { listFiles, formatBytes, type FileArea, type FileKind, type LibraryFile } from '$lib/api/files';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import FileDropzone from './file-dropzone.svelte';
 	import FileThumb from './file-thumb.svelte';
 	import Pagination from './pagination.svelte';
+	import { session } from '$lib/session.svelte';
 	import { cn } from '$lib/utils';
 
 	let {
@@ -29,10 +30,32 @@
 	let page = $state(1);
 	let pageSize = $state(12);
 	let error = $state('');
+	let area = $state<FileArea | 'granted' | ''>('');
+
+	const areas = $derived<{ value: FileArea | 'granted' | ''; label: string }[]>(
+		session.isAdmin
+			? [
+					{ value: '', label: 'All' },
+					{ value: 'org', label: 'Organisation' },
+					{ value: 'shared', label: 'Shared' },
+					{ value: 'personal', label: 'Users’' }
+				]
+			: [
+					{ value: '', label: 'All' },
+					{ value: 'personal', label: 'Mine' },
+					{ value: 'shared', label: 'Shared' },
+					{ value: 'granted', label: 'Shared with me' }
+				]
+	);
+
+	$effect(() => {
+		void area;
+		page = 1;
+	});
 
 	$effect(() => {
 		if (!open) return;
-		const query = { kind, page, pageSize };
+		const query = { kind, area: area || undefined, page, pageSize };
 		error = '';
 		listFiles(query)
 			.then((res) => {
@@ -53,11 +76,30 @@
 		<Dialog.Header>
 			<Dialog.Title>{title}</Dialog.Title>
 			<Dialog.Description>
-				Pick from your library or upload a new {kind === 'image' ? 'photo' : 'PDF'}. Uploads are saved to your library.
+				Pick a file you can use, or upload a new {kind === 'image' ? 'photo' : 'PDF'}. Uploads go to {session.isAdmin
+					? 'the organisation’s files'
+					: 'your files'}.
 			</Dialog.Description>
 		</Dialog.Header>
 
 		<FileDropzone {kind} compact multiple={false} onuploaded={choose} />
+
+		<div class="bg-muted inline-flex w-fit max-w-full overflow-x-auto rounded-lg p-[3px]" role="tablist" aria-label="Area">
+			{#each areas as a (a.value)}
+				<button
+					type="button"
+					role="tab"
+					aria-selected={area === a.value}
+					onclick={() => (area = a.value)}
+					class={cn(
+						'h-7 rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors',
+						area === a.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+					)}
+				>
+					{a.label}
+				</button>
+			{/each}
+		</div>
 
 		{#if error}
 			<p class="text-destructive text-sm">{error}</p>
@@ -69,7 +111,7 @@
 			</div>
 		{:else if files.length === 0}
 			<p class="text-muted-foreground py-6 text-center text-sm">
-				No {kind === 'image' ? 'photos' : 'PDFs'} in your library yet.
+				No {kind === 'image' ? 'photos' : 'PDFs'} here yet.
 			</p>
 		{:else}
 			<ul class="grid max-h-[50svh] grid-cols-3 gap-3 overflow-y-auto p-0.5 sm:grid-cols-4">
@@ -99,7 +141,13 @@
 								{/if}
 							</span>
 							<span class="truncate text-xs font-medium">{file.title || file.name}</span>
-							<span class="text-muted-foreground -mt-1 text-[11px]">{formatBytes(file.size_bytes)}</span>
+							<span class="text-muted-foreground -mt-1 truncate text-[11px]">
+								{formatBytes(file.size_bytes)}{file.area === 'shared'
+									? ' · Shared'
+									: file.area === 'personal' && session.isAdmin
+										? ` · ${file.owner?.username}`
+										: ''}
+							</span>
 						</button>
 					</li>
 				{/each}

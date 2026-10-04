@@ -38,7 +38,7 @@
 		if (session.status === 'anonymous') {
 			goto('/login', { replaceState: true });
 		} else if (session.isAuthenticated && session.emailVerified) {
-			goto(nextPath(), { replaceState: true });
+			goto(session.nextStep(nextPath()), { replaceState: true });
 		}
 	});
 
@@ -208,14 +208,18 @@
 				</p>
 				<p>
 					Wrong address?
-					<button
-						type="button"
-						class="text-foreground font-medium underline-offset-4 hover:underline"
-						onclick={startEditing}
-						disabled={!!busy}
-					>
-						Change email
-					</button>
+					{#if session.isOwner}
+						<button
+							type="button"
+							class="text-foreground font-medium underline-offset-4 hover:underline"
+							onclick={startEditing}
+							disabled={!!busy}
+						>
+							Change email
+						</button>
+					{:else}
+						{session.orgName} manages your email, so ask them to correct it.
+					{/if}
 				</p>
 			</div>
 		{/if}

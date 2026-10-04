@@ -16,6 +16,15 @@ var codeHTML = template.Must(template.New("code").Parse(`<!doctype html>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;background:#ffffff;border-radius:12px;padding:32px">
         <tr><td style="font-size:18px;font-weight:600;padding-bottom:16px">Fronko</td></tr>
         <tr><td style="font-size:15px;line-height:1.5;padding-bottom:20px">{{.Intro}}</td></tr>
+        {{- if .Details}}
+        <tr><td style="padding-bottom:20px">
+          <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f5f5f4;border-radius:8px;padding:12px 16px;font-size:14px;line-height:1.8">
+            {{- range .Details}}
+            <tr><td style="color:#78716c;padding-right:16px;white-space:nowrap">{{.Label}}</td><td style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600;word-break:break-all">{{.Value}}</td></tr>
+            {{- end}}
+          </table>
+        </td></tr>
+        {{- end}}
         {{- if .Code}}
         <tr><td style="font-size:32px;font-weight:600;letter-spacing:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;padding-bottom:20px">{{.Code}}</td></tr>
         <tr><td style="font-size:13px;line-height:1.5;color:#78716c">This code expires in {{.Minutes}} minutes. {{.Footer}}</td></tr>
@@ -29,10 +38,16 @@ var codeHTML = template.Must(template.New("code").Parse(`<!doctype html>
 </html>`))
 
 type codeEmail struct {
-	Intro   string
+	Intro string
+	// Details are labelled values shown in a box under the intro (e.g. sign-in details).
+	Details []detail
 	Code    string
 	Minutes int
 	Footer  string
+}
+
+type detail struct {
+	Label, Value string
 }
 
 func codeMessage(subject string, data codeEmail) Message {
@@ -41,10 +56,19 @@ func codeMessage(subject string, data codeEmail) Message {
 		// The template and data are fixed; this can't fail at runtime.
 		panic(err)
 	}
-	text := fmt.Sprintf("%s\n\n%s\n\n— Fronko\n", data.Intro, data.Footer)
+	intro := data.Intro
+	if len(data.Details) > 0 {
+		var b strings.Builder
+		b.WriteString(intro + "\n")
+		for _, d := range data.Details {
+			fmt.Fprintf(&b, "\n    %s: %s", d.Label, d.Value)
+		}
+		intro = b.String()
+	}
+	text := fmt.Sprintf("%s\n\n%s\n\n— Fronko\n", intro, data.Footer)
 	if data.Code != "" {
 		text = fmt.Sprintf("%s\n\n    %s\n\nThis code expires in %d minutes. %s\n\n— Fronko\n",
-			data.Intro, data.Code, data.Minutes, data.Footer)
+			intro, data.Code, data.Minutes, data.Footer)
 	}
 	return Message{Subject: subject, Text: text, HTML: html.String()}
 }
@@ -94,4 +118,19 @@ func MaskEmail(email string) string {
 		return "***"
 	}
 	return email[:1] + "***" + email[at:]
+}
+
+// MemberInviteMessage tells someone their organisation made them an account,
+// with the username and temporary password to sign in with. The password only
+// works until they replace it, which they must do on first sign-in.
+func MemberInviteMessage(orgName, username, tempPassword string) Message {
+	return codeMessage(orgName+" added you to Fronko", codeEmail{
+		Intro: orgName + " created a Fronko account for you. Sign in with these details:",
+		Details: []detail{
+			{"Username", username},
+			{"Temporary password", tempPassword},
+		},
+		Footer: "When you first sign in, you'll confirm this email address with a code we send you, then choose your own password. " +
+			"If you weren't expecting this, you can ignore this email.",
+	})
 }

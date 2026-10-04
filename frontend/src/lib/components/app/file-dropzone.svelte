@@ -2,11 +2,12 @@
 	import { toast } from 'svelte-sonner';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import UploadIcon from '@lucide/svelte/icons/upload';
-	import { ACCEPT, checkUpload, uploadFile, type FileKind, type LibraryFile } from '$lib/api/files';
+	import { ACCEPT, checkUpload, uploadFile, type FileArea, type FileKind, type LibraryFile } from '$lib/api/files';
 	import { cn } from '$lib/utils';
 
 	let {
 		kind,
+		area,
 		onuploaded,
 		disabled = false,
 		compact = false,
@@ -15,6 +16,8 @@
 	}: {
 		/** Restrict uploads to one kind; otherwise images and PDFs are both accepted. */
 		kind?: FileKind;
+		/** Admins: the organisation's files (default) or the shared area. Members always upload to their own files. */
+		area?: FileArea;
 		onuploaded?: (file: LibraryFile) => void;
 		disabled?: boolean;
 		compact?: boolean;
@@ -53,7 +56,7 @@
 				continue;
 			}
 			try {
-				const uploaded = await uploadFile(file, { onProgress: (p) => (entry.progress = Math.min(p, 0.99)) });
+				const uploaded = await uploadFile(file, { area, onProgress: (p) => (entry.progress = Math.min(p, 0.99)) });
 				entry.progress = 1;
 				onuploaded?.(uploaded);
 				// Finished rows fade from the list shortly after completing.

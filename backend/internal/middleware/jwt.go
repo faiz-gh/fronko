@@ -7,18 +7,47 @@ import (
 	"net/http"
 
 	"github.com/faiz-gh/fronko/backend/internal/auth"
+	"github.com/faiz-gh/fronko/backend/internal/models"
 )
 
 type contextKey string
 
 const (
-	userIDKey   contextKey = "userID"
-	verifiedKey contextKey = "emailVerified"
+	principalKey contextKey = "principal"
+	stateKey     contextKey = "sessionState"
 )
 
-// CodeEmailUnverified marks the 403 sent to signed-in users who haven't
-// verified their email yet; the SPA sends them to the verification screen.
-const CodeEmailUnverified = "email_unverified"
+// Error codes the SPA acts on.
+const (
+	// CodeEmailUnverified marks the 403 sent to signed-in users who haven't
+	// verified their email yet; the SPA sends them to the verification screen.
+	CodeEmailUnverified = "email_unverified"
+	// CodePasswordChangeRequired marks the 403 sent while the user still has
+	// the password their organisation set; the SPA asks them to choose one.
+	CodePasswordChangeRequired = "password_change_required"
+	// CodeAccountSuspended marks the 401 for accounts the organisation suspended.
+	CodeAccountSuspended = "account_suspended"
+)
+
+// Principal is the signed-in user and where they stand in their organisation.
+type Principal struct {
+	UserID int64
+	OrgID  int64
+	Role   string
+}
+
+// IsAdmin is true for the organisation's owner and admins.
+func (p Principal) IsAdmin() bool { return p.Role == models.RoleOwner || p.Role == models.RoleAdmin }
+
+// IsOwner is true only for the account that registered the organisation.
+func (p Principal) IsOwner() bool { return p.Role == models.RoleOwner }
+
+// PrincipalFrom returns the authenticated principal. Only call it from
+// handlers mounted behind JWTMiddleware.
+func PrincipalFrom(ctx context.Context) Principal {
+	p, _ := ctx.Value(principalKey).(Principal)
+	return p
+}
 
 // SessionCookieName is the HttpOnly cookie that carries the JWT.
 const SessionCookieName = "fronko_session"
@@ -26,8 +55,7 @@ const SessionCookieName = "fronko_session"
 // UserID returns the authenticated user's ID. Only call it from handlers
 // mounted behind JWTMiddleware.
 func UserID(ctx context.Context) int64 {
-	id, _ := ctx.Value(userIDKey).(int64)
-	return id
+	return PrincipalFrom(ctx).UserID
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
@@ -46,22 +74,32 @@ func writeErrorCode(w http.ResponseWriter, status int, msg, code string) {
 var ErrSessionUserNotFound = errors.New("user not found")
 
 // SessionChecker looks up the live state behind a token: its current session
-// version (bumped to revoke every session) and whether the email is verified.
+// version (bumped to revoke every session), whether the email is verified,
+// and the user's organisation and role.
 type SessionChecker interface {
-	GetSessionState(ctx context.Context, userID int64) (sessionVersion int, verified bool, err error)
+	GetSessionState(ctx context.Context, userID int64) (models.SessionState, error)
 }
 
 // SessionCheckerFunc adapts a function to SessionChecker.
-type SessionCheckerFunc func(ctx context.Context, userID int64) (int, bool, error)
+type SessionCheckerFunc func(ctx context.Context, userID int64) (models.SessionState, error)
 
-func (f SessionCheckerFunc) GetSessionState(ctx context.Context, userID int64) (int, bool, error) {
+func (f SessionCheckerFunc) GetSessionState(ctx context.Context, userID int64) (models.SessionState, error) {
 	return f(ctx, userID)
+}
+
+func sessionState(ctx context.Context) models.SessionState {
+	s, _ := ctx.Value(stateKey).(models.SessionState)
+	return s
 }
 
 // EmailVerified reports whether the signed-in user has verified their email.
 func EmailVerified(ctx context.Context) bool {
-	v, _ := ctx.Value(verifiedKey).(bool)
-	return v
+	return sessionState(ctx).Verified
+}
+
+// MustChangePassword reports whether the user still has a password their organisation set.
+func MustChangePassword(ctx context.Context) bool {
+	return sessionState(ctx).MustChangePassword
 }
 
 // RequireVerified rejects users who haven't verified their email. Mount it
@@ -76,9 +114,44 @@ func RequireVerified(next http.Handler) http.Handler {
 	})
 }
 
+// RequirePasswordSet rejects users who must still replace the password their
+// organisation gave them. Mount it inside JWTMiddleware.
+func RequirePasswordSet(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if MustChangePassword(r.Context()) {
+			writeErrorCode(w, http.StatusForbidden, "choose a new password to continue", CodePasswordChangeRequired)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// RequireAdmin only lets the organisation's owner and admins through.
+func RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !PrincipalFrom(r.Context()).IsAdmin() {
+			writeError(w, http.StatusForbidden, "only your organisation's admins can do this")
+			return
+		}
+		next(w, r)
+	}
+}
+
+// RequireOwner only lets the organisation's owner through.
+func RequireOwner(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !PrincipalFrom(r.Context()).IsOwner() {
+			writeError(w, http.StatusForbidden, "only your organisation's owner can do this")
+			return
+		}
+		next(w, r)
+	}
+}
+
 // JWTMiddleware authenticates the session cookie. Besides the signature and
 // expiry, it checks the token's session version against the database, so a
-// password change or reset signs out every older session.
+// password change or reset signs out every older session, and turns away
+// suspended accounts.
 func JWTMiddleware(authService *auth.Service, sessions SessionChecker) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -94,7 +167,7 @@ func JWTMiddleware(authService *auth.Service, sessions SessionChecker) func(http
 				return
 			}
 
-			current, verified, err := sessions.GetSessionState(r.Context(), userID)
+			state, err := sessions.GetSessionState(r.Context(), userID)
 			if err != nil {
 				if errors.Is(err, ErrSessionUserNotFound) {
 					writeError(w, http.StatusUnauthorized, "account no longer exists")
@@ -104,13 +177,17 @@ func JWTMiddleware(authService *auth.Service, sessions SessionChecker) func(http
 				writeError(w, http.StatusInternalServerError, "internal error")
 				return
 			}
-			if version != current {
+			if version != state.Version {
 				writeError(w, http.StatusUnauthorized, "session expired, please sign in again")
 				return
 			}
+			if state.Suspended {
+				writeErrorCode(w, http.StatusUnauthorized, "this account is suspended; contact your organisation", CodeAccountSuspended)
+				return
+			}
 
-			ctx := context.WithValue(r.Context(), userIDKey, userID)
-			ctx = context.WithValue(ctx, verifiedKey, verified)
+			ctx := context.WithValue(r.Context(), principalKey, Principal{UserID: userID, OrgID: state.OrgID, Role: state.Role})
+			ctx = context.WithValue(ctx, stateKey, state)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
