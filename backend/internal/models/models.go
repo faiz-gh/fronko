@@ -20,8 +20,10 @@ type User struct {
 
 // EmailCode is a one-time code sent by email. Only its HMAC is stored.
 type EmailCode struct {
-	UserID    int64
-	Purpose   string
+	UserID  int64
+	Purpose string
+	// Email is the address a change_email code was sent to; nil for other purposes.
+	Email     *string
 	CodeHash  string
 	Attempts  int
 	ExpiresAt time.Time

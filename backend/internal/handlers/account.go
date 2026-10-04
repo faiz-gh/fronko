@@ -63,19 +63,26 @@ func (h *AuthHandler) sendAsync(to string, m mail.Message) {
 	}()
 }
 
-// issueCode emails the user a fresh code for purpose, replacing any older one.
-// Unless force is set, it refuses while the previous code is inside the resend
-// cooldown and returns how long is left.
+// issueCode emails the user a fresh code for purpose at their current
+// address, replacing any older one. See issueCodeTo.
 func (h *AuthHandler) issueCode(ctx context.Context, user *models.User, purpose string, force bool) (time.Duration, error) {
 	if user.Email == nil {
 		return 0, errors.New("user has no email")
 	}
+	return h.issueCodeTo(ctx, user.ID, *user.Email, purpose, force)
+}
+
+// issueCodeTo emails a fresh code for purpose to the given address, replacing
+// any older one. Unless force is set, it refuses while the previous code to the
+// same address is inside the resend cooldown and returns how long is left.
+// A change_email code remembers the address it was sent to.
+func (h *AuthHandler) issueCodeTo(ctx context.Context, userID int64, to, purpose string, force bool) (time.Duration, error) {
 	if !force {
-		prev, err := h.repo.GetEmailCode(ctx, user.ID, purpose)
+		prev, err := h.repo.GetEmailCode(ctx, userID, purpose)
 		if err != nil && !errors.Is(err, repository.ErrNotFound) {
 			return 0, err
 		}
-		if prev != nil {
+		if prev != nil && (prev.Email == nil || *prev.Email == to) {
 			if wait := auth.CodeResendCooldown - time.Since(prev.CreatedAt); wait > 0 {
 				return wait, nil
 			}
@@ -86,42 +93,56 @@ func (h *AuthHandler) issueCode(ctx context.Context, user *models.User, purpose 
 	if err != nil {
 		return 0, err
 	}
-	err = h.repo.UpsertEmailCode(ctx, &models.EmailCode{
-		UserID:    user.ID,
+	stored := &models.EmailCode{
+		UserID:    userID,
 		Purpose:   purpose,
-		CodeHash:  h.authService.HashCode(user.ID, purpose, code),
+		CodeHash:  h.authService.HashCode(userID, purpose, code),
 		ExpiresAt: time.Now().Add(auth.CodeTTL),
-	})
-	if err != nil {
+	}
+	if purpose == auth.PurposeChangeEmail {
+		stored.Email = &to
+	}
+	if err := h.repo.UpsertEmailCode(ctx, stored); err != nil {
 		return 0, err
 	}
 
-	msg := mail.VerifyEmailMessage(code, auth.CodeTTL)
-	if purpose == auth.PurposeResetPassword {
+	var msg mail.Message
+	switch purpose {
+	case auth.PurposeResetPassword:
 		msg = mail.ResetPasswordMessage(code, auth.CodeTTL)
+	case auth.PurposeChangeEmail:
+		msg = mail.ChangeEmailMessage(code, auth.CodeTTL)
+	default:
+		msg = mail.VerifyEmailMessage(code, auth.CodeTTL)
 	}
-	h.sendAsync(*user.Email, msg)
+	h.sendAsync(to, msg)
 	return 0, nil
 }
 
 // consumeCode checks a code, spending one attempt. A correct code is deleted
 // so it can't be used twice.
 func (h *AuthHandler) consumeCode(ctx context.Context, userID int64, purpose, code string) (bool, error) {
+	stored, err := h.consumeCodeRow(ctx, userID, purpose, code)
+	return stored != nil, err
+}
+
+// consumeCodeRow is consumeCode, returning the matched code (nil if invalid).
+func (h *AuthHandler) consumeCodeRow(ctx context.Context, userID int64, purpose, code string) (*models.EmailCode, error) {
 	code = strings.TrimSpace(code)
 	if !codePattern.MatchString(code) {
-		return false, nil
+		return nil, nil
 	}
 	stored, err := h.repo.UseEmailCodeAttempt(ctx, userID, purpose, auth.CodeMaxAttempts)
 	if errors.Is(err, repository.ErrNotFound) {
-		return false, nil
+		return nil, nil
 	}
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if !h.authService.CheckCode(userID, purpose, code, stored.CodeHash) {
-		return false, nil
+		return nil, nil
 	}
-	return true, h.repo.DeleteEmailCode(ctx, userID, purpose)
+	return stored, h.repo.DeleteEmailCode(ctx, userID, purpose)
 }
 
 func writeRetryAfter(w http.ResponseWriter, wait time.Duration) {
@@ -346,6 +367,111 @@ func (h *AuthHandler) ResendVerification(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ----------------------------------------------------------------------------
+// Change a verified email (signed in and verified)
+// ----------------------------------------------------------------------------
+
+type ChangeEmailRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// Protected: POST /api/me/email/change. Checks the password and sends a code
+// to the new address. The current email stays in force until the code is
+// confirmed. Re-requesting the same address inside the cooldown answers 429.
+func (h *AuthHandler) RequestEmailChange(w http.ResponseWriter, r *http.Request) {
+	var req ChangeEmailRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	if !h.authService.CheckPasswordHash(req.Password, user.PasswordHash) {
+		writeError(w, http.StatusBadRequest, "password is incorrect")
+		return
+	}
+	email, ok := normalizeEmail(req.Email)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "enter a valid email address")
+		return
+	}
+	if user.Email != nil && *user.Email == email {
+		writeError(w, http.StatusBadRequest, "that's already your email")
+		return
+	}
+
+	// Checked again by the unique index when the change is confirmed.
+	switch _, err := h.repo.GetUserByEmail(r.Context(), email); {
+	case err == nil:
+		writeError(w, http.StatusConflict, "an account with this email already exists")
+		return
+	case !errors.Is(err, repository.ErrNotFound):
+		log.Printf("email change lookup: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	wait, err := h.issueCodeTo(r.Context(), user.ID, email, auth.PurposeChangeEmail, false)
+	if err != nil {
+		log.Printf("issue email change code: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to send the code")
+		return
+	}
+	if wait > 0 {
+		writeRetryAfter(w, wait)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type ConfirmEmailChangeRequest struct {
+	Code string `json:"code"`
+}
+
+// Protected: POST /api/me/email/change/confirm. Switches to the address the
+// code was sent to (already verified by the code itself) and notifies the old one.
+func (h *AuthHandler) ConfirmEmailChange(w http.ResponseWriter, r *http.Request) {
+	var req ConfirmEmailChangeRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+
+	stored, err := h.consumeCodeRow(r.Context(), user.ID, auth.PurposeChangeEmail, req.Code)
+	if err != nil {
+		log.Printf("check email change code: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if stored == nil || stored.Email == nil {
+		writeError(w, http.StatusBadRequest, errInvalidCode)
+		return
+	}
+
+	newEmail := *stored.Email
+	if err := h.repo.ChangeUserEmail(r.Context(), user.ID, newEmail); err != nil {
+		if errors.Is(err, repository.ErrConflict) {
+			writeError(w, http.StatusConflict, "an account with this email already exists")
+			return
+		}
+		log.Printf("change email: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if user.Email != nil && *user.Email != newEmail {
+		h.sendAsync(*user.Email, mail.EmailChangedNotice(newEmail))
+	}
+	now := time.Now()
+	user.Email, user.EmailVerifiedAt = &newEmail, &now
+	writeJSON(w, http.StatusOK, authResponse(user))
 }
 
 // ----------------------------------------------------------------------------

@@ -83,8 +83,8 @@ frontend/
 │   ├── app.html                   # HTML shell
 │   ├── lib/
 │   │   ├── api/
-│   │   │   ├── client.ts          # fetch wrapper, ApiError, 401 handling
-│   │   │   ├── auth.ts            # login / register / logout / me, email verification, password reset/change
+│   │   │   ├── client.ts          # fetch wrapper, ApiError, 401 and email_unverified handling
+│   │   │   ├── auth.ts            # login / register / logout / me, email verify + change, password reset + change
 │   │   │   ├── profile.ts         # profile CRUD + public lookup
 │   │   │   ├── lead.ts            # submit / list leads
 │   │   │   ├── storage.ts         # bucket connection settings
@@ -97,6 +97,7 @@ frontend/
 │   │   │   ├── app/               # App-specific components (see below)
 │   │   │   └── ui/                # shadcn-svelte primitives (generated, see Conventions)
 │   │   ├── session.svelte.ts      # Global reactive session store
+│   │   ├── cooldown.svelte.ts     # Resend countdown for emailed codes (RESEND_COOLDOWN_SECONDS = 60)
 │   │   ├── cards.svelte.ts        # The user's cards, shared by the sidebar and dashboard pages
 │   │   ├── storage.svelte.ts      # Storage connection status (storage.ready), shared by Files/Settings/editor
 │   │   ├── format.ts              # timeAgo(), formatDateTime(), plural()
@@ -114,7 +115,7 @@ frontend/
 │       │   ├── +page.svelte       # Overview: stats, cards grid, recent leads
 │       │   ├── leads/+page.svelte # All leads: card filter, search, pagination, export
 │       │   ├── files/+page.svelte # File library: upload, browse, rename, delete
-│       │   ├── settings/+page.svelte # Storage connection (S3 keys)
+│       │   ├── settings/+page.svelte # Account (email change), password, storage connection (S3 keys)
 │       │   └── [id]/+page.svelte  # Card editor + leads
 │       └── p/[slug]/+page.svelte  # Public card
 ├── static/
@@ -139,7 +140,7 @@ frontend/
 | `/dashboard` | Signed in | Overview: stats (cards, leads all time, leads in the last 7 days), a grid of cards with copy link, QR code and delete actions, and the latest leads across all cards |
 | `/dashboard/leads` | Signed in | Every lead across your cards. Filter by card (`?card=ID`, kept in the URL so it can be linked to), search (name, email, phone or message), page size and pages, a Refresh button that refetches leads and lead counts without reloading the page, and CSV export of everything that matches (including phone). Clicking a lead's card filters to that card |
 | `/dashboard/files` | Signed in | The shared **file library**: drag-and-drop upload with progress, Photos/PDFs tabs, thumbnails, inline rename, "Used on" (which cards use each file), delete with a usage warning, pagination. Shows a "Connect storage" state until a bucket is connected |
-| `/dashboard/settings` | Signed in | **Account**: username and email (with a Verified badge). **Password**: current, new and confirm; changing it signs out every other session and keeps this one. **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
+| `/dashboard/settings` | Signed in | **Account**: username and email (with a Verified badge). **Change** opens `ChangeEmailForm`: new address + current password → a code sent to the new address → confirm; resend has a countdown, and the current email stays until confirmed. **Password**: current, new and confirm; changing it signs out every other session and keeps this one. **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
 | `/dashboard/{id}` | Signed in | Editor. The **Card** tab has sections for Profile (with photo and 3:1 cover, both cropped before upload), Contact (email, mobile with country picker, website, booking link), Links (add, reorder, remove), Appearance (accent, light/dark theme) and Sharing (public slug, lead collection). A sticky preview pane on the right switches between the card and its QR code; below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
 | `/p/{slug}` | Public | The visitor-facing card. "Save contact" downloads a `.vcf`, plus share (Web Share API, falling back to the clipboard), a "Book a meeting" button when a booking link is set, and a lead form (name, email, optional mobile number, message) when `collect_leads` is on |
 
@@ -154,10 +155,13 @@ All requests go through `apiClient` in `src/lib/api/client.ts`:
 - **Base URL from runtime config.** `API_URL` comes from `window.__FRONKO_CONFIG__.apiUrl`, set by `/config.js` (loaded first in `app.html`). Empty (the default, and always in dev) means relative URLs: Vite or nginx proxies `/api` and `/auth`, so requests are same-origin. When set, e.g. `https://api.fronko.com`, requests go there directly and the backend must allow this site in `CORS_ALLOWED_ORIGINS`.
 - **Credentials.** Requests use `credentials: 'include'` so the HttpOnly cookie is sent in both setups. Build any other backend URL with `apiUrl(path)` from `client.ts`. `uploadFile` (XHR, for progress) does the same and sets `withCredentials`.
 - **JSON in and out.** `Content-Type: application/json` is set whenever there's a body, and a `204` resolves to `undefined`.
-- **Errors** throw `ApiError(message, status)`:
+- **Errors** throw `ApiError(message, status, code?, retryAfter?)`:
   - `message` is the backend's `{"error": "..."}` text, which is written for users and can go straight into a toast or alert.
+  - `code` is the backend's machine-readable `code`, when it sends one (e.g. `email_unverified`).
+  - `retryAfter` is the `Retry-After` header in seconds, set on `429`s. The code screens use it to start their resend countdown.
   - A network failure throws with `status = 0` and a "Could not reach the server" message.
-- **Expired sessions.** A `401` from any `/api/me/*` call runs `session.expire()`, which sends the user to `/login?next=…&expired=1`. You can opt out per call with `{ redirectOnUnauthorized: false }`. `me()` does this, because a 401 there just means nobody is signed in.
+- **Expired sessions.** A `401` from any `/api/me/*` call runs `session.expire()`, which sends the user to `/login?next=…&expired=1`. You can opt out per call with `{ redirectOnUnauthorized: false }`. `me()` does this, because a 401 there just means nobody is signed in. Changing or resetting the password elsewhere also ends up here, because it revokes older sessions.
+- **Unverified email.** A `403` with `code: "email_unverified"` runs `session.requireVerification()`, which sends the user to `/verify-email?next=…`.
 
 The typed wrappers are in `api/auth.ts`, `api/profile.ts` and `api/lead.ts`. Leads are always read through `listLeads()` (one page) or `listAllLeads()` (walks every page, for exports) against the paginated `GET /api/me/leads`. Each returns a `Promise` of the response type (`AuthUser`, `Profile`, `PublicProfile`, `Lead`).
 
@@ -250,6 +254,9 @@ App-specific components live in `src/lib/components/app/`:
 | `PhoneInput` | `country`, `code`, `number` (all bindable), `id?`, `invalid?`, `contentClass?` | Searchable country picker plus a number field that formats as you type (`libphonenumber-js`). Writes digits only, and writes nothing until the user edits, so it never marks a form dirty. Helpers live in `$lib/phone.ts` |
 | `ImageCropDialog` | `file` (bindable; set it to open), `aspect`, `shape`, `outputWidth`, `outputHeight`, `onconfirm` | Crop, zoom and rotate a freshly picked image (`svelte-easy-crop`), then hand back a WebP (or JPEG) `File`. The editor uses 1:1 / 512px for photos and 3:1 / 1500×500 for covers |
 | `Logo` | `href?`, `class?` | Wordmark link |
+| `AuthLayout` | `children` (snippet) | The split frame shared by `/login`, `/verify-email` and `/forgot-password`: logo and form column on the left, sample card on the right (from 1024px) |
+| `CodeInput` | `value` (bindable), `id?`, `disabled?`, `invalid?`, `oncomplete?` | Six-slot input for emailed codes (shadcn `input-otp`, digits only, `autocomplete="one-time-code"`). Pasting fills every slot; `oncomplete` fires once all six are in |
+| `ChangeEmailForm` | `onclose` | Settings flow for changing a verified email: new address + current password → code sent to the new address → confirm, with resend countdown and "Use a different address". Updates the session and toasts on success |
 
 `src/lib/components/ui/` holds **shadcn-svelte primitives** (button, card, dialog, dropdown-menu, field, tabs, table and others). The shadcn CLI generates them, so prefer re-adding or updating them with the CLI over editing them by hand:
 
@@ -257,7 +264,7 @@ App-specific components live in `src/lib/components/app/`:
 npx shadcn-svelte@latest add <component>
 ```
 
-> **Note:** shadcn-svelte CLI v1.7 can't resolve SvelteKit 3's `"extends": "$app/tsconfig"` and fails with `File '$app/tsconfig' not found`. Until that's fixed upstream, `popover`, `command`, `slider` and `input-group` were taken directly from the registry (`https://shadcn-svelte.com/registry/styles/nova/<name>.json`). Their `$UI$` paths were rewritten to `$lib/components/ui`, and their `IconPlaceholder` elements were replaced with `@lucide/svelte` icons. Do the same if you add another component before the CLI is fixed.
+> **Note:** shadcn-svelte CLI v1.7 can't resolve SvelteKit 3's `"extends": "$app/tsconfig"` and fails with `File '$app/tsconfig' not found`. Until that's fixed upstream, `popover`, `command`, `slider` and `input-group` were taken directly from the registry (`https://shadcn-svelte.com/registry/styles/nova/<name>.json`). Their `$UI$` paths were rewritten to `$lib/components/ui`, and their `IconPlaceholder` elements were replaced with `@lucide/svelte` icons. Do the same if you add another component before the CLI is fixed. (`input-otp` was later added with the CLI without trouble, so try it first.)
 
 ## Styling & theming
 
@@ -274,7 +281,8 @@ npx shadcn-svelte@latest add <component>
 
 - **No tokens in JavaScript.** Auth relies only on the HttpOnly cookie.
 - **Visitor-facing URLs go through `safeUrl()`.** That covers the avatar, website, booking link and links, so a card owner can't inject `javascript:` links.
-- **Open-redirect protection.** `/login` only follows `next` values that start with `/` and not `//`.
+- **Open-redirect protection.** `/login` and `/verify-email` only follow `next` values that start with `/` and not `//`.
+- **No account enumeration from the UI.** `/forgot-password` always shows the same "if an account exists" message.
 - **CSV injection.** Lead exports prefix cells starting with `=`, `+`, `-`, `@`, tab or CR with `'`, because lead content comes from anonymous visitors.
 - **Validation is mirrored, not trusted.** Slug, username, password and email checks in the UI exist for quick feedback. The backend enforces the real rules.
 

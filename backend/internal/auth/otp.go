@@ -24,6 +24,8 @@ const (
 const (
 	PurposeVerifyEmail   = "verify_email"
 	PurposeResetPassword = "reset_password"
+	// PurposeChangeEmail codes go to the new address of an already verified account.
+	PurposeChangeEmail = "change_email"
 )
 
 // NewCode returns a uniformly random 6-digit code.

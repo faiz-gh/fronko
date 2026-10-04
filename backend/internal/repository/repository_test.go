@@ -131,6 +131,26 @@ func TestRepositoryIntegration(t *testing.T) {
 		_, err = repo.GetEmailCode(ctx, user.ID, "verify_email")
 		assert.ErrorIs(t, err, repository.ErrNotFound)
 
+		// change_email codes remember their target address
+		target := "target@example.com"
+		change := &models.EmailCode{UserID: user.ID, Purpose: "change_email", Email: &target, CodeHash: "h4", ExpiresAt: time.Now().Add(time.Hour)}
+		require.NoError(t, repo.UpsertEmailCode(ctx, change))
+		got, err = repo.UseEmailCodeAttempt(ctx, user.ID, "change_email", 5)
+		require.NoError(t, err)
+		require.NotNil(t, got.Email)
+		assert.Equal(t, target, *got.Email)
+
+		require.NoError(t, repo.ChangeUserEmail(ctx, user.ID, target))
+		changed, err := repo.GetUserByID(ctx, user.ID)
+		require.NoError(t, err)
+		assert.Equal(t, target, *changed.Email)
+		assert.NotNil(t, changed.EmailVerifiedAt, "a confirmed change is verified")
+
+		taken := "TARGET@example.com"
+		other := &models.User{Username: "other-mailer", PasswordHash: "x"}
+		require.NoError(t, repo.CreateUser(ctx, other))
+		assert.ErrorIs(t, repo.ChangeUserEmail(ctx, other.ID, taken), repository.ErrConflict)
+
 		// Expired codes can't be used
 		expired := &models.EmailCode{UserID: user.ID, Purpose: "reset_password", CodeHash: "h3", ExpiresAt: time.Now().Add(-time.Minute)}
 		require.NoError(t, repo.UpsertEmailCode(ctx, expired))

@@ -115,6 +115,20 @@ func (r *Repository) SetUserEmail(ctx context.Context, userID int64, email strin
 	return nil
 }
 
+// ChangeUserEmail switches a verified account to a new address that has just
+// been confirmed with a code, so it's stored as verified.
+func (r *Repository) ChangeUserEmail(ctx context.Context, userID int64, email string) error {
+	tag, err := r.db.Exec(ctx,
+		`UPDATE users SET email = $2, email_verified_at = now(), updated_at = now() WHERE user_id = $1`, userID, email)
+	if err != nil {
+		return mapError(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (r *Repository) MarkEmailVerified(ctx context.Context, userID int64) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE users SET email_verified_at = now(), updated_at = now() WHERE user_id = $1`, userID)
@@ -139,21 +153,22 @@ func (r *Repository) UpdatePassword(ctx context.Context, userID int64, hash stri
 // UpsertEmailCode replaces any live code for the same user and purpose.
 func (r *Repository) UpsertEmailCode(ctx context.Context, c *models.EmailCode) error {
 	query := `
-		INSERT INTO email_codes (user_id, purpose, code_hash, expires_at)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO email_codes (user_id, purpose, email, code_hash, expires_at)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (user_id, purpose) DO UPDATE
-		SET code_hash = EXCLUDED.code_hash, attempts = 0, expires_at = EXCLUDED.expires_at, created_at = now()
+		SET email = EXCLUDED.email, code_hash = EXCLUDED.code_hash, attempts = 0,
+			expires_at = EXCLUDED.expires_at, created_at = now()
 		RETURNING attempts, created_at`
-	err := r.db.QueryRow(ctx, query, c.UserID, c.Purpose, c.CodeHash, c.ExpiresAt).Scan(&c.Attempts, &c.CreatedAt)
+	err := r.db.QueryRow(ctx, query, c.UserID, c.Purpose, c.Email, c.CodeHash, c.ExpiresAt).Scan(&c.Attempts, &c.CreatedAt)
 	return mapError(err)
 }
 
 func (r *Repository) GetEmailCode(ctx context.Context, userID int64, purpose string) (*models.EmailCode, error) {
 	c := models.EmailCode{UserID: userID, Purpose: purpose}
 	err := r.db.QueryRow(ctx,
-		`SELECT code_hash, attempts, expires_at, created_at FROM email_codes WHERE user_id = $1 AND purpose = $2`,
+		`SELECT email, code_hash, attempts, expires_at, created_at FROM email_codes WHERE user_id = $1 AND purpose = $2`,
 		userID, purpose,
-	).Scan(&c.CodeHash, &c.Attempts, &c.ExpiresAt, &c.CreatedAt)
+	).Scan(&c.Email, &c.CodeHash, &c.Attempts, &c.ExpiresAt, &c.CreatedAt)
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -169,9 +184,9 @@ func (r *Repository) UseEmailCodeAttempt(ctx context.Context, userID int64, purp
 	err := r.db.QueryRow(ctx, `
 		UPDATE email_codes SET attempts = attempts + 1
 		WHERE user_id = $1 AND purpose = $2 AND attempts < $3 AND expires_at > now()
-		RETURNING code_hash, attempts, expires_at, created_at`,
+		RETURNING email, code_hash, attempts, expires_at, created_at`,
 		userID, purpose, maxAttempts,
-	).Scan(&c.CodeHash, &c.Attempts, &c.ExpiresAt, &c.CreatedAt)
+	).Scan(&c.Email, &c.CodeHash, &c.Attempts, &c.ExpiresAt, &c.CreatedAt)
 	if err != nil {
 		return nil, mapError(err)
 	}

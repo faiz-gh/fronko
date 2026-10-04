@@ -22,6 +22,8 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `PUT`    | [`/api/me/email`](#put-apimeemail) | ✅ ✉️ | ✅ auth | Add or correct an unverified email |
 | `POST`   | [`/api/me/email/verify`](#post-apimeemailverify) | ✅ ✉️ | ✅ auth | Verify the email with its code |
 | `POST`   | [`/api/me/email/resend`](#post-apimeemailresend) | ✅ ✉️ | ✅ auth | Send a new verification code |
+| `POST`   | [`/api/me/email/change`](#post-apimeemailchange) | ✅ | ✅ auth | Start changing a verified email (password + code to the new address) |
+| `POST`   | [`/api/me/email/change/confirm`](#post-apimeemailchangeconfirm) | ✅ | ✅ auth | Confirm the new email with its code |
 | `PUT`    | [`/api/me/password`](#put-apimepassword) | ✅ | ✅ auth | Change password; signs out other sessions |
 | `GET`    | [`/api/me/profiles`](#get-apimeprofiles) | ✅ | | List my profiles |
 | `POST`   | [`/api/me/profiles`](#post-apimeprofiles) | ✅ | | Create a profile |
@@ -238,7 +240,7 @@ Returns the signed-in user. The SPA calls this at startup to restore the session
 { "email": "faiz@example.com" }
 ```
 
-Adds an email to an older account, or corrects a typo before verification, and sends a verification code to it. A new address always gets a fresh code; re-sending the same address respects the cooldown. A verified email can't be changed.
+Adds an email to an older account, or corrects a typo before verification, and sends a verification code to it. A new address always gets a fresh code; re-sending the same address respects the cooldown. A verified email is changed with [`POST /api/me/email/change`](#post-apimeemailchange) instead.
 
 | Status | Body |
 | ------ | ---- |
@@ -265,6 +267,35 @@ Adds an email to an older account, or corrects a typo before verification, and s
 | `400` | `"add an email address first"` |
 | `409` | `"your email is already verified"` |
 | `429` | `"please wait before requesting another code"`, with `Retry-After` |
+
+### `POST /api/me/email/change` 🔒
+
+```json
+{ "email": "new@example.com", "password": "current password" }
+```
+
+Checks the password and sends a code to the **new** address. The current email stays in force (for sign-in and password resets) until the code is confirmed. Asking for a different address replaces the pending one; asking again for the same address inside the 60-second cooldown answers 429.
+
+| Status | Body |
+| ------ | ---- |
+| `204` | Code sent |
+| `400` | `"password is incorrect"`, `"enter a valid email address"` or `"that's already your email"` |
+| `409` | `"an account with this email already exists"` |
+| `429` | `"please wait before requesting another code"`, with `Retry-After`. The earlier code still works |
+
+### `POST /api/me/email/change/confirm` 🔒
+
+```json
+{ "code": "042917" }
+```
+
+Switches the account to the address the code was sent to, already verified. The old address gets a notice naming the new one (masked, e.g. `n***@example.com`). Sessions are not signed out.
+
+| Status | Body |
+| ------ | ---- |
+| `200` | [`User`](#user) with the new `email` |
+| `400` | `"invalid or expired code"` |
+| `409` | `"an account with this email already exists"` (someone else took the address in the meantime) |
 
 ### `PUT /api/me/password` 🔒
 

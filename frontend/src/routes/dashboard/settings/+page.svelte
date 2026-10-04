@@ -21,6 +21,7 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { Switch } from '$lib/components/ui/switch';
+	import ChangeEmailForm from '$lib/components/app/change-email-form.svelte';
 	import FormSection from '$lib/components/app/form-section.svelte';
 	import StorageProviderIcon from '$lib/components/app/storage-provider-icon.svelte';
 	import { plural, timeAgo } from '$lib/format';
@@ -76,6 +77,8 @@
 			keysHelp: 'Use an access key with read and write access to this bucket only.'
 		}
 	};
+
+	let changingEmail = $state(false);
 
 	// Change password
 	let currentPassword = $state('');
@@ -241,9 +244,17 @@
 							Verified
 						</Badge>
 					{/if}
+					{#if !changingEmail}
+						<Button variant="link" size="sm" class="h-auto px-0" onclick={() => (changingEmail = true)}>Change</Button>
+					{/if}
 				</dd>
 			</div>
 		</dl>
+		{#if changingEmail}
+			<div class="mt-5">
+				<ChangeEmailForm onclose={() => (changingEmail = false)} />
+			</div>
+		{/if}
 	</FormSection>
 
 	<FormSection
