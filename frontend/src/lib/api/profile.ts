@@ -5,10 +5,13 @@ import type { PublicFile } from './files';
 export interface Profile {
 	id: number;
 	user_id: number;
+	/** The one user who works on this card; null means the organisation holds it. */
+	assigned_user: { id: number; username: string } | null;
 	slug: string;
 	data: Partial<CardData> | null;
 	created_at: string;
 	updated_at: string;
+	/** For members, only the leads that arrived while they held the card. */
 	lead_count: number;
 }
 
@@ -32,10 +35,11 @@ export function getMyProfile(id: number): Promise<Profile> {
 	return apiClient<Profile>(`/api/me/profiles/${id}`);
 }
 
-export function createProfile(slug: string, data: CardData): Promise<Profile> {
+/** Admins only. */
+export function createProfile(slug: string, data: CardData, assignedUserId: number | null = null): Promise<Profile> {
 	return apiClient<Profile>('/api/me/profiles', {
 		method: 'POST',
-		body: JSON.stringify({ slug, data })
+		body: JSON.stringify({ slug, data, assigned_user_id: assignedUserId })
 	});
 }
 

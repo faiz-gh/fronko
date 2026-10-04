@@ -15,6 +15,8 @@
 	import * as Table from '$lib/components/ui/table';
 	import CardFilter from './card-filter.svelte';
 	import Pagination from './pagination.svelte';
+	import UserAvatar from './user-avatar.svelte';
+	import UserPicker from './user-picker.svelte';
 	import { ACCENTS, downloadBlob, initials, normalizeCard } from '$lib/card/card';
 	import { cards } from '$lib/cards.svelte';
 	import { formatDateTime, plural, timeAgo } from '$lib/format';
@@ -26,6 +28,8 @@
 		profileId,
 		card = null,
 		oncardchange,
+		user = null,
+		onuserchange,
 		filename = 'leads'
 	}: {
 		/** Lock the table to one card's leads and hide the card filter. */
@@ -33,9 +37,15 @@
 		/** Selected card filter when not locked; null means all cards. */
 		card?: number | null;
 		oncardchange?: (card: number | null) => void;
+		/** Admins: leads that arrived while this user held the card; 'none' for the organisation's; null for all. */
+		user?: number | 'none' | null;
+		onuserchange?: (user: number | 'none' | null) => void;
 		/** CSV file name, without extension. */
 		filename?: string;
 	} = $props();
+
+	// Only admins see other people's leads, so only they get the user filter and column.
+	const showUsers = $derived(session.isAdmin);
 
 	const SEARCH_DEBOUNCE_MS = 250;
 
@@ -65,7 +75,7 @@
 	let requestId = 0;
 	$effect(() => {
 		void reloadToken;
-		const filterKey = JSON.stringify([effectiveCard, search, pageSize]);
+		const filterKey = JSON.stringify([effectiveCard, user, search, pageSize]);
 		// A new filter starts from the first page.
 		if (filterKey !== lastFilterKey) {
 			const changed = lastFilterKey !== '';
@@ -79,7 +89,7 @@
 		const id = ++requestId;
 		loading = true;
 		error = '';
-		listLeads({ profileId: effectiveCard ?? undefined, q: search, page, pageSize })
+		listLeads({ profileId: effectiveCard ?? undefined, userId: user ?? undefined, q: search, page, pageSize })
 			.then((res) => {
 				if (id !== requestId) return;
 				// The data shrank under us (e.g. deleted card); step back to the last page.
@@ -104,7 +114,7 @@
 		if (session.username) cards.load(session.username, true);
 	}
 
-	const filtered = $derived(search !== '' || (!lockedToCard && card !== null));
+	const filtered = $derived(search !== '' || (!lockedToCard && card !== null) || user !== null);
 	const showCardColumn = $derived(!lockedToCard && card === null);
 
 	// After paging, bring the top of the table back into view if it scrolled away.
@@ -137,13 +147,15 @@
 	async function exportCsv() {
 		exporting = true;
 		try {
-			const all = await listAllLeads({ profileId: effectiveCard ?? undefined, q: search });
-			const header = lockedToCard
-				? ['Name', 'Email', 'Phone', 'Message', 'Received']
-				: ['Name', 'Email', 'Phone', 'Message', 'Card', 'Received'];
+			const all = await listAllLeads({ profileId: effectiveCard ?? undefined, userId: user ?? undefined, q: search });
+			const header = ['Name', 'Email', 'Phone', 'Message'];
+			if (!lockedToCard) header.push('Card');
+			if (showUsers) header.push('User');
+			header.push('Received');
 			const rows = all.map((l) => {
 				const base = [l.name, l.email, formatPhone(l.phone_country_code ?? '', l.phone_number ?? ''), l.notes];
 				if (!lockedToCard) base.push(cardInfo(l.profile_id)?.name ?? '');
+				if (showUsers) base.push(l.assigned_user?.username ?? '');
 				return [...base, new Date(l.created_at).toISOString()];
 			});
 			const csv = [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
@@ -160,6 +172,9 @@
 	<div class="flex flex-wrap items-center gap-2">
 		{#if !lockedToCard}
 			<CardFilter value={card} onchange={(v) => oncardchange?.(v)} />
+		{/if}
+		{#if showUsers && onuserchange}
+			<UserPicker value={user} onchange={onuserchange} noneLabel="Organisation" />
 		{/if}
 		<div class="relative order-last min-w-0 basis-full sm:order-none sm:max-w-sm sm:flex-1 sm:basis-auto">
 			<SearchIcon class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
@@ -218,8 +233,11 @@
 				</Empty.Media>
 				<Empty.Title>No leads yet</Empty.Title>
 				<Empty.Description>
-					When someone shares their contact details from {lockedToCard ? 'this card' : 'one of your cards'}, they'll
-					appear here.
+					When someone shares their contact details from {lockedToCard
+						? 'this card'
+						: showUsers
+							? 'one of your organisation’s cards'
+							: 'one of your cards'}, they'll appear here.
 				</Empty.Description>
 			</Empty.Header>
 		</Empty.Root>
@@ -231,6 +249,9 @@
 						<Table.Head class="h-10 pl-5">Name</Table.Head>
 						{#if showCardColumn}
 							<Table.Head class="hidden h-10 md:table-cell">Card</Table.Head>
+						{/if}
+						{#if showUsers}
+							<Table.Head class="hidden h-10 sm:table-cell">User</Table.Head>
 						{/if}
 						<Table.Head class="hidden h-10 lg:table-cell">Message</Table.Head>
 						<Table.Head class="h-10 pr-5 text-right">Received</Table.Head>
@@ -288,6 +309,24 @@
 									{/if}
 								</Table.Cell>
 							{/if}
+							{#if showUsers}
+								<Table.Cell class="hidden py-3 sm:table-cell">
+									{#if lead.assigned_user}
+										{@const held = lead.assigned_user}
+										<button
+											type="button"
+											class="hover:bg-muted -ml-1.5 flex max-w-40 items-center gap-2 rounded-md px-1.5 py-1 text-left"
+											onclick={() => onuserchange?.(held.id)}
+											title="Show only {held.username}’s leads"
+										>
+											<UserAvatar username={held.username} class="size-5 text-[9px]" />
+											<span class="truncate text-sm">{held.username}</span>
+										</button>
+									{:else}
+										<span class="text-muted-foreground text-sm">Organisation</span>
+									{/if}
+								</Table.Cell>
+							{/if}
 							<Table.Cell class="text-foreground/80 hidden max-w-xl py-3 whitespace-normal lg:table-cell">
 								{#if lead.notes}
 									<span class="line-clamp-2">{lead.notes}</span>
@@ -304,7 +343,7 @@
 						</Table.Row>
 					{:else}
 						<Table.Row class="hover:bg-transparent">
-							<Table.Cell colspan={showCardColumn ? 4 : 3} class="text-muted-foreground h-32 text-center">
+							<Table.Cell colspan={3 + (showCardColumn ? 1 : 0) + (showUsers ? 1 : 0)} class="text-muted-foreground h-32 text-center">
 								No leads match{search ? ` “${search}”` : ' this filter'}.
 							</Table.Cell>
 						</Table.Row>

@@ -60,3 +60,15 @@ func TestMaskEmail(t *testing.T) {
 	assert.Equal(t, "***", MaskEmail("@example.com"))
 	assert.Equal(t, "***", MaskEmail("nope"))
 }
+
+func TestMemberInviteHasSignInDetails(t *testing.T) {
+	msg := MemberInviteMessage("Acme <Sales>", "jane", "Tmp<pass>&1")
+	assert.Equal(t, "Acme <Sales> added you to Fronko", msg.Subject)
+	assert.Contains(t, msg.Text, "Username: jane")
+	assert.Contains(t, msg.Text, "Temporary password: Tmp<pass>&1")
+	assert.NotContains(t, msg.Text, "expires")
+	// The HTML escapes whatever the organisation typed.
+	assert.Contains(t, msg.HTML, "Tmp&lt;pass&gt;&amp;1")
+	assert.Contains(t, msg.HTML, "Acme &lt;Sales&gt;")
+	assert.NotContains(t, msg.HTML, "expires")
+}

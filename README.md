@@ -16,7 +16,11 @@ Built as a high-performance alternative to proprietary platforms like Mobilo and
 
 * **🔐 Accounts:** Sign up with a username and email, verified by a 6-digit emailed code. Sign in with either. Forgotten passwords are reset with an emailed code. In **Settings** you can change your email (password plus a code to the new address; the old one is notified) or your password (which signs out every other device).
 
-* **☁️ Bring Your Own Storage:** Photos and brochures go to each user's own S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3, MinIO). Keys are encrypted at rest and buckets stay private.
+* **🏢 Organisations and users:** Every sign-up is an organisation. Its owner (and any admins they promote) creates accounts for the team; each person is emailed their username and a temporary password, then confirms their email and picks their own password on first sign-in. The org assigns cards to people, who can edit everything on them except the link. Each person sees only their own cards and the leads those cards collected while they held them; admins see everything and can filter leads by person. Admins can suspend users, reset their passwords, or delete them without losing their cards, files or leads.
+
+* **📁 Files with access control:** Everyone uploads to the organisation's storage. Files live in three areas: each person's own files (with a storage limit per person), the organisation's private files, and a shared area for company-wide brochures. Admins can give individual people access to extra files.
+
+* **☁️ Bring Your Own Storage:** Photos and brochures go to the organisation owner's own S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3, MinIO). Keys are encrypted at rest and buckets stay private.
 
 ## 🏗️ Architecture & Data Flow
 
@@ -26,7 +30,7 @@ When a networking event happens, speed is everything. A tap or scan opens a stat
 graph TD
     A[NFC tap / QR scan] -->|opens /p/slug| C{App-less public card}
     E[Dashboard: card editor] -->|saves card data| D[(PostgreSQL)]
-    E -->|uploads photo / PDFs| S[(User's own S3 bucket)]
+    E -->|uploads photo / PDFs| S[(Organisation's own S3 bucket)]
     D -->|card + file metadata| C
     S -->|short-lived signed links| C
     C -->|Save contact| F[vCard download]
@@ -43,7 +47,7 @@ graph TD
 
 * **Database:** PostgreSQL. Strict relational integrity for users, with `JSONB` support for dynamic profile blocks.
 
-* **Storage:** Each user's own S3-compatible bucket (R2, B2, S3, MinIO), reached through aws-sdk-go-v2. Credentials are sealed with AES-256-GCM.
+* **Storage:** Each organisation's own S3-compatible bucket (R2, B2, S3, MinIO), reached through aws-sdk-go-v2. Credentials are sealed with AES-256-GCM.
 
 * **Deployment:** Multi-container Docker Compose (Nginx for static frontend serving).
 
@@ -82,7 +86,7 @@ JWT_SECRET=replace-with-a-long-random-string
 # The session cookie is HTTPS-only by default. Set to false only for plain-http testing.
 # COOKIE_SECURE=false
 
-# Optional: enables photo and brochure uploads to each user's own S3 bucket.
+# Optional: enables photo and brochure uploads to each organisation's own S3 bucket.
 # Encrypts their keys at rest. Keep it stable and backed up.
 SECRETS_KEY=generate-with-openssl-rand-base64-32
 
@@ -101,7 +105,7 @@ FRONTEND_URL=https://fronko.example.com
 BACKEND_URL=
 ```
 
-With `SECRETS_KEY` set, each user connects their own bucket (Cloudflare R2, Backblaze B2, AWS S3 or MinIO) under **Settings** in the dashboard. Fronko never needs a bucket of its own.
+With `SECRETS_KEY` set, each organisation's owner connects their own bucket (Cloudflare R2, Backblaze B2, AWS S3 or MinIO) under **Settings** in the dashboard. Fronko never needs a bucket of its own.
 
 For every backend option, see the [configuration reference](backend/README.md#configuration).
 
@@ -123,7 +127,7 @@ docker compose up -d --build
 
 ## 🪣 Connecting storage (photos & brochures)
 
-Each user connects their own bucket under **Dashboard → Settings → Storage**. The server only needs `SECRETS_KEY` set (see above). Buckets stay **private**: visitors get 15-minute signed links. You don't need public access, a custom domain or CORS rules, because uploads go through the Fronko backend.
+Each organisation's owner connects a bucket under **Dashboard → Settings → Storage**, and everyone in the organisation uploads to it. The server only needs `SECRETS_KEY` set (see above). Buckets stay **private**: visitors get 15-minute signed links. You don't need public access, a custom domain or CORS rules, because uploads go through the Fronko backend.
 
 **Keys need:** write and delete on objects in the bucket, and read for serving. Nothing account-wide. Fronko checks this when you save, by writing and deleting a `.fronko-probe` object.
 
@@ -134,7 +138,7 @@ Each user connects their own bucket under **Dashboard → Settings → Storage**
 | **AWS S3** | `https://s3.<region>.amazonaws.com` | the bucket's region | Off | IAM user with `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on `arn:aws:s3:::<bucket>/*` |
 | **MinIO / other** | your HTTPS S3 API URL | `us-east-1` unless configured | On | access key with a read/write policy on the bucket |
 
-Uploaded files are stored as `fronko/<user_id>/<file_id>.<ext>`. Keep the bucket private, and don't enable a public `r2.dev` URL; Fronko doesn't need one.
+Uploaded files are stored as `fronko/<org_id>/<user_id>/<file_id>.<ext>` (files from before organisations keep their `fronko/<user_id>/…` keys). Keep the bucket private, and don't enable a public `r2.dev` URL; Fronko doesn't need one.
 
 ## 💳 Writing to Physical NFC Cards
 

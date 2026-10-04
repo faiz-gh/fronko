@@ -34,6 +34,10 @@
 	import BrandIcon from '$lib/components/app/brand-icon.svelte';
 	import CardAvatar from '$lib/components/app/card-avatar.svelte';
 	import DeleteCardDialog from '$lib/components/app/delete-card-dialog.svelte';
+	import UserPicker from '$lib/components/app/user-picker.svelte';
+	import { setCardAssignee } from '$lib/api/org';
+	import { orgUsers } from '$lib/org-users.svelte';
+	import { session } from '$lib/session.svelte';
 	import FilePickerDialog from '$lib/components/app/file-picker-dialog.svelte';
 	import FormSection from '$lib/components/app/form-section.svelte';
 	import ImageCropDialog from '$lib/components/app/image-crop-dialog.svelte';
@@ -284,7 +288,26 @@
 
 	async function onDeleted() {
 		card = null; // nothing left to lose, so skip the unsaved-changes prompt
-		await goto('/dashboard');
+		await goto('/dashboard/cards');
+	}
+
+	let assigning = $state(false);
+	async function assign(value: number | 'none' | null) {
+		if (!profile) return;
+		const to = typeof value === 'number' ? value : null;
+		if (to === (profile.assigned_user?.id ?? null)) return;
+		assigning = true;
+		try {
+			const p = await setCardAssignee(profile.id, to);
+			profile = { ...profile, assigned_user: p.assigned_user };
+			cards.upsert(p);
+			orgUsers.refresh();
+			toast.success(to === null ? 'Card returned to the organisation' : `Assigned to ${p.assigned_user?.username}`);
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Could not assign the card');
+		} finally {
+			assigning = false;
+		}
 	}
 </script>
 
@@ -297,7 +320,9 @@
 	<div class="grid min-h-[70svh] place-items-center px-4">
 		<div class="flex max-w-sm flex-col items-center gap-3 text-center">
 			<p class="text-lg font-semibold">{loadError}</p>
-			<p class="text-muted-foreground text-sm">It may have been deleted, or it belongs to another account.</p>
+			<p class="text-muted-foreground text-sm">
+				{session.isAdmin ? 'It may have been deleted.' : 'It may have been deleted, or it’s no longer assigned to you.'}
+			</p>
 			<Button variant="outline" href="/dashboard" class="mt-2">
 				<ArrowLeftIcon data-icon="inline-start" />
 				Back to overview
@@ -355,7 +380,15 @@
 					</div>
 				</div>
 
-				<div class="flex items-center gap-2">
+				<div class="flex flex-wrap items-center gap-2">
+					{#if session.isAdmin}
+						<UserPicker
+							value={profile.assigned_user?.id ?? null}
+							onchange={assign}
+							filter={false}
+							disabled={assigning}
+						/>
+					{/if}
 					<Button variant="outline" class="xl:hidden" onclick={() => (previewOpen = true)}>
 						<EyeIcon data-icon="inline-start" />
 						Preview
@@ -383,13 +416,15 @@
 									QR code
 								</DropdownMenu.Item>
 							</DropdownMenu.Group>
-							<DropdownMenu.Separator />
-							<DropdownMenu.Group>
-								<DropdownMenu.Item variant="destructive" onSelect={() => (deleteTarget = profile)}>
-									<Trash2Icon />
-									Delete card
-								</DropdownMenu.Item>
-							</DropdownMenu.Group>
+							{#if session.isAdmin}
+								<DropdownMenu.Separator />
+								<DropdownMenu.Group>
+									<DropdownMenu.Item variant="destructive" onSelect={() => (deleteTarget = profile)}>
+										<Trash2Icon />
+										Delete card
+									</DropdownMenu.Item>
+								</DropdownMenu.Group>
+							{/if}
 						</DropdownMenu.Content>
 					</DropdownMenu.Root>
 				</div>
@@ -821,13 +856,18 @@
 									</span>
 									<Input
 										id="slug"
-										class="rounded-l-none font-mono"
+										class="rounded-l-none font-mono read-only:bg-muted/40 read-only:text-muted-foreground"
 										value={slug}
 										oninput={(e) => (slug = e.currentTarget.value.toLowerCase())}
 										aria-invalid={slugInvalid || undefined}
+										readonly={!session.isAdmin}
 									/>
 								</div>
-								{#if slugInvalid}
+								{#if !session.isAdmin}
+									<Field.Description>
+										{session.orgName} manages this link because it may already be printed on cards and QR codes.
+									</Field.Description>
+								{:else if slugInvalid}
 									<Field.Error>3–48 characters: lowercase letters, numbers and hyphens.</Field.Error>
 								{:else if slug !== profile.slug}
 									<Field.Description class="text-amber-700 dark:text-amber-400">

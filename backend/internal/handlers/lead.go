@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"log"
+	"math"
 	"net/http"
 	"net/mail"
 	"regexp"
@@ -10,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/faiz-gh/fronko/backend/internal/middleware"
 	"github.com/faiz-gh/fronko/backend/internal/models"
 	"github.com/faiz-gh/fronko/backend/internal/repository"
 )
@@ -137,15 +137,16 @@ func (h *LeadHandler) SubmitLead(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "ok"})
 }
 
-// Protected: GET /api/me/profiles/{id}/leads
+// Protected: GET /api/me/profiles/{id}/leads. Unpaginated; members only see
+// the leads that arrived while they held the card.
 func (h *LeadHandler) GetLeads(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserID(r.Context())
+	scope := scopeOf(r)
 	profileID, ok := profileIDFromPath(w, r)
 	if !ok {
 		return
 	}
 
-	if _, err := h.repo.GetProfileForUser(r.Context(), profileID, userID); err != nil {
+	if _, err := h.repo.GetProfile(r.Context(), scope, profileID); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "profile not found")
 			return
@@ -155,7 +156,7 @@ func (h *LeadHandler) GetLeads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	leads, err := h.repo.GetLeadsByProfileID(r.Context(), profileID)
+	leads, _, err := h.repo.ListLeads(r.Context(), scope, repository.LeadFilter{ProfileID: profileID, Limit: math.MaxInt32})
 	if err != nil {
 		log.Printf("get leads: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -165,11 +166,14 @@ func (h *LeadHandler) GetLeads(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, leads)
 }
 
-// Protected: GET /api/me/leads?profile_id=&q=&since=&page=&page_size=
-// Lists leads across all of the caller's profiles, newest first. Every
-// parameter is optional; page is 1-based.
+// Protected: GET /api/me/leads?profile_id=&user_id=&q=&since=&page=&page_size=
+// Lists the leads the caller can see, newest first: every lead in the
+// organisation for admins, a member's own leads otherwise. user_id (admins
+// only) keeps the leads that arrived while that user held the card; "none"
+// keeps those that arrived while the organisation held it. Every parameter is
+// optional; page is 1-based.
 func (h *LeadHandler) ListLeads(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserID(r.Context())
+	scope := scopeOf(r)
 	query := r.URL.Query()
 
 	page, pageSize, ok := pageParams(w, r, defaultLeadPageSize, maxLeadPageSize)
@@ -194,6 +198,22 @@ func (h *LeadHandler) ListLeads(w http.ResponseWriter, r *http.Request) {
 		}
 		filter.ProfileID = id
 	}
+	if raw := query.Get("user_id"); raw != "" {
+		if !scope.Admin {
+			writeError(w, http.StatusForbidden, "only your organisation's admins can filter by user")
+			return
+		}
+		if raw == "none" {
+			filter.Unassigned = true
+		} else {
+			id, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil || id < 1 {
+				writeError(w, http.StatusBadRequest, "invalid user_id")
+				return
+			}
+			filter.UserID = id
+		}
+	}
 	if raw := query.Get("since"); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
@@ -203,7 +223,7 @@ func (h *LeadHandler) ListLeads(w http.ResponseWriter, r *http.Request) {
 		filter.Since = t
 	}
 
-	leads, total, err := h.repo.ListLeadsForUser(r.Context(), userID, filter)
+	leads, total, err := h.repo.ListLeads(r.Context(), scope, filter)
 	if err != nil {
 		log.Printf("list leads: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")

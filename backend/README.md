@@ -159,11 +159,15 @@ These are hard-coded:
 
 ## Database
 
-The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`, 006 changing a verified email).
+The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`, 006 changing a verified email, 007 organisations and users).
+- **Organisations (007).** Every user belongs to one `organizations` row (`users.org_id`) with a `role`: `owner` (exactly one per org, enforced by a partial unique index), `admin` or `member`. 007 gave each existing account its own organisation, as owner. `users` also gained `must_change_password` (set while the org-chosen password is in use), `storage_quota_bytes` (`NULL`: unlimited), `suspended_at`, `created_by` and `last_login_at`.
+- **Cards** belong to the org (`profiles.org_id`); `profiles.user_id` is just the creator. `profiles.assigned_user_id` is the one user working on the card (`ON DELETE SET NULL`).
+- **Leads** record `assigned_user_id`, copied from the card when they arrive, so they stay with that person after a reassignment.
+- **Files** have an `org_id` and an `area`: `personal` (the uploader's own; counts toward their quota), `org` (private to admins) or `shared` (everyone in the org). `file_grants` gives individual users access to extra files. `former_owner` names a deleted user whose personal file it was.
 - `users.email` (005) is nullable only for accounts that predate it; the app makes those users add one. `email_verified_at` gates the app, and `session_version` is copied into each JWT so bumping it revokes every session.
 - `email_codes` (005) holds at most one live code per user and purpose (`verify_email`, `reset_password`, and `change_email` from 006): an HMAC of the code, an attempt counter and an expiry. For `change_email`, the `email` column (006) holds the new address until it's confirmed.
 - `leads.phone_country_code` and `leads.phone_number` (004) store a visitor's number as two digit-only parts. A check constraint requires both or neither, and enforces the E.164 shape.
-- `user_storage` holds one row per user with encrypted key columns (`BYTEA`).
+- `user_storage` holds one row per user with encrypted key columns (`BYTEA`). Only the org owner's row is used: it's the organisation's bucket (`GetOrgStorageSettings`). Keeping it keyed by user means the keys' AAD (`storage:<user_id>:…`) didn't need re-sealing when organisations arrived.
 - `files` stores a random `public_id`, the `bucket` and `object_key`, the sniffed `kind` and `content_type`, the size, the original name and an optional title. The bucket is stored per file, so changing buckets later doesn't silently re-point old files.
 
 The original schema file is `migrations/001_initial_schema.up.sql`. It uses `IF NOT EXISTS` throughout, so it's safe to run against a database whose schema was applied by hand.
@@ -215,7 +219,9 @@ erDiagram
 | `leads_profile_id_idx` | Listing a profile's leads |
 | `leads_profile_id_created_at_idx` (`profile_id, created_at DESC`) | Newest-first paging of leads (migration 002) |
 
-**Cascades.** Deleting a user deletes their profiles, and deleting a profile deletes its leads.
+**Cascades.** Deleting an organisation deletes everything in it, and deleting a profile deletes its leads. Users are never deleted with a bare `DELETE`: `DeleteOrgUser` first moves their personal files to the org area and passes cards and files they created to the owner, then deletes the row, which unassigns their cards and leads (`SET NULL`) and drops their grants.
+
+**Scopes.** Repository reads take a `repository.Scope{OrgID, UserID, Admin}` (built by `handlers.scopeOf`). Admins see the whole organisation; members see cards assigned to them, leads with their `assigned_user_id`, and files matching `fileVisible` (own personal files, `shared`, or granted). Keep new queries going through a scope so a member can never widen what they see.
 
 **The `data` column.** The backend treats `data` as opaque. It only checks that it is a JSON object, and stores `{}` when the field is missing or `null`. The frontend owns its shape. See [`CardData`](../frontend/README.md#card-data-model).
 
@@ -262,10 +268,13 @@ Request
                │  PUT  /api/me/email,
                │  POST /api/me/email/verify,
                │  POST /api/me/email/resend   → JWTMiddleware → [authLimiter] → handler   (allowed while unverified)
-               └─ /api/me/*                   → JWTMiddleware → RequireVerified → protected ServeMux → handler
+               ├─ PUT  /api/me/password       → JWTMiddleware → RequireVerified → authLimiter → handler   (allowed with a temporary password)
+               └─ /api/me/*, /api/org, /api/org/*
+                                              → JWTMiddleware → RequireVerified → RequirePasswordSet → protected ServeMux
+                                                   → [RequireAdmin | RequireOwner] → handler
 ```
 
-Protected routes live on their own `ServeMux`, which is mounted at `/api/me/` behind `JWTMiddleware` and `RequireVerified`. Any route added there is authenticated and requires a verified email automatically. A route that must work before verification is registered on the main mux with a more specific pattern (e.g. `GET /api/me/user`), wrapped in `JWTMiddleware` only. Inside a protected handler, call `middleware.UserID(r.Context())` to get the caller's ID.
+Protected routes live on their own `ServeMux`, mounted at `/api/me/`, `/api/org` and `/api/org/` behind `JWTMiddleware`, `RequireVerified` and `RequirePasswordSet`. Any route added there is authenticated and requires a verified email and a user-chosen password automatically; wrap it in `middleware.RequireAdmin` or `RequireOwner` when only those roles may call it. A route that must work earlier is registered on the main mux with a more specific pattern (e.g. `GET /api/me/user`). Inside a protected handler, `middleware.PrincipalFrom(r.Context())` gives the caller's user ID, org ID and role, and `scopeOf(r)` the matching repository scope.
 
 ## Authentication & sessions
 
@@ -280,17 +289,20 @@ Protected routes live on their own `ServeMux`, which is mounted at `/api/me/` be
    | `Secure` | controlled by `COOKIE_SECURE` (default on) |
    | `Path` / `Max-Age` | `/` / 86400 |
 
-3. `JWTMiddleware` reads the cookie, validates it (HS256 pinned, `exp` required), then looks up the user's `session_version` and verification state (one primary-key query). A token whose `sv` doesn't match is rejected with 401, and so is a token for a deleted account. The user ID and verified flag go into the request context.
+3. `JWTMiddleware` reads the cookie, validates it (HS256 pinned, `exp` required), then looks up the user's session state (one primary-key query): `session_version`, verification, org, role, suspension and `must_change_password`. A token whose `sv` doesn't match is rejected with 401, and so are a deleted or suspended account (`account_suspended`). The principal (user, org, role) and the state go into the request context.
 4. `RequireVerified` wraps every `/api/me/` route except `GET /api/me/user` and the `/api/me/email*` routes, answering `403 {"code":"email_unverified"}` until the email is verified. Those exceptions are registered as more specific patterns on the main mux, so they bypass it.
 5. Because the SPA can't read the cookie, it calls `GET /api/me/user` to find out who is signed in.
-6. **Password change** (`PUT /api/me/password`) and **reset** (`POST /auth/password/reset`) bump `session_version`, which signs out every existing session. A change re-issues the caller's cookie so that tab stays signed in.
-7. `POST /auth/logout` only clears the cookie; that one token stays valid until it expires unless the password is changed.
+6. `RequirePasswordSet` answers `403 {"code":"password_change_required"}` while a user created (or reset) by their organisation still has its temporary password. `PUT /api/me/password` clears the flag. The first-login order is therefore: sign in, verify email, choose a password.
+7. **Password change** (`PUT /api/me/password`), **reset** (`POST /auth/password/reset`), an admin's **temporary password** and **suspending** a user all bump `session_version`, which signs out every existing session. A change re-issues the caller's cookie so that tab stays signed in.
+8. `POST /auth/logout` only clears the cookie; that one token stays valid until it expires unless the password is changed.
 
 ### Email codes
 
 Registration (and `PUT /api/me/email`) sends a verification code, and `POST /auth/password/forgot` sends a reset code, only to a **verified** address. Codes are 6 random digits, stored as an HMAC-SHA256 keyed with `JWT_SECRET` and bound to the user and purpose. They expire after 15 minutes. Each check spends an attempt atomically **before** comparing (`UseEmailCodeAttempt`), so even concurrent guesses get at most 5 tries. A correct code is deleted. A new code can be requested once every 60 seconds, and it replaces the old one.
 
 **Changing a verified email** takes the current password, then a code sent to the new address (`POST /api/me/email/change`, then `/change/confirm`). The new address is held on the `change_email` code row, so the current email keeps working until the change is confirmed. On confirmation the old address gets a notice with the new one masked. The unique index is the final check if two accounts race for the same address.
+
+**Users created by an organisation** (`POST /api/org/users`) get a welcome email with their username and temporary password (`mail.MemberInviteMessage`). Sending a password by email is acceptable here only because it's single-use in practice: `must_change_password` locks the account to verification and choosing a new password until it's replaced. Their verification code is sent on first sign-in rather than at creation, so it hasn't expired by the time they use it. A temporary password set later by an admin (`POST /api/org/users/{id}/password`) is not emailed.
 
 Mail is sent in a background goroutine (30 s timeout, errors logged), so request timing doesn't depend on the SMTP server or reveal whether an address has an account. Forgot-password always answers 204.
 
@@ -349,11 +361,11 @@ make test-integration   # repository integration tests (needs a database, see be
 
 Unit tests cover:
 - `auth`: email code format, HMAC binding to user/purpose/key, session version in the JWT.
-- `mail`: message building (headers, multipart), header-injection rejection, the email-changed notice (no code, masked address) and `MaskEmail`.
-- `middleware`: rate limiter, same-origin check, CORS.
+- `mail`: message building (headers, multipart), header-injection rejection, the email-changed notice (no code, masked address), the member invite (sign-in details in text and escaped HTML) and `MaskEmail`.
+- `middleware`: rate limiter, same-origin check, CORS, the principal and suspension check in `JWTMiddleware`, `RequirePasswordSet`, and the role gates.
 - `secrets`: sealing round trip, tamper, wrong AAD and wrong key.
 - `storage`: endpoint validation, private-address dialing, the connection probe against a fake S3 server.
-- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals (avatar, cover, brochures), lead phone normalization and validation.
+- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals (avatar, cover, brochures), lead phone normalization and validation, upload areas by role, the optional quota field, and organisation-name validation.
 
 The integration tests (`internal/repository/repository_test.go`) sit behind the `integration` build tag. They read **`TEST_DATABASE_URL`**, not `DATABASE_URL`, because they `TRUNCATE` every table. Point them at a disposable database that already has the migrations applied:
 
@@ -363,7 +375,7 @@ migrate -path migrations -database "$TEST_DATABASE_URL" up
 make test-integration
 ```
 
-They cover users (case-insensitive usernames and emails, which unique index a conflict came from), email verification and changes, session-version bumps, the email-code lifecycle (attempt cap, expiry, replacement, and the target address on `change_email` codes), profiles, leads, storage settings and files.
+They cover users (case-insensitive usernames and emails, which unique index a conflict came from), email verification and changes, session-version bumps, the email-code lifecycle (attempt cap, expiry, replacement, and the target address on `change_email` codes), organisations (one owner each, org creation), profiles and assignment, leads (including who keeps them after a reassignment, and the user filters), storage settings (the org's bucket is the owner's), files (visibility by area and grant, edit rights, quota under a lock), and user management (roles, suspension, temporary passwords, deleting a user without losing their work).
 
 If `TEST_DATABASE_URL` is unset, the tests are skipped.
 

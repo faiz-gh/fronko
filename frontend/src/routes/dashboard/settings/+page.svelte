@@ -23,7 +23,10 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import ChangeEmailForm from '$lib/components/app/change-email-form.svelte';
 	import FormSection from '$lib/components/app/form-section.svelte';
+	import QuotaInput from '$lib/components/app/quota-input.svelte';
+	import StorageMeter from '$lib/components/app/storage-meter.svelte';
 	import StorageProviderIcon from '$lib/components/app/storage-provider-icon.svelte';
+	import { getOrganization, ROLE_LABEL, updateOrganization, type Organization } from '$lib/api/org';
 	import { plural, timeAgo } from '$lib/format';
 	import { session } from '$lib/session.svelte';
 	import { storage } from '$lib/storage.svelte';
@@ -79,6 +82,40 @@
 	};
 
 	let changingEmail = $state(false);
+
+	// Organisation (owner edits; admins see it)
+	let org = $state<Organization | null>(null);
+	let orgName = $state('');
+	let defaultQuota = $state<number | null>(null);
+	let savingOrg = $state(false);
+	$effect(() => {
+		if (!session.isAdmin) return;
+		getOrganization()
+			.then((o) => {
+				org = o;
+				orgName = o.name;
+				defaultQuota = o.default_quota_bytes;
+			})
+			.catch(() => {});
+	});
+	const orgChanged = $derived(
+		!!org && (orgName.trim() !== org.name || defaultQuota !== org.default_quota_bytes) && !!orgName.trim()
+	);
+	async function saveOrg(event: SubmitEvent) {
+		event.preventDefault();
+		if (!orgChanged) return;
+		savingOrg = true;
+		try {
+			org = await updateOrganization(orgName.trim(), defaultQuota);
+			orgName = org.name;
+			session.orgName = org.name;
+			toast.success('Organisation saved');
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Failed to save');
+		} finally {
+			savingOrg = false;
+		}
+	}
 
 	// Change password
 	let currentPassword = $state('');
@@ -225,7 +262,11 @@
 <div class="mx-auto flex w-full max-w-[1200px] flex-col px-4 py-6 sm:px-8 lg:px-10 lg:py-10">
 	<header class="flex flex-col gap-1 pb-2">
 		<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Settings</h1>
-		<p class="text-muted-foreground text-sm">Your account, password, and storage for photos and brochures.</p>
+		<p class="text-muted-foreground text-sm">
+			{session.isOwner
+				? 'Your account, your organisation, and storage for photos and brochures.'
+				: 'Your account and password.'}
+		</p>
 	</header>
 
 	<FormSection id="account" title="Account" description="How you sign in. Either works on the sign-in page.">
@@ -234,6 +275,12 @@
 				<dt class="text-muted-foreground">Username</dt>
 				<dd class="font-medium">{session.username}</dd>
 			</div>
+			{#if !session.isOwner}
+				<div class="flex flex-col gap-1.5">
+					<dt class="text-muted-foreground">Organisation</dt>
+					<dd class="font-medium">{session.orgName} · {session.role ? ROLE_LABEL[session.role] : ''}</dd>
+				</div>
+			{/if}
 			<div class="flex flex-col gap-1.5">
 				<dt class="text-muted-foreground">Email</dt>
 				<dd class="flex flex-wrap items-center gap-2 font-medium">
@@ -244,10 +291,13 @@
 							Verified
 						</Badge>
 					{/if}
-					{#if !changingEmail}
+					{#if session.isOwner && !changingEmail}
 						<Button variant="link" size="sm" class="h-auto px-0" onclick={() => (changingEmail = true)}>Change</Button>
 					{/if}
 				</dd>
+				{#if !session.isOwner}
+					<dd class="text-muted-foreground text-xs">Managed by {session.orgName}. Ask them if it needs to change.</dd>
+				{/if}
 			</div>
 		</dl>
 		{#if changingEmail}
@@ -322,7 +372,64 @@
 		</form>
 	</FormSection>
 
-	{#if storage.error}
+	{#if session.isAdmin}
+		<FormSection
+			id="organisation"
+			title="Organisation"
+			description={session.isOwner
+				? 'Shown to your team. New users start with the default storage limit; you can change it per person.'
+				: 'Only the owner can change these.'}
+		>
+			{#if !org}
+				<Skeleton class="h-24 rounded-xl" />
+			{:else}
+				<form onsubmit={saveOrg} class="flex flex-col gap-6">
+					<Field.Group class="gap-5">
+						<Field.Field class="sm:max-w-sm">
+							<Field.Label for="org-name">Name</Field.Label>
+							<Input id="org-name" bind:value={orgName} maxlength={80} disabled={!session.isOwner || savingOrg} required />
+						</Field.Field>
+						<Field.Field>
+							<Field.Label for="org-quota">Default storage per user</Field.Label>
+							<QuotaInput id="org-quota" bind:value={defaultQuota} disabled={!session.isOwner || savingOrg} />
+							<Field.Description>
+								For each person's own files. Shared and organisation files don't count. Changing this doesn't affect
+								existing users.
+							</Field.Description>
+						</Field.Field>
+					</Field.Group>
+					{#if session.isOwner}
+						<div>
+							<Button type="submit" disabled={!orgChanged || savingOrg}>
+								{#if savingOrg}<Spinner data-icon="inline-start" />{/if}
+								Save organisation
+							</Button>
+						</div>
+					{/if}
+				</form>
+			{/if}
+		</FormSection>
+	{/if}
+
+	{#if !session.isOwner}
+		<FormSection
+			id="storage"
+			title="Storage"
+			description="{session.orgName} provides storage for your photos and brochures. Shared files don't count toward your limit."
+		>
+			{#if status}
+				{#if !status.configured}
+					<p class="text-muted-foreground text-sm">
+						{session.orgName} hasn't connected storage yet, so uploads aren't available.
+					</p>
+				{:else}
+					<StorageMeter used={status.used_bytes} quota={status.quota_bytes} class="max-w-sm" />
+				{/if}
+			{:else}
+				<Skeleton class="h-10 max-w-sm" />
+			{/if}
+		</FormSection>
+	{:else if storage.error}
 		<Alert.Root variant="destructive" class="mt-6">
 			<CircleAlertIcon />
 			<Alert.Title>{storage.error}</Alert.Title>
@@ -345,7 +452,7 @@
 		<FormSection
 			id="storage"
 			title="Storage"
-			description="Photos and PDF brochures are stored in your own S3-compatible bucket. The bucket can stay private: visitors get short-lived links."
+			description="Photos and PDF brochures for your whole organisation are stored in your own S3-compatible bucket. The bucket can stay private: visitors get short-lived links."
 		>
 			<form onsubmit={save} class="flex flex-col gap-6">
 				<div

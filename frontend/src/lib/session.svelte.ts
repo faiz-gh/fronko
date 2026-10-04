@@ -1,5 +1,5 @@
 import { goto } from '$app/navigation';
-import { logout, me, type AuthUser } from '$lib/api/auth';
+import { logout, me, type AuthUser, type Role } from '$lib/api/auth';
 
 type Status = 'unknown' | 'authenticated' | 'anonymous';
 
@@ -12,9 +12,27 @@ class Session {
 	username = $state<string | null>(null);
 	email = $state<string | null>(null);
 	emailVerified = $state(false);
+	role = $state<Role | null>(null);
+	orgName = $state('');
+	mustChangePassword = $state(false);
 
 	get isAuthenticated() {
 		return this.status === 'authenticated';
+	}
+
+	/** Owners and admins manage the organisation: users, every card, every lead. */
+	get isAdmin() {
+		return this.role === 'owner' || this.role === 'admin';
+	}
+
+	/** Only the owner manages storage and organisation settings. */
+	get isOwner() {
+		return this.role === 'owner';
+	}
+
+	/** Signed in, verified, and using a password they chose: the dashboard is open. */
+	get ready() {
+		return this.isAuthenticated && this.emailVerified && !this.mustChangePassword;
 	}
 
 	#loading: Promise<void> | null = null;
@@ -42,6 +60,9 @@ class Session {
 		this.username = user.username;
 		this.email = user.email;
 		this.emailVerified = user.email_verified;
+		this.role = user.role;
+		this.orgName = user.org_name;
+		this.mustChangePassword = user.must_change_password;
 		this.status = 'authenticated';
 	}
 
@@ -49,6 +70,9 @@ class Session {
 		this.username = null;
 		this.email = null;
 		this.emailVerified = false;
+		this.role = null;
+		this.orgName = '';
+		this.mustChangePassword = false;
 		this.status = 'anonymous';
 	}
 
@@ -68,6 +92,23 @@ class Session {
 		if (location.pathname === '/verify-email') return;
 		const next = location.pathname + location.search;
 		goto(`/verify-email?next=${encodeURIComponent(next)}`, { replaceState: true });
+	}
+
+	/** Called when the API says the organisation's temporary password must be replaced first. */
+	requirePasswordChange() {
+		if (this.status !== 'authenticated') return;
+		this.mustChangePassword = true;
+		if (location.pathname === '/set-password') return;
+		const next = location.pathname + location.search;
+		goto(`/set-password?next=${encodeURIComponent(next)}`, { replaceState: true });
+	}
+
+	/** Where to go right after signing in or verifying: unfinished account setup first. */
+	nextStep(next: string): string {
+		const q = `?next=${encodeURIComponent(next)}`;
+		if (!this.emailVerified) return `/verify-email${q}`;
+		if (this.mustChangePassword) return `/set-password${q}`;
+		return next;
 	}
 
 	/** Called when the API rejects the cookie; returns the user to where they were after login. */

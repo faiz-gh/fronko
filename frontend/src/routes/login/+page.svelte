@@ -18,6 +18,7 @@
 	let mode = $state<Mode>(page.url.searchParams.get('mode') === 'register' ? 'register' : 'login');
 	let username = $state('');
 	let email = $state('');
+	let organization = $state('');
 	let password = $state('');
 	let error = $state('');
 	let loading = $state(false);
@@ -31,11 +32,11 @@
 		return next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
 	}
 
-	// Signed in already, or just now. Unverified accounts finish verification first.
+	// Signed in already, or just now. Unfinished accounts verify their email and
+	// replace a temporary password first.
 	$effect(() => {
 		if (!session.isAuthenticated || loading) return;
-		const next = nextPath();
-		goto(session.emailVerified ? next : `/verify-email?next=${encodeURIComponent(next)}`, { replaceState: true });
+		goto(session.nextStep(nextPath()), { replaceState: true });
 	});
 
 	const usernameError = $derived(
@@ -60,7 +61,9 @@
 		loading = true;
 		try {
 			const user =
-				mode === 'login' ? await login(username, password) : await register(username, email.trim(), password);
+				mode === 'login'
+					? await login(username, password)
+					: await register(username, email.trim(), password, organization.trim());
 			session.signIn(user);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Something went wrong';
@@ -83,7 +86,7 @@
 		<p class="text-muted-foreground">
 			{mode === 'login'
 				? 'Sign in to manage your cards and leads.'
-				: 'Set up your first digital business card in a minute.'}
+				: 'Set up digital business cards for you and your team.'}
 		</p>
 	</div>
 
@@ -156,6 +159,20 @@
 					{:else}
 						<Field.Description>We'll send a code to confirm it.</Field.Description>
 					{/if}
+				</Field.Field>
+				<Field.Field>
+					<Field.Label for="organization">
+						Company or team <span class="text-muted-foreground font-normal">(optional)</span>
+					</Field.Label>
+					<Input
+						id="organization"
+						autocomplete="organization"
+						maxlength={80}
+						bind:value={organization}
+						disabled={loading}
+						placeholder={username || 'Acme Inc.'}
+					/>
+					<Field.Description>You can add your team's accounts once you're in.</Field.Description>
 				</Field.Field>
 			{/if}
 			<Field.Field data-invalid={!!passwordError || undefined}>

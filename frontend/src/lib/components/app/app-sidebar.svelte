@@ -2,32 +2,59 @@
 	import { page } from '$app/state';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
 	import FolderIcon from '@lucide/svelte/icons/folder';
+	import IdCardIcon from '@lucide/svelte/icons/id-card';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
-	import PlusIcon from '@lucide/svelte/icons/plus';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
+	import UsersIcon from '@lucide/svelte/icons/users';
 	import * as Avatar from '$lib/components/ui/avatar';
-	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import CardAvatar from './card-avatar.svelte';
 	import Logo from './logo.svelte';
 	import ThemeToggle from './theme-toggle.svelte';
 	import { initials, normalizeCard } from '$lib/card/card';
+	import { ROLE_LABEL } from '$lib/api/org';
 	import { cards } from '$lib/cards.svelte';
+	import { orgUsers } from '$lib/org-users.svelte';
 	import { session } from '$lib/session.svelte';
 	import { cn } from '$lib/utils';
 
 	/** Called after a navigation so the mobile drawer can close. */
 	let { onnavigate }: { onnavigate?: () => void } = $props();
 
-	const activeId = $derived(Number(page.params.id) || null);
-	const onOverview = $derived(page.url.pathname === '/dashboard');
-	const onLeads = $derived(page.url.pathname === '/dashboard/leads');
-	const onFiles = $derived(page.url.pathname === '/dashboard/files');
-	const onSettings = $derived(page.url.pathname === '/dashboard/settings');
+	const onCard = $derived(page.route.id === '/dashboard/[id]');
+	const activeId = $derived(onCard ? Number(page.params.id) || null : null);
+	const path = $derived(page.url.pathname);
+	const onSettings = $derived(path === '/dashboard/settings');
 	const totalLeads = $derived(cards.list?.reduce((sum, p) => sum + p.lead_count, 0) ?? 0);
+
+	// Admins manage the whole organisation, so cards get their own page; members
+	// keep their (few) cards listed right here.
+	const nav = $derived([
+		{ href: '/dashboard', label: 'Overview', icon: LayoutGridIcon, active: path === '/dashboard' },
+		{ href: '/dashboard/leads', label: 'Leads', icon: InboxIcon, active: path === '/dashboard/leads', count: totalLeads },
+		...(session.isAdmin
+			? [
+					{
+						href: '/dashboard/cards',
+						label: 'Cards',
+						icon: IdCardIcon,
+						active: path === '/dashboard/cards' || onCard,
+						count: cards.list?.length ?? 0
+					},
+					{
+						href: '/dashboard/users',
+						label: 'Users',
+						icon: UsersIcon,
+						active: path.startsWith('/dashboard/users'),
+						count: orgUsers.assignable.length
+					}
+				]
+			: []),
+		{ href: '/dashboard/files', label: 'Files', icon: FolderIcon, active: path === '/dashboard/files' }
+	]);
 
 	const navItem = (active: boolean) =>
 		cn(
@@ -43,93 +70,90 @@
 		<Logo href="/dashboard" />
 	</div>
 
+	<div class="mx-3 mb-4 flex items-center gap-2.5 rounded-lg border px-2.5 py-2">
+		<span
+			class="bg-brand-soft text-brand grid size-8 shrink-0 place-items-center rounded-md text-xs font-semibold"
+			aria-hidden="true"
+		>
+			{initials(session.orgName, '?')}
+		</span>
+		<span class="flex min-w-0 flex-col">
+			<span class="truncate text-sm font-medium">{session.orgName}</span>
+			<span class="text-muted-foreground truncate text-xs">
+				{session.role ? ROLE_LABEL[session.role] : ''}
+			</span>
+		</span>
+	</div>
+
 	<nav class="flex min-h-0 flex-1 flex-col gap-6 px-3 pb-3" aria-label="Dashboard">
 		<div class="flex flex-col gap-0.5">
-			<a href="/dashboard" onclick={onnavigate} aria-current={onOverview ? 'page' : undefined} class={navItem(onOverview)}>
-				<LayoutGridIcon class="size-4" />
-				Overview
-			</a>
-			<a href="/dashboard/leads" onclick={onnavigate} aria-current={onLeads ? 'page' : undefined} class={navItem(onLeads)}>
-				<InboxIcon class="size-4" />
-				Leads
-				{#if totalLeads > 0}
-					<span class="text-muted-foreground tabular ml-auto text-xs">{totalLeads}</span>
-				{/if}
-			</a>
-			<a href="/dashboard/files" onclick={onnavigate} aria-current={onFiles ? 'page' : undefined} class={navItem(onFiles)}>
-				<FolderIcon class="size-4" />
-				Files
-			</a>
+			{#each nav as item (item.href)}
+				<a href={item.href} onclick={onnavigate} aria-current={item.active ? 'page' : undefined} class={navItem(item.active)}>
+					<item.icon class="size-4" />
+					{item.label}
+					{#if item.count}
+						<span class="text-muted-foreground tabular ml-auto text-xs">{item.count}</span>
+					{/if}
+				</a>
+			{/each}
 		</div>
 
-		<div class="flex min-h-0 flex-1 flex-col gap-1">
-			<div class="flex items-center justify-between pr-1 pl-2.5">
-				<span class="text-muted-foreground text-xs font-medium">
-					Cards
+		{#if !session.isAdmin}
+			<div class="flex min-h-0 flex-1 flex-col gap-1">
+				<span class="text-muted-foreground pl-2.5 text-xs font-medium">
+					Your cards
 					{#if cards.list}<span class="tabular ml-1 opacity-70">{cards.list.length}</span>{/if}
 				</span>
-				<Button
-					variant="ghost"
-					size="icon-sm"
-					class="size-7"
-					onclick={() => (cards.createOpen = true)}
-					aria-label="New card"
-				>
-					<PlusIcon />
-				</Button>
-			</div>
 
-			<ul class="-mx-1 flex min-h-0 flex-col gap-0.5 overflow-y-auto px-1">
-				{#if cards.list === null}
-					{#each [1, 2, 3] as i (i)}
-						<li class="flex items-center gap-2.5 px-2.5 py-2">
-							<Skeleton class="size-8 rounded-full" />
-							<div class="flex flex-1 flex-col gap-1.5">
-								<Skeleton class="h-3 w-24" />
-								<Skeleton class="h-2.5 w-16" />
-							</div>
-						</li>
-					{/each}
-				{:else}
-					{#each cards.list as profile (profile.id)}
-						{@const card = normalizeCard(profile.data)}
-						{@const active = activeId === profile.id}
-						<li>
-							<a
-								href="/dashboard/{profile.id}"
-								onclick={onnavigate}
-								aria-current={active ? 'page' : undefined}
-								class={cn(
-									'group flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors',
-									active ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/60'
-								)}
-							>
-								<CardAvatar {card} fallback={profile.slug} />
-								<span class="flex min-w-0 flex-1 flex-col">
-									<span class="truncate text-sm font-medium">{card.name || profile.slug}</span>
-									<span class="text-muted-foreground truncate font-mono text-[11px]">/p/{profile.slug}</span>
-								</span>
-								{#if profile.lead_count > 0}
-									<span
-										class="bg-brand-soft text-brand tabular rounded-full px-1.5 py-0.5 text-[11px] leading-none font-semibold"
-										title="{profile.lead_count} {profile.lead_count === 1 ? 'lead' : 'leads'}"
-									>
-										{profile.lead_count}
-									</span>
-								{/if}
-							</a>
-						</li>
+				<ul class="-mx-1 flex min-h-0 flex-col gap-0.5 overflow-y-auto px-1">
+					{#if cards.list === null}
+						{#each [1, 2] as i (i)}
+							<li class="flex items-center gap-2.5 px-2.5 py-2">
+								<Skeleton class="size-8 rounded-full" />
+								<div class="flex flex-1 flex-col gap-1.5">
+									<Skeleton class="h-3 w-24" />
+									<Skeleton class="h-2.5 w-16" />
+								</div>
+							</li>
+						{/each}
 					{:else}
-						<li class="text-muted-foreground px-2.5 py-2 text-sm">
-							No cards yet.
-							<button class="text-foreground font-medium underline-offset-4 hover:underline" onclick={() => (cards.createOpen = true)}>
-								Create one
-							</button>
-						</li>
-					{/each}
-				{/if}
-			</ul>
-		</div>
+						{#each cards.list as profile (profile.id)}
+							{@const card = normalizeCard(profile.data)}
+							{@const active = activeId === profile.id}
+							<li>
+								<a
+									href="/dashboard/{profile.id}"
+									onclick={onnavigate}
+									aria-current={active ? 'page' : undefined}
+									class={cn(
+										'group flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors',
+										active ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/60'
+									)}
+								>
+									<CardAvatar {card} fallback={profile.slug} />
+									<span class="flex min-w-0 flex-1 flex-col">
+										<span class="truncate text-sm font-medium">{card.name || profile.slug}</span>
+										<span class="text-muted-foreground truncate font-mono text-[11px]">/p/{profile.slug}</span>
+									</span>
+									{#if profile.lead_count > 0}
+										<span
+											class="bg-brand-soft text-brand tabular rounded-full px-1.5 py-0.5 text-[11px] leading-none font-semibold"
+											title="{profile.lead_count} {profile.lead_count === 1 ? 'lead' : 'leads'}"
+										>
+											{profile.lead_count}
+										</span>
+									{/if}
+								</a>
+							</li>
+						{:else}
+							<li class="text-muted-foreground px-2.5 py-2 text-sm text-pretty">
+								No cards yet. {session.orgName} will assign you one.
+							</li>
+						{/each}
+					{/if}
+				</ul>
+			</div>
+		{/if}
 	</nav>
 
 	<div class="border-sidebar-border flex shrink-0 flex-col gap-2 border-t p-3">
@@ -152,7 +176,7 @@
 				</Avatar.Root>
 				<span class="flex min-w-0 flex-1 flex-col">
 					<span class="truncate text-sm font-medium">{session.username}</span>
-					<span class="text-muted-foreground text-xs">Signed in</span>
+					<span class="text-muted-foreground truncate text-xs">{session.email ?? 'Signed in'}</span>
 				</span>
 				<ChevronsUpDownIcon class="text-muted-foreground size-4" />
 			</DropdownMenu.Trigger>

@@ -254,6 +254,9 @@ type SetEmailRequest struct {
 // typo before verification, and sends a code to the new address. A verified
 // email can't be changed here.
 func (h *AuthHandler) SetEmail(w http.ResponseWriter, r *http.Request) {
+	if managedEmail(w, r) {
+		return
+	}
 	var req SetEmailRequest
 	if !decodeJSON(w, r, &req) {
 		return
@@ -294,7 +297,7 @@ func (h *AuthHandler) SetEmail(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to send the code")
 		return
 	}
-	writeJSON(w, http.StatusOK, authResponse(user))
+	writeJSON(w, http.StatusOK, h.authResponse(r.Context(), user))
 }
 
 type VerifyEmailRequest struct {
@@ -312,7 +315,7 @@ func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if user.EmailVerifiedAt != nil {
-		writeJSON(w, http.StatusOK, authResponse(user))
+		writeJSON(w, http.StatusOK, h.authResponse(r.Context(), user))
 		return
 	}
 	if user.Email == nil {
@@ -338,7 +341,7 @@ func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	user.EmailVerifiedAt = &now
-	writeJSON(w, http.StatusOK, authResponse(user))
+	writeJSON(w, http.StatusOK, h.authResponse(r.Context(), user))
 }
 
 // Protected: POST /api/me/email/resend. Answers 429 with Retry-After inside the cooldown.
@@ -382,6 +385,9 @@ type ChangeEmailRequest struct {
 // to the new address. The current email stays in force until the code is
 // confirmed. Re-requesting the same address inside the cooldown answers 429.
 func (h *AuthHandler) RequestEmailChange(w http.ResponseWriter, r *http.Request) {
+	if managedEmail(w, r) {
+		return
+	}
 	var req ChangeEmailRequest
 	if !decodeJSON(w, r, &req) {
 		return
@@ -435,6 +441,9 @@ type ConfirmEmailChangeRequest struct {
 // Protected: POST /api/me/email/change/confirm. Switches to the address the
 // code was sent to (already verified by the code itself) and notifies the old one.
 func (h *AuthHandler) ConfirmEmailChange(w http.ResponseWriter, r *http.Request) {
+	if managedEmail(w, r) {
+		return
+	}
 	var req ConfirmEmailChangeRequest
 	if !decodeJSON(w, r, &req) {
 		return
@@ -471,7 +480,7 @@ func (h *AuthHandler) ConfirmEmailChange(w http.ResponseWriter, r *http.Request)
 	}
 	now := time.Now()
 	user.Email, user.EmailVerifiedAt = &newEmail, &now
-	writeJSON(w, http.StatusOK, authResponse(user))
+	writeJSON(w, http.StatusOK, h.authResponse(r.Context(), user))
 }
 
 // ----------------------------------------------------------------------------

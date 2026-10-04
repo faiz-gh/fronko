@@ -11,6 +11,8 @@ export interface Lead {
 	phone_number?: string;
 	notes: string;
 	created_at: string;
+	/** Who held the card when the lead arrived; null means the organisation did. */
+	assigned_user: { id: number; username: string } | null;
 }
 
 export interface NewLead {
@@ -32,6 +34,8 @@ export interface LeadPage {
 export interface LeadQuery {
 	/** Only this card's leads. */
 	profileId?: number;
+	/** Admins only: leads that arrived while this user held the card, or 'none' for the organisation's. */
+	userId?: number | 'none';
 	/** Case-insensitive match on name, email, phone or message. */
 	q?: string;
 	/** Received at or after this time. */
@@ -52,10 +56,11 @@ export function submitLead(profileId: number, lead: NewLead): Promise<void> {
 	});
 }
 
-/** One page of the signed-in user's leads across all their cards, newest first. */
+/** One page of the leads the signed-in user can see (the whole organisation's for admins), newest first. */
 export function listLeads(query: LeadQuery = {}): Promise<LeadPage> {
 	const params = new URLSearchParams();
 	if (query.profileId) params.set('profile_id', String(query.profileId));
+	if (query.userId) params.set('user_id', String(query.userId));
 	if (query.q?.trim()) params.set('q', query.q.trim());
 	if (query.since) params.set('since', query.since.toISOString());
 	if (query.page) params.set('page', String(query.page));

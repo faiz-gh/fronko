@@ -2,11 +2,18 @@ import { apiClient } from './client';
 
 export type StorageProvider = 'r2' | 'b2' | 's3' | 'minio' | 'other';
 
-/** What the server tells us about the user's bucket. Key material is never returned. */
+/**
+ * What the server tells us about the organisation's bucket. Key material is
+ * never returned, and only the owner gets the bucket details.
+ */
 export interface StorageStatus {
 	/** False when the server has no SECRETS_KEY, so uploads are switched off. */
 	enabled: boolean;
 	configured: boolean;
+	/** The signed-in user's personal files... */
+	used_bytes: number;
+	/** ...against their limit; null is unlimited. */
+	quota_bytes: number | null;
 	provider?: StorageProvider;
 	endpoint?: string;
 	region?: string;

@@ -1,11 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/faiz-gh/fronko/backend/internal/auth"
 	"github.com/faiz-gh/fronko/backend/internal/mail"
@@ -41,23 +44,57 @@ func NewAuthHandler(repo *repository.Repository, authService *auth.Service, mail
 	}
 }
 
+const maxOrgNameLen = 80
+
+// validOrgName checks an organisation name: 1-80 characters, no control
+// characters (it appears in email subjects and bodies).
+func validOrgName(name string) bool {
+	n := utf8.RuneCountInString(name)
+	return n > 0 && n <= maxOrgNameLen && !strings.ContainsFunc(name, unicode.IsControl)
+}
+
 type AuthRequest struct {
 	// Username also accepts an email address on login.
 	Username string `json:"username"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	// Organization names the organisation a registration creates; it defaults to the username.
+	Organization string `json:"organization"`
 }
 
 // AuthResponse deliberately omits the token: it's only ever sent as an HttpOnly cookie.
 type AuthResponse struct {
-	ID            int64   `json:"id"`
-	Username      string  `json:"username"`
-	Email         *string `json:"email"`
-	EmailVerified bool    `json:"email_verified"`
+	ID                 int64   `json:"id"`
+	Username           string  `json:"username"`
+	Email              *string `json:"email"`
+	EmailVerified      bool    `json:"email_verified"`
+	Role               string  `json:"role"`
+	OrgName            string  `json:"org_name"`
+	MustChangePassword bool    `json:"must_change_password"`
 }
 
-func authResponse(u *models.User) AuthResponse {
-	return AuthResponse{ID: u.ID, Username: u.Username, Email: u.Email, EmailVerified: u.EmailVerifiedAt != nil}
+// authResponse describes the signed-in user, including their organisation's name.
+func (h *AuthHandler) authResponse(ctx context.Context, u *models.User) AuthResponse {
+	res := AuthResponse{
+		ID: u.ID, Username: u.Username, Email: u.Email, EmailVerified: u.EmailVerifiedAt != nil,
+		Role: u.Role, MustChangePassword: u.MustChangePassword,
+	}
+	if org, err := h.repo.GetOrganization(ctx, u.OrgID); err == nil {
+		res.OrgName = org.Name
+	} else {
+		log.Printf("get organization %d: %v", u.OrgID, err)
+	}
+	return res
+}
+
+// managedEmail reports whether the signed-in user's email is set by their
+// organisation, and if so writes the 403. Only the owner manages their own.
+func managedEmail(w http.ResponseWriter, r *http.Request) bool {
+	if middleware.PrincipalFrom(r.Context()).IsOwner() {
+		return false
+	}
+	writeError(w, http.StatusForbidden, "your email is managed by your organisation; ask them to change it")
+	return true
 }
 
 // signIn issues a session for the user's current session version.
@@ -100,11 +137,29 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
+	// Only said after the password checks out, so it doesn't reveal accounts.
+	if user.SuspendedAt != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error": "this account is suspended; contact your organisation",
+			"code":  middleware.CodeAccountSuspended,
+		})
+		return
+	}
 
 	if !h.signIn(w, user) {
 		return
 	}
-	writeJSON(w, http.StatusOK, authResponse(user))
+	if err := h.repo.TouchLastLogin(r.Context(), user.ID); err != nil {
+		log.Printf("touch last login: %v", err)
+	}
+	// Accounts made by an organisation have no code waiting from registration,
+	// so the first sign-in sends one (the resend cooldown still applies).
+	if user.CreatedBy != nil && user.EmailVerifiedAt == nil && user.Email != nil {
+		if _, err := h.issueCode(r.Context(), user, auth.PurposeVerifyEmail, false); err != nil {
+			log.Printf("issue verification code: %v", err)
+		}
+	}
+	writeJSON(w, http.StatusOK, h.authResponse(r.Context(), user))
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -126,6 +181,14 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if !validPassword(w, req.Password) {
 		return
 	}
+	orgName := strings.TrimSpace(req.Organization)
+	if orgName == "" {
+		orgName = req.Username
+	}
+	if !validOrgName(orgName) {
+		writeError(w, http.StatusBadRequest, "organisation name must be 1-80 characters")
+		return
+	}
 
 	hash, err := h.authService.HashPassword(req.Password)
 	if err != nil {
@@ -140,7 +203,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The unique indexes on LOWER(username) and LOWER(email) are the source of truth for duplicates.
-	if err := h.repo.CreateUser(r.Context(), user); err != nil {
+	if err := h.repo.CreateOrgWithOwner(r.Context(), orgName, user); err != nil {
 		if errors.Is(err, repository.ErrConflict) {
 			if repository.IsEmailConflict(err) {
 				writeError(w, http.StatusConflict, "an account with this email already exists")
@@ -162,7 +225,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if !h.signIn(w, user) {
 		return
 	}
-	writeJSON(w, http.StatusCreated, authResponse(user))
+	writeJSON(w, http.StatusCreated, h.authResponse(r.Context(), user))
 }
 
 // Public: POST /auth/logout. Stateless JWTs can't be revoked server-side, so
@@ -179,7 +242,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, authResponse(user))
+	writeJSON(w, http.StatusOK, h.authResponse(r.Context(), user))
 }
 
 // currentUser loads the signed-in user, writing an error response if it can't.

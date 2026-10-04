@@ -3,9 +3,17 @@ import { session } from '$lib/session.svelte';
 
 export type FileKind = 'image' | 'pdf';
 
+/** A user's own files, the organisation's private files, or the area everyone in it can see. */
+export type FileArea = 'personal' | 'org' | 'shared';
+
 export interface LibraryFile {
 	/** Public id: safe to put in card data and URLs. */
 	id: string;
+	area: FileArea;
+	/** Whose personal file this is, or who uploaded an organisation or shared file. */
+	owner?: { id: number; username: string };
+	/** Username of a deleted user whose personal file this was. */
+	former_owner?: string;
 	kind: FileKind;
 	content_type: string;
 	size_bytes: number;
@@ -39,9 +47,22 @@ export function fileUrl(id: string): string {
 	return apiUrl(`/api/files/${encodeURIComponent(id)}`);
 }
 
-export function listFiles(query: { kind?: FileKind; page?: number; pageSize?: number } = {}): Promise<FilePage> {
+export interface FileQuery {
+	kind?: FileKind;
+	/** "granted": files granted to the signed-in user (or, for admins, to userId). */
+	area?: FileArea | 'granted';
+	/** Admins only: one user's files. */
+	userId?: number;
+	page?: number;
+	pageSize?: number;
+}
+
+/** Files the signed-in user can see: the whole organisation's for admins. */
+export function listFiles(query: FileQuery = {}): Promise<FilePage> {
 	const params = new URLSearchParams();
 	if (query.kind) params.set('kind', query.kind);
+	if (query.area) params.set('area', query.area);
+	if (query.userId) params.set('user_id', String(query.userId));
 	if (query.page) params.set('page', String(query.page));
 	if (query.pageSize) params.set('page_size', String(query.pageSize));
 	const qs = params.toString();
@@ -72,12 +93,18 @@ export function checkUpload(file: File, kind?: FileKind): string | null {
 }
 
 /**
- * Uploads to the user's bucket via the API. Uses XMLHttpRequest because fetch
- * can't report upload progress.
+ * Uploads to the organisation's bucket via the API. Members' uploads go to
+ * their personal files; admins choose the organisation's files (the default)
+ * or the shared area. Uses XMLHttpRequest because fetch can't report upload progress.
  */
 export function uploadFile(
 	file: File,
-	{ title = '', onProgress, signal }: { title?: string; onProgress?: (fraction: number) => void; signal?: AbortSignal } = {}
+	{
+		title = '',
+		area,
+		onProgress,
+		signal
+	}: { title?: string; area?: FileArea; onProgress?: (fraction: number) => void; signal?: AbortSignal } = {}
 ): Promise<LibraryFile> {
 	return new Promise((resolve, reject) => {
 		const xhr = new XMLHttpRequest();
@@ -105,6 +132,7 @@ export function uploadFile(
 
 		const form = new FormData();
 		if (title) form.set('title', title);
+		if (area) form.set('area', area);
 		form.set('file', file);
 		xhr.send(form);
 	});

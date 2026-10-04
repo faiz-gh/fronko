@@ -6,12 +6,15 @@
 	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
 	import { Spinner } from '$lib/components/ui/spinner';
+	import UserPicker from './user-picker.svelte';
 	import { emptyCard, isValidSlug, slugify } from '$lib/card/card';
 	import { cards } from '$lib/cards.svelte';
+	import { orgUsers } from '$lib/org-users.svelte';
 
 	let name = $state('');
 	let customSlug = $state('');
 	let slugTouched = $state(false);
+	let assignee = $state<number | null>(null);
 	let creating = $state(false);
 	let error = $state('');
 
@@ -23,6 +26,7 @@
 		name = '';
 		customSlug = '';
 		slugTouched = false;
+		assignee = null;
 		error = '';
 	}
 
@@ -32,8 +36,9 @@
 		creating = true;
 		error = '';
 		try {
-			const p = await createProfile(slug, emptyCard(name.trim()));
+			const p = await createProfile(slug, emptyCard(name.trim()), assignee);
 			cards.upsert(p);
+			if (assignee !== null) orgUsers.refresh();
 			cards.createOpen = false;
 			await goto(`/dashboard/${p.id}`);
 		} catch (e) {
@@ -84,6 +89,17 @@
 					{:else}
 						<Field.Description>This is the address you'll share and write to NFC cards.</Field.Description>
 					{/if}
+				</Field.Field>
+				<Field.Field>
+					<Field.Label>Assign to</Field.Label>
+					<UserPicker
+						value={assignee}
+						onchange={(v) => (assignee = typeof v === 'number' ? v : null)}
+						filter={false}
+						noneLabel="Nobody yet"
+						class="max-w-none"
+					/>
+					<Field.Description>They can edit the card and see the leads it collects while it's theirs.</Field.Description>
 				</Field.Field>
 			</Field.Group>
 			<Dialog.Footer>

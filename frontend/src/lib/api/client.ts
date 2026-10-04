@@ -52,13 +52,17 @@ export async function apiClient<T>(
 
 	if (!response.ok) {
 		// An expired or invalid session on a protected route: sign out and send to login.
-		if (response.status === 401 && redirectOnUnauthorized && endpoint.startsWith('/api/me/')) {
+		if (response.status === 401 && redirectOnUnauthorized && /^\/api\/(me|org)\b/.test(endpoint)) {
 			session.expire();
 		}
 		const body = await response.json().catch(() => ({}));
 		// Signed in but the email isn't verified yet: finish that first.
 		if (response.status === 403 && body.code === 'email_unverified') {
 			session.requireVerification();
+		}
+		// Still on the organisation's temporary password: choose one first.
+		if (response.status === 403 && body.code === 'password_change_required') {
+			session.requirePasswordChange();
 		}
 		const retryAfter = Number(response.headers.get('Retry-After')) || undefined;
 		throw new ApiError(body.error || `Request failed (${response.status})`, response.status, body.code, retryAfter);

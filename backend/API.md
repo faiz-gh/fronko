@@ -3,7 +3,8 @@
 Every endpoint is served by the Go backend. By default the browser reaches them through the frontend's nginx (or the Vite dev proxy) on the **same origin** as the SPA. If the API is served on its own domain, list the frontend's origin in `CORS_ALLOWED_ORIGINS`; those origins get credentialed CORS responses (see the [configuration reference](README.md#configuration)).
 
 - **Content type.** Requests and responses use `application/json`.
-- **Auth.** Protected endpoints (`/api/me/*`) need the `fronko_session` cookie, which login or register sets. Browsers send it automatically. With `curl`, use a cookie jar (`-c`/`-b`).
+- **Auth.** Protected endpoints (`/api/me/*` and `/api/org/*`) need the `fronko_session` cookie, which login or register sets. Browsers send it automatically. With `curl`, use a cookie jar (`-c`/`-b`).
+- **Organisations and roles.** Every account belongs to an organisation. Registering creates one, with the new account as its **owner**. The owner and **admins** see and manage everything in the organisation. **Members**, whom the organisation creates, see only the cards assigned to them, the leads those cards collected while they held them, their own files, the shared area and files granted to them. The [Organisation](#organisation--) endpoints manage users.
 - **Errors.** Every error body has the shape `{"error": "<message>"}`, and the message is safe to show to users.
 - **Timestamps.** RFC 3339 strings, for example `"2026-10-03T12:34:56.789Z"`.
 - **IDs.** 64-bit integers.
@@ -13,7 +14,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | Method | Path | Auth | Rate limited | Description |
 | ------ | ---- | :--: | :----------: | ----------- |
 | `GET`    | [`/health`](#get-health) | | | Liveness check |
-| `POST`   | [`/auth/register`](#post-authregister) | | ✅ auth | Create an account, email a verification code, and sign in |
+| `POST`   | [`/auth/register`](#post-authregister) | | ✅ auth | Create an organisation and its owner account, email a verification code, and sign in |
 | `POST`   | [`/auth/login`](#post-authlogin) | | ✅ auth | Sign in with username or email |
 | `POST`   | [`/auth/logout`](#post-authlogout) | | | Clear the session cookie |
 | `POST`   | [`/auth/password/forgot`](#post-authpasswordforgot) | | ✅ auth | Email a password-reset code |
@@ -24,27 +25,38 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `POST`   | [`/api/me/email/resend`](#post-apimeemailresend) | ✅ ✉️ | ✅ auth | Send a new verification code |
 | `POST`   | [`/api/me/email/change`](#post-apimeemailchange) | ✅ | ✅ auth | Start changing a verified email (password + code to the new address) |
 | `POST`   | [`/api/me/email/change/confirm`](#post-apimeemailchangeconfirm) | ✅ | ✅ auth | Confirm the new email with its code |
-| `PUT`    | [`/api/me/password`](#put-apimepassword) | ✅ | ✅ auth | Change password; signs out other sessions |
-| `GET`    | [`/api/me/profiles`](#get-apimeprofiles) | ✅ | | List my profiles |
-| `POST`   | [`/api/me/profiles`](#post-apimeprofiles) | ✅ | | Create a profile |
-| `GET`    | [`/api/me/profiles/{id}`](#get-apimeprofilesid) | ✅ | | Get one of my profiles |
-| `PUT`    | [`/api/me/profiles/{id}`](#put-apimeprofilesid) | ✅ | | Update a profile |
-| `DELETE` | [`/api/me/profiles/{id}`](#delete-apimeprofilesid) | ✅ | | Delete a profile and its leads |
-| `GET`    | [`/api/me/profiles/{id}/leads`](#get-apimeprofilesidleads) | ✅ | | List a profile's leads (unpaginated) |
-| `GET`    | [`/api/me/leads`](#get-apimeleads) | ✅ | | Paginated leads across all my profiles, with filters |
-| `GET`    | [`/api/me/storage`](#get-apimestorage) | ✅ | | My storage connection (never returns keys) |
-| `PUT`    | [`/api/me/storage`](#put-apimestorage) | ✅ | | Check, then save storage settings |
-| `POST`   | [`/api/me/storage/test`](#post-apimestoragetest) | ✅ | | Check storage settings without saving |
-| `DELETE` | [`/api/me/storage`](#delete-apimestorage) | ✅ | | Forget my storage keys |
-| `GET`    | [`/api/me/files`](#get-apimefiles) | ✅ | | Paginated file library |
+| `PUT`    | [`/api/me/password`](#put-apimepassword) | ✅ 🔑 | ✅ auth | Change password (or replace a temporary one); signs out other sessions |
+| `GET`    | [`/api/me/profiles`](#get-apimeprofiles) | ✅ | | Cards I can see |
+| `POST`   | [`/api/me/profiles`](#post-apimeprofiles) | 🛡️ | | Create a card, optionally assigned to a user |
+| `GET`    | [`/api/me/profiles/{id}`](#get-apimeprofilesid) | ✅ | | Get a card |
+| `PUT`    | [`/api/me/profiles/{id}`](#put-apimeprofilesid) | ✅ | | Update a card (members can't change the slug) |
+| `DELETE` | [`/api/me/profiles/{id}`](#delete-apimeprofilesid) | 🛡️ | | Delete a card and its leads |
+| `GET`    | [`/api/me/profiles/{id}/leads`](#get-apimeprofilesidleads) | ✅ | | List a card's leads (unpaginated) |
+| `GET`    | [`/api/me/leads`](#get-apimeleads) | ✅ | | Paginated leads I can see, with filters |
+| `GET`    | [`/api/me/storage`](#get-apimestorage) | ✅ | | Whether uploads work, my usage, and (owner) the bucket settings |
+| `PUT`    | [`/api/me/storage`](#put-apimestorage) | 👑 | | Check, then save storage settings |
+| `POST`   | [`/api/me/storage/test`](#post-apimestoragetest) | 👑 | | Check storage settings without saving |
+| `DELETE` | [`/api/me/storage`](#delete-apimestorage) | 👑 | | Forget the storage keys |
+| `GET`    | [`/api/me/files`](#get-apimefiles) | ✅ | | Paginated files I can see, by area |
 | `POST`   | [`/api/me/files`](#post-apimefiles) | ✅ | ✅ upload | Upload a photo or PDF |
 | `PATCH`  | [`/api/me/files/{id}`](#patch-apimefilesid) | ✅ | | Rename a file |
 | `DELETE` | [`/api/me/files/{id}`](#delete-apimefilesid) | ✅ | | Delete a file from the bucket and library |
+| `GET`    | [`/api/org`](#get-apiorg) | 🛡️ | | The organisation |
+| `PUT`    | [`/api/org`](#put-apiorg) | 👑 | | Rename it, set the default storage limit |
+| `GET`    | [`/api/org/users`](#get-apiorgusers) | 🛡️ | | Everyone in the organisation, with totals |
+| `POST`   | [`/api/org/users`](#post-apiorgusers) | 🛡️ | ✅ auth | Create a user with a temporary password |
+| `GET`    | [`/api/org/users/{id}`](#get-apiorgusersid) | 🛡️ | | One user |
+| `PATCH`  | [`/api/org/users/{id}`](#patch-apiorgusersid) | 🛡️ | | Correct an unverified email, set the storage limit, role or suspension |
+| `POST`   | [`/api/org/users/{id}/password`](#post-apiorgusersidpassword) | 🛡️ | ✅ auth | Give a user a new temporary password |
+| `DELETE` | [`/api/org/users/{id}`](#delete-apiorgusersid) | 🛡️ | | Delete a user, keeping their cards, files and leads |
+| `PUT`    | [`/api/org/profiles/{id}/assignee`](#put-apiorgprofilesidassignee) | 🛡️ | | Assign a card to a user, or back to the organisation |
+| `GET`    | [`/api/org/files/{id}/grants`](#get-apiorgfilesidgrants) | 🛡️ | | Who a file has been granted to |
+| `PUT`    | [`/api/org/files/{id}/grants`](#put-apiorgfilesidgrants) | 🛡️ | | Replace who a file is granted to |
 | `GET`    | [`/api/profiles/{slug}`](#get-apiprofilesslug) | | | Public profile by slug |
 | `GET`    | [`/api/files/{id}`](#get-apifilesid) | | | Redirect to a file (short-lived signed URL) |
 | `POST`   | [`/api/profiles/{id}/leads`](#post-apiprofilesidleads) | | ✅ lead | Submit a lead to a profile |
 
-✉️ = works before the email is verified. Every other ✅ route needs a verified email.
+✉️ = works before the email is verified. 🔑 = works while the user still has a temporary password. Every other signed-in route needs a verified email and a password the user chose. 🛡️ = owner and admins only. 👑 = owner only. Others get `403`.
 
 ## Cross-cutting behaviour
 
@@ -52,7 +64,10 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | ------ | ---- |
 | `400` | Body isn't valid JSON (`"invalid request body"`), the body is over 64 KiB, a path ID isn't an integer (`"invalid profile ID"`), or validation failed |
 | `401` | `/api/me/*` without a cookie (`"not signed in"`), with an invalid or expired token, or with a token from before a password change or reset (`"session expired, please sign in again"`) |
-| `403` | `/api/me/*` (except the ✉️ routes) while the email isn't verified: `{"error":"verify your email to continue","code":"email_unverified"}` |
+| `401` | A suspended account: `{"error":"this account is suspended; contact your organisation","code":"account_suspended"}`. Suspending also ends existing sessions, which then get `"session expired, please sign in again"` |
+| `403` | Signed-in routes (except the ✉️ routes) while the email isn't verified: `{"error":"verify your email to continue","code":"email_unverified"}` |
+| `403` | Signed-in routes (except ✉️ and 🔑) while the user still has the temporary password their organisation set: `{"error":"choose a new password to continue","code":"password_change_required"}` |
+| `403` | A 🛡️ or 👑 route called by someone without that role: `"only your organisation's admins can do this"` or `"only your organisation's owner can do this"` |
 | `403` | A `POST`/`PUT`/`DELETE` whose `Origin` header names a different host (`"cross-origin request rejected"`). Requests without `Origin`, such as curl, are allowed |
 | `429` | Rate limit exceeded (`"too many requests, please try again shortly"`), with a `Retry-After: <seconds>` header |
 | `500` | Unexpected server error (`"internal error"` or a specific "failed to …" message) |
@@ -67,10 +82,18 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 ### User
 
 ```json
-{ "id": 1, "username": "faiz", "email": "faiz@example.com", "email_verified": true }
+{
+  "id": 1,
+  "username": "faiz",
+  "email": "faiz@example.com",
+  "email_verified": true,
+  "role": "owner",
+  "org_name": "Acme",
+  "must_change_password": false
+}
 ```
 
-`email` is `null` only for accounts created before emails were required; they must add and verify one before using the app.
+`email` is `null` only for accounts created before emails were required; they must add and verify one before using the app. `role` is `owner`, `admin` or `member`. `must_change_password` is `true` while the user still has a temporary password their organisation set.
 
 **Email codes.** Verification and password-reset codes are 6 digits, valid for 15 minutes, and allow 5 guesses, after which a new code is needed. A new code can be requested once every 60 seconds; requesting one replaces the previous code. Codes are stored only as an HMAC.
 
@@ -80,6 +103,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 {
   "id": 42,
   "user_id": 1,
+  "assigned_user": { "id": 24, "username": "jane" },
   "slug": "faiz",
   "data": { "name": "Faiz", "title": "Engineer", "links": [] },
   "created_at": "2026-10-03T12:00:00Z",
@@ -88,7 +112,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 }
 ```
 
-`lead_count` is only filled in by `GET /api/me/profiles`. Every other endpoint returns `0`.
+`user_id` is the account that created the card. `assigned_user` is the one user who works on it, or `null` when the organisation holds it. `lead_count` counts every lead for admins, and only the member's own leads for members.
 
 ### PublicProfile (visitor view)
 
@@ -101,13 +125,15 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 }
 ```
 
-The owner's ID and the timestamps are left out on purpose. `files` lists only the library files the card itself references (`data.avatar_file`, `data.cover_file` and `data.documents[].file`) that the owner still has. Nothing else from the owner's library is revealed.
+The owner's ID and the timestamps are left out on purpose. `files` lists only the library files the card itself references (`data.avatar_file`, `data.cover_file` and `data.documents[].file`) that the card's organisation still has. Nothing else from the organisation's files is revealed.
 
 ### File
 
 ```json
 {
   "id": "r749f-c4WN5WAPhaxOzysg",
+  "area": "personal",
+  "owner": { "id": 24, "username": "jane" },
   "kind": "pdf",
   "content_type": "application/pdf",
   "size_bytes": 411,
@@ -118,6 +144,14 @@ The owner's ID and the timestamps are left out on purpose. `files` lists only th
 ```
 
 `id` is a random 22-character public ID (128 bits), the only file identifier the API exposes. `kind` is `image` or `pdf`.
+
+`area` is one of:
+
+- `personal`: a user's own file. `owner` is that user. It counts toward their storage limit.
+- `org`: the organisation's private file, visible to admins and to members it's been granted to. `owner` is whoever uploaded it.
+- `shared`: visible to everyone in the organisation.
+
+`former_owner` (only present when set) is the username of a deleted user whose personal file this was.
 
 ### Lead
 
@@ -130,9 +164,12 @@ The owner's ID and the timestamps are left out on purpose. `files` lists only th
   "phone_country_code": "+91",
   "phone_number": "9876543210",
   "notes": "Great talk!",
-  "created_at": "2026-10-03T12:10:00Z"
+  "created_at": "2026-10-03T12:10:00Z",
+  "assigned_user": { "id": 24, "username": "jane" }
 }
 ```
+
+`assigned_user` is who held the card when the lead arrived (`null`: the organisation). Leads stay with that person when the card is reassigned.
 
 `phone_country_code` and `phone_number` are left out when the visitor didn't give a number. Both are digits only (the dial code keeps its `+`).
 
@@ -154,12 +191,12 @@ Returns `200` with the plain-text body `OK`. It doesn't touch the database.
 
 ### `POST /auth/register`
 
-Creates an account, emails a verification code, and signs it in. Until the email is verified, only the ✉️ routes work.
+Creates an organisation with this account as its owner, emails a verification code, and signs it in. Until the email is verified, only the ✉️ routes work.
 
 **Request**
 
 ```json
-{ "username": "faiz", "email": "faiz@example.com", "password": "correct horse battery" }
+{ "username": "faiz", "email": "faiz@example.com", "password": "correct horse battery", "organization": "Acme" }
 ```
 
 | Field | Rules |
@@ -167,6 +204,7 @@ Creates an account, emails a verification code, and signs it in. Until the email
 | `username` | Trimmed. 3–32 chars of `[a-zA-Z0-9_.-]`. Unique **case-insensitively** |
 | `email` | Trimmed and lower-cased. A bare address, at most 254 chars. Unique **case-insensitively** |
 | `password` | 8–72 bytes (bcrypt's limit) |
+| `organization` | Optional, at most 80 chars, no control characters. Defaults to the username; the owner can rename it later |
 
 **Responses**
 
@@ -192,6 +230,9 @@ Creates an account, emails a verification code, and signs it in. Until the email
 | ------ | ---- |
 | `200` | [`User`](#user). Sets the `fronko_session` cookie |
 | `401` | `"invalid username or password"`. The same message and similar timing whether or not the user exists |
+| `403` | `{"error":"this account is suspended; contact your organisation","code":"account_suspended"}`, only after a correct password |
+
+The first sign-in of a user the organisation created emails them a verification code (subject to the 60-second resend cooldown).
 
 ### `POST /auth/logout`
 
@@ -303,7 +344,9 @@ Switches the account to the address the code was sent to, already verified. The 
 { "current_password": "old password", "new_password": "new password" }
 ```
 
-Signs out every other session. This response sets a fresh `fronko_session` cookie, so the caller stays signed in.
+Signs out every other session. This response sets a fresh `fronko_session` cookie, so the caller stays signed in. It also clears `must_change_password`: a user replacing their organisation's temporary password sends it as `current_password`.
+
+Members and admins can't change their email (`PUT /api/me/email`, `POST /api/me/email/change` and its confirm return `403` `"your email is managed by your organisation; ask them to change it"`). An admin corrects it with [`PATCH /api/org/users/{id}`](#patch-apiorgusersid) while it's unverified.
 
 | Status | Body |
 | ------ | ---- |
@@ -312,9 +355,9 @@ Signs out every other session. This response sets a fresh `fronko_session` cooki
 
 ---
 
-## Profiles (owner) 🔒
+## Profiles 🔒
 
-Every endpoint in this section needs a session, and the caller can only act on profiles they own. **Another user's profile returns `404`, the same as a missing one.**
+Cards belong to the organisation. Owners and admins can act on every card in it; members only on cards assigned to them. **A card outside what the caller can see returns `404`, the same as a missing one.**
 
 ### Slug rules
 
@@ -324,7 +367,7 @@ Breaking either rule returns `400` with `"slug must be 3-48 characters: lowercas
 
 ### `GET /api/me/profiles`
 
-Lists the caller's profiles, newest first, each with its `lead_count`.
+Lists the cards the caller can see, newest first, each with its `lead_count` and `assigned_user`.
 
 **Response:** `200`, an array of [`Profile`](#profile-owner-view). It's `[]` when there are none, never `null`.
 
@@ -333,15 +376,15 @@ Lists the caller's profiles, newest first, each with its `lead_count`.
 **Request**
 
 ```json
-{ "slug": "faiz", "data": { "name": "Faiz" } }
+{ "slug": "faiz", "data": { "name": "Faiz" }, "assigned_user_id": 24 }
 ```
 
-`data` is optional and defaults to `{}`.
+Owner and admins only. `data` is optional and defaults to `{}`. `assigned_user_id` is optional (`null`: the organisation holds the card).
 
 | Status | Body |
 | ------ | ---- |
 | `201` | The created [`Profile`](#profile-owner-view) |
-| `400` | Slug or data validation failed |
+| `400` | Slug or data validation failed, `"that user isn't in your organisation"`, or `"this card uses a file you don't have access to"` |
 | `409` | `"that slug is already taken"` |
 
 ### `GET /api/me/profiles/{id}`
@@ -360,15 +403,16 @@ Replaces both `slug` and `data`. This is a full update, not a patch: send the co
 | Status | Body |
 | ------ | ---- |
 | `200` | The updated [`Profile`](#profile-owner-view) |
-| `400` | Validation failed |
+| `400` | Validation failed, or `"this card uses a file you don't have access to"` (only checked for files the card didn't already use) |
+| `403` | A member sent a different slug: `"your organisation manages this card's link"` |
 | `404` | `"profile not found"` |
 | `409` | `"that slug is already taken"` |
 
-Changing a slug breaks every NFC card or QR code that points at the old URL.
+Changing a slug breaks every NFC card or QR code that points at the old URL, so only owners and admins can.
 
 ### `DELETE /api/me/profiles/{id}`
 
-Deletes the profile and, through the `ON DELETE CASCADE` foreign key, all of its leads.
+Owner and admins only. Deletes the card and, through the `ON DELETE CASCADE` foreign key, all of its leads.
 
 | Status | Body |
 | ------ | ---- |
@@ -386,13 +430,14 @@ Lists **all** of a profile's leads, newest first, with no pagination. The web ap
 
 ### `GET /api/me/leads`
 
-Returns one page of leads across all of the caller's profiles, newest first (ties broken by newest ID). The web app's Leads page, the editor's Leads tab and the overview all use it.
+Returns one page of the leads the caller can see, newest first (ties broken by newest ID): every lead on the organisation's cards for owners and admins, and for members only the leads that arrived while they held the card (including cards since reassigned). The web app's Leads page, the editor's Leads tab and the overview all use it.
 
 **Query parameters** (all optional)
 
 | Param | Default | Rules |
 | ----- | ------- | ----- |
-| `profile_id` | none | Only this profile's leads. Another user's profile ID returns an empty page, never their leads |
+| `profile_id` | none | Only this card's leads. A card outside the caller's view returns an empty page, never its leads |
+| `user_id` | none | Owner and admins only (`403` otherwise). Leads that arrived while this user held the card, or `none` for those that arrived while the organisation held it |
 | `q` | none | Trimmed, at most 100 chars. Case-insensitive substring match on name, email, phone number or notes. `%` and `_` match literally |
 | `since` | none | RFC 3339 timestamp (`2026-10-01T00:00:00Z`). Only leads received at or after it |
 | `page` | `1` | 1-based |
@@ -413,13 +458,13 @@ Returns one page of leads across all of the caller's profiles, newest first (tie
 
 | Status | Body |
 | ------ | ---- |
-| `400` | `"invalid page"`, `"invalid page_size"`, `"invalid profile_id"`, `"search is too long"` or `"since must be an RFC 3339 timestamp"` |
+| `400` | `"invalid page"`, `"invalid page_size"`, `"invalid profile_id"`, `"invalid user_id"`, `"search is too long"` or `"since must be an RFC 3339 timestamp"` |
 
 ---
 
 ## Storage 🔒
 
-Each user connects **their own** S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3, MinIO, ...). Uploaded photos and PDFs live there; the bucket can stay private.
+The organisation's **owner** connects their own S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3, MinIO, ...), and everyone in the organisation uploads to it. Uploaded photos and PDFs live there; the bucket can stay private. Only the owner can change the settings (`PUT`, `POST …/test` and `DELETE` are 👑).
 
 - Every endpoint here returns **503** `"file storage is not enabled on this server"` when the server has no `SECRETS_KEY`.
 - Keys are **write-only**. They're encrypted before storage and never returned. `access_key_hint` (the last 4 characters of the key ID) is the only trace you get back.
@@ -430,6 +475,8 @@ Each user connects **their own** S3-compatible bucket (Cloudflare R2, Backblaze 
 {
   "enabled": true,
   "configured": true,
+  "used_bytes": 0,
+  "quota_bytes": null,
   "provider": "r2",
   "endpoint": "https://abc123.r2.cloudflarestorage.com",
   "region": "auto",
@@ -441,7 +488,9 @@ Each user connects **their own** S3-compatible bucket (Cloudflare R2, Backblaze 
 }
 ```
 
-When nothing is connected, it returns `{"enabled": true, "configured": false, "path_style": false, "file_count": 0}`.
+`used_bytes` and `quota_bytes` describe the caller's own personal files against their limit (`null`: unlimited). Only the owner gets the bucket details and `file_count` (every file in the organisation). Admins and members get just `enabled`, `configured`, `used_bytes` and `quota_bytes`, so they know whether uploads work.
+
+When nothing is connected, `configured` is `false` and the bucket fields are left out.
 
 ### `PUT /api/me/storage`
 
@@ -488,13 +537,22 @@ Deletes the saved keys (`204`). Nothing is removed from the bucket, but files ca
 
 ### `GET /api/me/files`
 
-Paginated library, newest first. Query: `kind` (`image` or `pdf`, optional), `page` (1-based) and `page_size` (default 24, max 100).
+Paginated files the caller can see, newest first. Owners and admins see every file in the organisation. Members see their personal files, the shared area, and files granted to them.
+
+| Param | Rules |
+| ----- | ----- |
+| `kind` | `image` or `pdf` |
+| `area` | `personal`, `org`, `shared`, or `granted` (files granted to the caller, or for admins to `user_id`) |
+| `user_id` | Owner and admins only (`403` otherwise): one user's files |
+| `page`, `page_size` | 1-based; default 24, max 100 |
 
 **Response:** `200 {"files": [File], "total": 5, "page": 1, "page_size": 24}`
 
 ### `POST /api/me/files`
 
-`multipart/form-data` with a `file` part and an optional `title` part (up to 120 chars). Rate limited per IP: burst of 10, then 1 every 6s.
+`multipart/form-data` with a `file` part, an optional `title` part (up to 120 chars) and an optional `area` part. Rate limited per IP: burst of 10, then 1 every 6s.
+
+Members always upload to `personal` (any other `area` is `403`), and those files count toward their storage limit. Owners and admins upload to `org` (the default) or `shared`.
 
 The type is decided by **sniffing the bytes**, never from the file name or the client's `Content-Type`:
 
@@ -503,26 +561,134 @@ The type is decided by **sniffing the bytes**, never from the file name or the c
 | JPEG, PNG, WebP images | 5 MB |
 | PDF | 20 MB |
 
-The object is written to the user's bucket as `fronko/<user_id>/<file id>.<ext>`.
+The object is written to the organisation's bucket as `fronko/<org_id>/<user_id>/<file id>.<ext>`.
 
 | Status | Body |
 | ------ | ---- |
 | `201` | [`File`](#file) |
+| `403` | A member tried to upload outside their personal files |
 | `409` | `"connect your storage in Settings first"` |
-| `413` | Over the size limit. Requests over 25 MB are stopped by nginx first |
+| `413` | Over the size limit (requests over 25 MB are stopped by nginx first), or `"you've reached your storage limit; …"`. The limit is checked again under a row lock when the file is recorded, so concurrent uploads can't overshoot |
 | `415` | `"only JPEG, PNG or WebP images and PDF files can be uploaded"` |
 | `502` | `"couldn't save to your storage: <reason>"` |
 
 ### `PATCH /api/me/files/{id}`
 
-`{"title": "Spring price list"}`. Returns the updated [`File`](#file), or `404` for a file you don't own.
+`{"title": "Spring price list"}`. Returns the updated [`File`](#file). Members can only rename their own personal files; owners and admins any file in the organisation. Anything else is `404`.
 
 ### `DELETE /api/me/files/{id}`
 
-Deletes the object from the bucket, then the library entry (`204`).
+Deletes the object from the bucket, then the library entry (`204`). The same rules as renaming decide who can delete what.
 - If the bucket refuses the delete, you get `502` and the entry is kept, so you can retry.
 - If storage was disconnected, only the entry is removed.
 - Cards that used the file stop showing it.
+
+---
+
+## Organisation 🔒 🛡️
+
+Owner and admins only (`403` for members). Admins manage members; only the owner can create admins, change roles, or manage an admin's account. Nobody manages the owner, or themselves, here (use Settings).
+
+### `GET /api/org`
+
+```json
+{ "id": 9, "name": "Acme", "default_quota_bytes": 524288000, "created_at": "…", "updated_at": "…" }
+```
+
+`default_quota_bytes` is the storage limit new users start with (`null`: unlimited).
+
+### `PUT /api/org`
+
+👑 Owner only. `{"name": "Acme", "default_quota_bytes": null}`. Both fields are sent; the name is 1–80 chars without control characters (it appears in emails) and the limit 0 to 1 TB or `null`. Returns the organisation.
+
+### `GET /api/org/users`
+
+Everyone in the organisation (owner first, then admins, then members, by username), each an **OrgUser**:
+
+```json
+{
+  "id": 24,
+  "role": "member",
+  "username": "jane",
+  "email": "jane@example.com",
+  "email_verified_at": "2026-10-04T20:25:24Z",
+  "must_change_password": false,
+  "storage_quota_bytes": 1048576,
+  "suspended_at": null,
+  "last_login_at": "2026-10-04T20:30:00Z",
+  "created_at": "2026-10-04T19:54:00Z",
+  "updated_at": "2026-10-04T20:25:24Z",
+  "card_count": 1,
+  "lead_count": 12,
+  "used_bytes": 700009
+}
+```
+
+`lead_count` counts leads that arrived while they held a card; `used_bytes` is the size of their personal files.
+
+### `POST /api/org/users`
+
+```json
+{ "username": "jane", "email": "jane@example.com", "password": "temporary-pass", "role": "member", "quota_bytes": 1048576 }
+```
+
+Creates a user with a temporary password and emails them their username and that temporary password ("<org> added you to Fronko"). On first sign-in they verify their email (a code is sent then), then must choose their own password before anything else works, so the emailed password stops working as soon as they've set up the account.
+
+| Field | Rules |
+| ----- | ----- |
+| `username`, `email`, `password` | As for [register](#post-authregister) |
+| `role` | `member` (default) or `admin`. Only the owner can create admins |
+| `quota_bytes` | Optional. Omitted: the organisation's default. `null`: unlimited |
+
+| Status | Body |
+| ------ | ---- |
+| `201` | OrgUser |
+| `400` | Validation failed |
+| `403` | `"only the owner can add admins"` |
+| `409` | `"username already taken"` or `"an account with this email already exists"` |
+
+### `GET /api/org/users/{id}`
+
+One OrgUser, or `404` for anyone outside the organisation.
+
+### `PATCH /api/org/users/{id}`
+
+Every field is optional:
+
+```json
+{ "email": "jane@example.org", "quota_bytes": null, "role": "admin", "suspended": true }
+```
+
+- `email`: only while the user hasn't verified it (`409` after). A new code goes to the new address.
+- `quota_bytes`: a new limit, or `null` for unlimited. Lowering it below current usage only stops new uploads.
+- `role`: `member` or `admin`; owner only.
+- `suspended`: `true` blocks sign-in and ends their sessions at once; their cards stay live and keep collecting leads. `false` restores the account.
+
+Returns the updated OrgUser. `400` `"manage your own account in Settings"` when targeting yourself; `403` when targeting the owner, or an admin as a non-owner.
+
+### `POST /api/org/users/{id}/password`
+
+`{"password": "new-temporary"}`. Sets a new temporary password, signs the user out everywhere, and makes them choose their own on next sign-in. Returns the OrgUser. This one isn't emailed; the admin passes it on.
+
+### `DELETE /api/org/users/{id}`
+
+Deletes the user (`204`) without losing their work, in one transaction:
+
+- Their cards become unassigned. Leads they collected stay on the cards, as the organisation's.
+- Their personal files move to the `org` area with `former_owner` set to their username, so cards using them keep working. Other files they uploaded, and cards they created, pass to the owner.
+- Grants to them are removed.
+
+### `PUT /api/org/profiles/{id}/assignee`
+
+`{"user_id": 24}` assigns the card to that user; `{"user_id": null}` returns it to the organisation. Past leads stay with whoever held the card when they arrived. Returns the [`Profile`](#profile-owner-view); `400` `"that user isn't in your organisation"`.
+
+### `GET /api/org/files/{id}/grants`
+
+`{"users": [{"id": 24, "username": "jane"}]}`: the users a file has been granted to, beyond everyone who sees it anyway. Shared files can't have grants (`400`).
+
+### `PUT /api/org/files/{id}/grants`
+
+`{"user_ids": [24, 31]}` replaces the list (`[]` revokes all). IDs outside the organisation are ignored. Returns the new list. A card that already uses a file keeps showing it after access is revoked, until someone removes it from the card.
 
 ---
 

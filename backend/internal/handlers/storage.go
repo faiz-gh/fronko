@@ -64,13 +64,14 @@ func (s *StorageService) credentials(settings *models.StorageSettings) (accessKe
 	return string(id), string(secret), nil
 }
 
-// StoreFor returns a client for the user's bucket. bucket overrides the
-// configured one, e.g. for a file uploaded before the user switched buckets.
-func (s *StorageService) StoreFor(ctx context.Context, userID int64, bucket string) (storage.Store, error) {
+// StoreFor returns a client for the organisation's bucket (the one its owner
+// connected). bucket overrides the configured one, e.g. for a file uploaded
+// before the owner switched buckets.
+func (s *StorageService) StoreFor(ctx context.Context, orgID int64, bucket string) (storage.Store, error) {
 	if !s.Enabled() {
 		return nil, errStorageDisabled
 	}
-	settings, err := s.repo.GetStorageSettings(ctx, userID)
+	settings, err := s.repo.GetOrgStorageSettings(ctx, orgID)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, errStorageNotConfigured
 	}
@@ -98,10 +99,14 @@ func NewStorageHandler(svc *StorageService) *StorageHandler {
 	return &StorageHandler{svc: svc}
 }
 
-// storageView is what the settings page sees. It never includes key material.
+// storageView is what the settings page sees. It never includes key material,
+// and only the owner gets the bucket details.
 type storageView struct {
-	Enabled       bool       `json:"enabled"`
-	Configured    bool       `json:"configured"`
+	Enabled    bool `json:"enabled"`
+	Configured bool `json:"configured"`
+	// The signed-in user's personal files against their limit (nil: unlimited).
+	UsedBytes     int64      `json:"used_bytes"`
+	QuotaBytes    *int64     `json:"quota_bytes"`
 	Provider      string     `json:"provider,omitempty"`
 	Endpoint      string     `json:"endpoint,omitempty"`
 	Region        string     `json:"region,omitempty"`
@@ -130,31 +135,43 @@ func (h *StorageHandler) disabled(w http.ResponseWriter) bool {
 	return true
 }
 
-func (h *StorageHandler) view(ctx context.Context, userID int64) (storageView, error) {
+func (h *StorageHandler) view(ctx context.Context, p middleware.Principal) (storageView, error) {
 	v := storageView{Enabled: h.svc.Enabled()}
 	if !v.Enabled {
 		return v, nil
 	}
-	settings, err := h.svc.repo.GetStorageSettings(ctx, userID)
+	user, err := h.svc.repo.GetUserByID(ctx, p.UserID)
+	if err != nil {
+		return v, err
+	}
+	v.QuotaBytes = user.StorageQuotaBytes
+	if v.UsedBytes, err = h.svc.repo.UsedBytes(ctx, p.UserID); err != nil {
+		return v, err
+	}
+	settings, err := h.svc.repo.GetOrgStorageSettings(ctx, p.OrgID)
 	if errors.Is(err, repository.ErrNotFound) {
 		return v, nil
 	}
 	if err != nil {
 		return v, err
 	}
-	count, err := h.svc.repo.CountFilesForUser(ctx, userID)
+	v.Configured = true
+	if !p.IsOwner() {
+		return v, nil
+	}
+	count, err := h.svc.repo.CountFilesForOrg(ctx, p.OrgID)
 	if err != nil {
 		return v, err
 	}
-	v.Configured = true
 	v.Provider, v.Endpoint, v.Region, v.Bucket = settings.Provider, settings.Endpoint, settings.Region, settings.Bucket
 	v.PathStyle, v.AccessKeyHint, v.VerifiedAt, v.FileCount = settings.PathStyle, settings.AccessKeyHint, settings.VerifiedAt, count
 	return v, nil
 }
 
-// Protected: GET /api/me/storage
+// Protected: GET /api/me/storage. Everyone learns whether uploads work and
+// their own usage; only the owner sees the bucket settings.
 func (h *StorageHandler) Get(w http.ResponseWriter, r *http.Request) {
-	v, err := h.view(r.Context(), middleware.UserID(r.Context()))
+	v, err := h.view(r.Context(), middleware.PrincipalFrom(r.Context()))
 	if err != nil {
 		log.Printf("get storage: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -236,7 +253,7 @@ func (h *StorageHandler) probe(ctx context.Context, userID int64, cfg storage.Co
 	return ""
 }
 
-// Protected: POST /api/me/storage/test. Checks settings without saving them.
+// Protected (owner): POST /api/me/storage/test. Checks settings without saving them.
 func (h *StorageHandler) Test(w http.ResponseWriter, r *http.Request) {
 	if h.disabled(w) {
 		return
@@ -257,7 +274,7 @@ func (h *StorageHandler) Test(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// Protected: PUT /api/me/storage. Only saves settings that pass a live check.
+// Protected (owner): PUT /api/me/storage. Only saves settings that pass a live check.
 func (h *StorageHandler) Put(w http.ResponseWriter, r *http.Request) {
 	if h.disabled(w) {
 		return
@@ -305,7 +322,7 @@ func (h *StorageHandler) Put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	v, err := h.view(r.Context(), userID)
+	v, err := h.view(r.Context(), middleware.PrincipalFrom(r.Context()))
 	if err != nil {
 		log.Printf("get storage: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -314,8 +331,9 @@ func (h *StorageHandler) Put(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, v)
 }
 
-// Protected: DELETE /api/me/storage. Forgets the keys; files already in the
+// Protected (owner): DELETE /api/me/storage. Forgets the keys; files already in the
 // bucket stay there, but can't be shown until storage is connected again.
+// The keys are stored against the owner, who is the only one allowed here.
 func (h *StorageHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if h.disabled(w) {
 		return

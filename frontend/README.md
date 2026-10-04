@@ -83,12 +83,13 @@ frontend/
 │   ├── app.html                   # HTML shell
 │   ├── lib/
 │   │   ├── api/
-│   │   │   ├── client.ts          # fetch wrapper, ApiError, 401 and email_unverified handling
+│   │   │   ├── client.ts          # fetch wrapper, ApiError, 401, email_unverified and password_change_required handling
 │   │   │   ├── auth.ts            # login / register / logout / me, email verify + change, password reset + change
 │   │   │   ├── profile.ts         # profile CRUD + public lookup
 │   │   │   ├── lead.ts            # submit / list leads
 │   │   │   ├── storage.ts         # bucket connection settings
-│   │   │   └── files.ts           # file library, uploadFile() with progress, fileUrl()
+│   │   │   ├── files.ts           # files by area, uploadFile() with progress, fileUrl()
+│   │   │   └── org.ts             # organisation, users, card assignment, file grants
 │   │   ├── card/card.ts           # CardData model, normalization, URL safety, vCard, brand detection
 │   │   ├── card/qr.ts             # Lazy-loaded QR generation and PNG/SVG downloads
 │   │   ├── phone.ts               # Country list, dial codes, formatting, validation, legacy phone parsing
@@ -98,7 +99,9 @@ frontend/
 │   │   │   └── ui/                # shadcn-svelte primitives (generated, see Conventions)
 │   │   ├── session.svelte.ts      # Global reactive session store
 │   │   ├── cooldown.svelte.ts     # Resend countdown for emailed codes (RESEND_COOLDOWN_SECONDS = 60)
-│   │   ├── cards.svelte.ts        # The user's cards, shared by the sidebar and dashboard pages
+│   │   ├── cards.svelte.ts        # The cards the user can see, shared by the sidebar and dashboard pages
+│   │   ├── org-users.svelte.ts    # Everyone in the organisation (admins), for pickers, filters and Users
+│   │   ├── password.ts            # Temporary password generator and copyable sign-in details
 │   │   ├── storage.svelte.ts      # Storage connection status (storage.ready), shared by Files/Settings/editor
 │   │   ├── format.ts              # timeAgo(), formatDateTime(), plural()
 │   │   ├── utils.ts               # cn() class merger + shadcn type helpers
@@ -110,11 +113,15 @@ frontend/
 │       ├── login/+page.svelte
 │       ├── verify-email/+page.svelte    # Enter the emailed code; add or correct the email
 │       ├── forgot-password/+page.svelte # Request a reset code, then set a new password
+│       ├── set-password/+page.svelte    # Replace the organisation's temporary password (first sign-in)
 │       ├── dashboard/
 │       │   ├── +layout.svelte     # Auth guard + app shell (sidebar / mobile drawer)
-│       │   ├── +page.svelte       # Overview: stats, cards grid, recent leads
-│       │   ├── leads/+page.svelte # All leads: card filter, search, pagination, export
-│       │   ├── files/+page.svelte # File library: upload, browse, rename, delete
+│       │   ├── +page.svelte       # Overview: org (setup, needs attention, team) or member (their cards), recent leads
+│       │   ├── leads/+page.svelte # All leads: card and user filters, search, pagination, export
+│       │   ├── cards/+page.svelte # Admins: every card, assign to users, filter by user
+│       │   ├── users/+page.svelte # Admins: the team, with status, totals and storage
+│       │   ├── users/[id]/+page.svelte # Admins: one user: cards, storage limit, granted files, reset, suspend, delete
+│       │   ├── files/+page.svelte # Files by area: upload, browse, rename, delete, manage access
 │       │   ├── settings/+page.svelte # Account (email change), password, storage connection (S3 keys)
 │       │   └── [id]/+page.svelte  # Card editor + leads
 │       └── p/[slug]/+page.svelte  # Public card
@@ -137,16 +144,35 @@ frontend/
 | `/login` | Public | Sign in (username or email, with a "Forgot password?" link) and register (username, email, password) tabs. Query params: `mode=register` opens the register tab, `next=/path` sets where to go afterwards (only same-site relative paths are followed), `expired=1` shows a "session expired" notice and `reset=1` a "password updated" one. Unverified accounts go to `/verify-email` after signing in |
 | `/verify-email` | Signed in, unverified | Six-slot code input (paste fills it, submits when complete), resend with a countdown, "Change email", and sign out. Accounts without an email start with an "Add your email" form. Verified users are sent on to `next` |
 | `/forgot-password` | Public | Step 1: email → always "if an account exists, we've sent a code". Step 2: code, new password and confirmation → `/login?reset=1` |
-| `/dashboard` | Signed in | Overview: stats (cards, leads all time, leads in the last 7 days), a grid of cards with copy link, QR code and delete actions, and the latest leads across all cards |
+| `/set-password` | Signed in, on a temporary password | Replace the password the organisation set (temporary, new, confirm). Then on to `next` |
+| `/dashboard` | Signed in | Overview. **Admins:** stats (team, cards, leads all time, last 7 days), a setup checklist until the organisation is set up, "Needs attention" (unassigned cards, people still setting up), the team by leads, and recent leads tagged with their user. **Members:** stats, their cards, and their recent leads; a waiting state until a card is assigned |
+| `/dashboard/cards` | Admins | Every card in the organisation, with an inline assignee picker on each, a user filter (`?user=ID\|none`) and search |
+| `/dashboard/users` | Admins | The team: status (active, hasn't verified email, hasn't set a password, suspended), cards, leads, storage and last sign-in. "New user" opens `CreateUserDialog` |
+| `/dashboard/users/{id}` | Admins | One user: assign or unassign cards, storage limit, files granted to them, correct an unverified email, reset password, suspend or restore, make admin (owner), delete |
 | `/dashboard/leads` | Signed in | Every lead across your cards. Filter by card (`?card=ID`, kept in the URL so it can be linked to), search (name, email, phone or message), page size and pages, a Refresh button that refetches leads and lead counts without reloading the page, and CSV export of everything that matches (including phone). Clicking a lead's card filters to that card |
 | `/dashboard/files` | Signed in | The shared **file library**: drag-and-drop upload with progress, Photos/PDFs tabs, thumbnails, inline rename, "Used on" (which cards use each file), delete with a usage warning, pagination. Shows a "Connect storage" state until a bucket is connected |
 | `/dashboard/settings` | Signed in | **Account**: username and email (with a Verified badge). **Change** opens `ChangeEmailForm`: new address + current password → a code sent to the new address → confirm; resend has a countdown, and the current email stays until confirmed. **Password**: current, new and confirm; changing it signs out every other session and keeps this one. **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
 | `/dashboard/{id}` | Signed in | Editor. The **Card** tab has sections for Profile (with photo and 3:1 cover, both cropped before upload), Contact (email, mobile with country picker, website, booking link), Links (add, reorder, remove), Appearance (accent, light/dark theme) and Sharing (public slug, lead collection). A sticky preview pane on the right switches between the card and its QR code; below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
 | `/p/{slug}` | Public | The visitor-facing card. "Save contact" downloads a `.vcf`, plus share (Web Share API, falling back to the clipboard), a "Book a meeting" button when a booking link is set, and a lead form (name, email, optional mobile number, message) when `collect_leads` is on |
 
-`/dashboard/+layout.svelte` acts as the auth guard. While the session check is pending it shows a spinner. If the check finds no session, it redirects to `/login?next=<current path>`; if the email isn't verified, to `/verify-email?next=<current path>`. Protected content never renders before the session is known.
+### Organisations and roles
 
-Once signed in, the layout renders the app shell. From 1024px up, a fixed sidebar (`AppSidebar`) lists the user's cards. Below that width, a top bar opens the same sidebar as a slide-in drawer. The layout also loads `cards` (see `cards.svelte.ts`) and mounts the global "New card" dialog, which anything can open with `cards.createOpen = true`. After a create, save or delete, call `cards.upsert()` or `cards.remove()` so the sidebar and overview stay in sync without refetching.
+Every account belongs to an organisation, and `session.role` is `owner`, `admin` or `member` (`session.isAdmin` covers owner and admin). The backend enforces every rule below; the UI just doesn't offer what would be refused.
+
+| | Owner | Admin | Member |
+| - | :-: | :-: | :-: |
+| Sidebar | Overview, Leads, Cards, Users, Files | same | Overview, Leads, Files, plus their cards |
+| Cards | create, delete, assign, edit all | same | edit their assigned cards, except the slug |
+| Leads | all, filter by user (`?user=ID\|none`) | same | leads that arrived while they held the card |
+| Files | Organisation, Shared, Users' files; manage access | same | My files (with a storage meter), Shared, Shared with me |
+| Users | create, edit, suspend, reset, delete, make admin | members only | none |
+| Settings | Organisation (name, default storage limit), Storage | org name (read only) | storage usage; email is managed by the org |
+
+Users the organisation creates are emailed their username and a temporary password. They sign in with it, verify their email (`/verify-email`, without "Change email"), then must choose a password on `/set-password` before the dashboard opens.
+
+`/dashboard/+layout.svelte` acts as the auth guard. While the session check is pending it shows a spinner. If the check finds no session, it redirects to `/login?next=<current path>`; if the email isn't verified, to `/verify-email?next=<current path>`; if the password is still the organisation's temporary one, to `/set-password?next=<current path>`. Protected content never renders before the session is known. Pages for admins only (Cards, Users) send members back to `/dashboard`.
+
+Once signed in, the layout renders the app shell. From 1024px up, a fixed sidebar (`AppSidebar`) shows the organisation, the navigation and, for members, their cards. Below that width, a top bar opens the same sidebar as a slide-in drawer. The layout also loads `cards` (see `cards.svelte.ts`), `storage` and, for admins, `orgUsers`, and mounts the global "New card" dialog, which anything can open with `cards.createOpen = true`. After a create, save or delete, call `cards.upsert()` or `cards.remove()` so the sidebar and overview stay in sync without refetching.
 
 ## How it talks to the backend
 
@@ -162,6 +188,7 @@ All requests go through `apiClient` in `src/lib/api/client.ts`:
   - A network failure throws with `status = 0` and a "Could not reach the server" message.
 - **Expired sessions.** A `401` from any `/api/me/*` call runs `session.expire()`, which sends the user to `/login?next=…&expired=1`. You can opt out per call with `{ redirectOnUnauthorized: false }`. `me()` does this, because a 401 there just means nobody is signed in. Changing or resetting the password elsewhere also ends up here, because it revokes older sessions.
 - **Unverified email.** A `403` with `code: "email_unverified"` runs `session.requireVerification()`, which sends the user to `/verify-email?next=…`.
+- **Temporary password.** A `403` with `code: "password_change_required"` runs `session.requirePasswordChange()`, which sends the user to `/set-password?next=…`.
 
 The typed wrappers are in `api/auth.ts`, `api/profile.ts` and `api/lead.ts`. Leads are always read through `listLeads()` (one page) or `listAllLeads()` (walks every page, for exports) against the paginated `GET /api/me/leads`. Each returns a `Promise` of the response type (`AuthUser`, `Profile`, `PublicProfile`, `Lead`).
 
@@ -175,11 +202,17 @@ The typed wrappers are in `api/auth.ts`, `api/profile.ts` and `api/lead.ts`. Lea
 | `username` | Signed-in username, or `null` |
 | `email` / `emailVerified` | The account's email (`null` for older accounts) and whether it's verified |
 | `isAuthenticated` | `status === 'authenticated'` |
+| `role` / `isAdmin` / `isOwner` | The user's role in their organisation |
+| `orgName` | The organisation's name |
+| `mustChangePassword` | Still on a temporary password the organisation set |
+| `ready` | Signed in, verified and not on a temporary password: the dashboard is open |
+| `nextStep(next)` | Where to go after signing in or verifying: `/verify-email`, `/set-password`, or `next` |
 | `load()` | Calls `GET /api/me/user` once per page load. The root layout calls it. Safe to call repeatedly |
 | `signIn(user)` | Called with the `AuthUser` from login, register or a verification call |
 | `signOut()` | `POST /auth/logout`, clears state, goes to `/login` |
 | `expire()` | Clears state and redirects to login, keeping the current path in `next` |
 | `requireVerification()` | Called when an API call answers `403 email_unverified`; sends the user to `/verify-email` |
+| `requirePasswordChange()` | Called when an API call answers `403 password_change_required`; sends the user to `/set-password` |
 
 The JWT itself is never visible to JavaScript, because it lives in an HttpOnly cookie. `load()` also deletes the legacy `jwt_token` and `username` keys from `localStorage` that older builds left behind.
 
@@ -237,17 +270,25 @@ App-specific components live in `src/lib/components/app/`:
 | Component | Props | Description |
 | --------- | ----- | ----------- |
 | `ProfileCard` | `card`, `slug`, `actions?` (snippet), `files?`, `class?` | Renders a card: a header in the accent colour (or the cover image with an accent stripe, and an accent ring around the avatar), avatar, quick actions (email, call, website), a "Book a meeting" button when `calendar_url` is set, bio and links. It uses a container query: stacked when narrow, two columns (identity left, links right) once its container is at least 42rem wide, as on the public page at desktop width. Shows a **Brochures** list. When `files` (metadata keyed by file id, from the public profile response) is given, it adds sizes and hides brochures whose file was deleted |
-| `FileDropzone` | `kind?`, `onuploaded?`, `compact?`, `multiple?`, `disabled?` | Drag-and-drop or click to upload, with per-file progress and inline errors. It checks type and size on the client for quick feedback; the server re-checks by sniffing |
-| `FilePickerDialog` | `open` (bindable), `kind`, `title`, `selected?`, `onselect` | Pick a photo or PDF from the library (paginated), or upload a new one inline. Used by the editor's Photo and Brochures fields |
+| `FileDropzone` | `kind?`, `area?`, `onuploaded?`, `compact?`, `multiple?`, `disabled?` | Drag-and-drop or click to upload, with per-file progress and inline errors. It checks type and size on the client for quick feedback; the server re-checks by sniffing |
+| `FilePickerDialog` | `open` (bindable), `kind`, `title`, `selected?`, `onselect` | Pick a photo or PDF from any file the user can see (filterable by area, paginated), or upload a new one inline. Used by the editor's Photo and Brochures fields |
 | `FileThumb` | `id`, `kind`, `class?` | Image thumbnail (lazy, via the file redirect) or a PDF tile |
-| `AppSidebar` | `onnavigate?` | Dashboard navigation: overview link, card list with lead counts, account menu |
-| `CreateCardDialog` | none (opened through `cards.createOpen`) | Name and slug form. Creates the card and opens the editor |
+| `AppSidebar` | `onnavigate?` | Organisation and role, role-based navigation (members also get their card list), account menu |
+| `CreateCardDialog` | none (opened through `cards.createOpen`) | Name, slug and optional assignee. Creates the card and opens the editor |
+| `CardTile` | `profile`, `onqr`, `ondelete?` | A card in a grid with copy link, QR and menu. Admins get an inline assignee picker |
+| `CreateUserDialog` | `open` (bindable), `oncreated?` | New user with a generated temporary password, storage limit and (owner) admin switch. The server emails the user their sign-in details; the dialog also shows them, copyable |
+| `UserPicker` | `value`, `onchange`, `filter?`, `allowNone?`, `allLabel?`, `noneLabel?`, `size?`, `disabled?` | Choose a user from `orgUsers`, the organisation (`'none'`), or everyone (`null`, filters only) |
+| `UserAvatar` | `username`, `class?` | Initials avatar for a user |
+| `StorageMeter` | `used`, `quota`, `compact?` | Used vs. limit bar; turns amber at 85% and red when full |
+| `QuotaInput` | `value` (bindable bytes or `null`), `id`, `disabled?` | Megabytes field with a "No limit" switch |
+| `FileAccessDialog` | `file` (bindable; set it to open) | Choose which members can see an organisation file or someone's personal file |
+| `RecentLeads` | `leads`, `total`, `showUser?`, `empty` | The overview's latest-leads panel |
 | `DeleteCardDialog` | `target` (bindable), `ondeleted?` | Confirms and deletes a card, then updates `cards` |
 | `FormSection` | `title`, `description?`, `id?` | Editor section. The heading sits beside the fields at 1536px and wider, above them otherwise |
 | `CardAvatar` | `card`, `fallback`, `class?` | Avatar using the card's photo or initials on its accent colour |
 | `QrCode` | `url`, `svg` (bindable), `class?` | Renders a QR code. `qrcode` is loaded the first time one is shown. Codes are always dark-on-white so they scan reliably |
 | `QrDialog` | `open` (bindable), `slug`, `name`, `dark?` | `QrCode` in a dialog, with SVG and 1024px PNG downloads and copy link |
-| `LeadsTable` | `profileId?`, `card?`, `oncardchange?`, `filename?` | Server-paginated leads table: card filter (unless locked with `profileId`), debounced search, a Refresh button (it also reloads the cards store so lead counts update), pagination and CSV export of every matching lead, including phone. A new filter or search goes back to page 1, and paging scrolls the table back into view. The Card column appears only when showing all cards |
+| `LeadsTable` | `profileId?`, `card?`, `oncardchange?`, `user?`, `onuserchange?`, `filename?` | Server-paginated leads table: card filter (unless locked with `profileId`), debounced search, a Refresh button (it also reloads the cards store so lead counts update), pagination and CSV export of every matching lead, including phone. A new filter or search goes back to page 1, and paging scrolls the table back into view. The Card column appears only when showing all cards. For admins it adds a user filter and a User column (who held the card when the lead arrived), also in the CSV |
 | `Pagination` | `page` (bindable), `pageSize` (bindable), `total`, `pageSizes?`, `disabled?` | "1–25 of 67", per-page menu, previous/next and page numbers with gaps (`1 … 4 5 6 … 12`) |
 | `CardFilter` | `value`, `onchange` | "All cards" or one card, with lead counts |
 | `BrandIcon` | `url`, `kind?` (`'link'` or `'calendar'`), `class?` | Brand icon for a social or booking URL, falling back to a generic link or calendar icon |

@@ -1,5 +1,8 @@
 import { apiClient } from './client';
 
+/** owner registered the organisation; admins help run it; members work on the cards assigned to them. */
+export type Role = 'owner' | 'admin' | 'member';
+
 /** The session token itself is set as an HttpOnly cookie and never exposed to scripts. */
 export interface AuthUser {
 	id: number;
@@ -7,6 +10,10 @@ export interface AuthUser {
 	/** Null only for accounts created before emails were required. */
 	email: string | null;
 	email_verified: boolean;
+	role: Role;
+	org_name: string;
+	/** Still using the temporary password the organisation set. */
+	must_change_password: boolean;
 }
 
 /** `identifier` is a username or an email address. */
@@ -17,10 +24,11 @@ export function login(identifier: string, password: string): Promise<AuthUser> {
 	});
 }
 
-export function register(username: string, email: string, password: string): Promise<AuthUser> {
+/** Creates an organisation (named `organization`, or after the username) with this account as its owner. */
+export function register(username: string, email: string, password: string, organization = ''): Promise<AuthUser> {
 	return apiClient<AuthUser>('/auth/register', {
 		method: 'POST',
-		body: JSON.stringify({ username, email, password })
+		body: JSON.stringify({ username, email, password, organization })
 	});
 }
 
@@ -59,7 +67,7 @@ export function resendVerification(): Promise<void> {
 	return apiClient<void>('/api/me/email/resend', { method: 'POST' });
 }
 
-/** Signs out every other session; this one stays signed in. */
+/** Signs out every other session; this one stays signed in. Also replaces an organisation-set temporary password. */
 export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
 	return apiClient<void>('/api/me/password', {
 		method: 'PUT',

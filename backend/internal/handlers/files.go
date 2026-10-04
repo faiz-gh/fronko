@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -138,18 +139,49 @@ func (h *FileHandler) writeStoreError(w http.ResponseWriter, err error) {
 	}
 }
 
-// Protected: GET /api/me/files?kind=&page=&page_size=
+// Protected: GET /api/me/files?kind=&area=&user_id=&page=&page_size=
+// Lists the files the caller can see. area is personal, org, shared or
+// granted (files granted to the caller, or for admins to user_id). user_id
+// (admins only) otherwise keeps one user's files.
 func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
-	kind := r.URL.Query().Get("kind")
-	if kind != "" && kind != "image" && kind != "pdf" {
+	scope := scopeOf(r)
+	query := r.URL.Query()
+	filter := repository.FileFilter{Kind: query.Get("kind")}
+	if filter.Kind != "" && filter.Kind != "image" && filter.Kind != "pdf" {
 		writeError(w, http.StatusBadRequest, "invalid kind")
+		return
+	}
+	var userID int64
+	if raw := query.Get("user_id"); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id < 1 {
+			writeError(w, http.StatusBadRequest, "invalid user_id")
+			return
+		}
+		if !scope.Admin {
+			writeError(w, http.StatusForbidden, "only your organisation's admins can filter by user")
+			return
+		}
+		userID = id
+	}
+	switch area := query.Get("area"); area {
+	case "", models.AreaPersonal, models.AreaOrg, models.AreaShared:
+		filter.Area, filter.UserID = area, userID
+	case "granted":
+		filter.GrantedTo = scope.UserID
+		if userID != 0 {
+			filter.GrantedTo = userID
+		}
+	default:
+		writeError(w, http.StatusBadRequest, "invalid area")
 		return
 	}
 	page, size, ok := pageParams(w, r, defaultFilePageLen, maxFilePageLen)
 	if !ok {
 		return
 	}
-	files, total, err := h.repo.ListFilesForUser(r.Context(), middleware.UserID(r.Context()), kind, size, (page-1)*size)
+	filter.Limit, filter.Offset = size, (page-1)*size
+	files, total, err := h.repo.ListFiles(r.Context(), scope, filter)
 	if err != nil {
 		log.Printf("list files: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -158,16 +190,19 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, FilePage{Files: files, Total: total, Page: page, PageSize: size})
 }
 
-// Protected: POST /api/me/files (multipart: "file", optional "title")
+// Protected: POST /api/me/files (multipart: "file", optional "title" and "area").
+// Members upload to their personal files, which count against their quota;
+// admins upload to the organisation's files (the default) or the shared area.
 func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserID(r.Context())
+	principal := middleware.PrincipalFrom(r.Context())
+	userID := principal.UserID
 
-	store, err := h.svc.StoreFor(r.Context(), userID, "")
+	store, err := h.svc.StoreFor(r.Context(), principal.OrgID, "")
 	if err != nil {
 		h.writeStoreError(w, err)
 		return
 	}
-	settings, err := h.repo.GetStorageSettings(r.Context(), userID)
+	settings, err := h.repo.GetOrgStorageSettings(r.Context(), principal.OrgID)
 	if err != nil {
 		h.writeStoreError(w, err)
 		return
@@ -186,7 +221,7 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var data []byte
-	var fileName, title string
+	var fileName, title, area string
 	for {
 		part, err := mr.NextPart()
 		if err == io.EOF {
@@ -217,6 +252,10 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			var raw []byte
 			raw, err = storage.ReadAllLimited(part, 4*maxFileTitleLen)
 			title = strings.TrimSpace(string(raw))
+		case "area":
+			var raw []byte
+			raw, err = storage.ReadAllLimited(part, 16)
+			area = strings.TrimSpace(string(raw))
 		default:
 			_, err = io.Copy(io.Discard, part)
 		}
@@ -231,6 +270,11 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 	if utf8.RuneCountInString(title) > maxFileTitleLen {
 		writeError(w, http.StatusBadRequest, "title is too long")
+		return
+	}
+	area, msg := uploadArea(principal, area)
+	if msg != "" {
+		writeError(w, http.StatusForbidden, msg)
 		return
 	}
 
@@ -251,9 +295,11 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 	file := &models.File{
 		PublicID:     publicID,
+		OrgID:        principal.OrgID,
 		UserID:       userID,
+		Area:         area,
 		Bucket:       settings.Bucket,
-		ObjectKey:    fmt.Sprintf("fronko/%d/%s.%s", userID, publicID, u.ext),
+		ObjectKey:    fmt.Sprintf("fronko/%d/%d/%s.%s", principal.OrgID, userID, publicID, u.ext),
 		Kind:         u.kind,
 		ContentType:  u.contentType,
 		SizeBytes:    int64(len(data)),
@@ -261,27 +307,80 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		Title:        title,
 	}
 
+	// Fail fast before uploading; CreateFile checks again under a lock.
+	if area == models.AreaPersonal && !h.fitsQuota(w, r, userID, file.SizeBytes) {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), storageOpTimeout)
 	defer cancel()
 	if err := store.Put(ctx, file.ObjectKey, file.ContentType, data); err != nil {
 		log.Printf("upload for user %d: %v", userID, err)
-		writeError(w, http.StatusBadGateway, "couldn't save to your storage: "+storage.Describe(err))
+		writeError(w, http.StatusBadGateway, "couldn't save to storage: "+storage.Describe(err))
 		return
 	}
 	if err := h.repo.CreateFile(r.Context(), file); err != nil {
-		log.Printf("create file: %v", err)
-		// Don't leave an object nobody can see in the user's bucket.
+		// Don't leave an object nobody can see in the bucket.
 		if delErr := store.Delete(context.WithoutCancel(r.Context()), file.ObjectKey); delErr != nil {
 			log.Printf("clean up orphaned object %s: %v", file.ObjectKey, delErr)
 		}
+		if errors.Is(err, repository.ErrQuotaExceeded) {
+			writeError(w, http.StatusRequestEntityTooLarge, errQuotaMessage)
+			return
+		}
+		log.Printf("create file: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to save file")
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, file)
+	saved, err := h.repo.GetFile(r.Context(), scopeOf(r), file.PublicID)
+	if err != nil {
+		log.Printf("reload file: %v", err)
+		saved = file
+	}
+	writeJSON(w, http.StatusCreated, saved)
 }
 
-// Protected: PATCH /api/me/files/{id}
+const errQuotaMessage = "you've reached your storage limit; delete some files or ask your organisation for more space"
+
+// uploadArea picks where an upload goes, returning a message if the user may not put it there.
+func uploadArea(p middleware.Principal, requested string) (string, string) {
+	if !p.IsAdmin() {
+		if requested != "" && requested != models.AreaPersonal {
+			return "", "only your organisation's admins can add organisation or shared files"
+		}
+		return models.AreaPersonal, ""
+	}
+	switch requested {
+	case "", models.AreaOrg:
+		return models.AreaOrg, ""
+	case models.AreaShared:
+		return models.AreaShared, ""
+	default:
+		return "", "admins upload to the organisation's files or the shared area"
+	}
+}
+
+// fitsQuota writes a 413 and returns false if size more bytes would take the
+// user past their storage limit.
+func (h *FileHandler) fitsQuota(w http.ResponseWriter, r *http.Request, userID, size int64) bool {
+	user, err := h.repo.GetUserByID(r.Context(), userID)
+	if err == nil && user.StorageQuotaBytes != nil {
+		var used int64
+		if used, err = h.repo.UsedBytes(r.Context(), userID); err == nil && used+size > *user.StorageQuotaBytes {
+			writeError(w, http.StatusRequestEntityTooLarge, errQuotaMessage)
+			return false
+		}
+	}
+	if err != nil {
+		log.Printf("check quota: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return false
+	}
+	return true
+}
+
+// Protected: PATCH /api/me/files/{id}. Members rename their own files; admins any in the organisation.
 func (h *FileHandler) Rename(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Title string `json:"title"`
@@ -294,7 +393,7 @@ func (h *FileHandler) Rename(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "title is too long")
 		return
 	}
-	file, err := h.repo.UpdateFileTitle(r.Context(), r.PathValue("id"), middleware.UserID(r.Context()), req.Title)
+	file, err := h.repo.UpdateFileTitle(r.Context(), scopeOf(r), r.PathValue("id"), req.Title)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "file not found")
@@ -307,10 +406,11 @@ func (h *FileHandler) Rename(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, file)
 }
 
-// Protected: DELETE /api/me/files/{id}. Removes the object from the bucket, then the record.
+// Protected: DELETE /api/me/files/{id}. Removes the object from the bucket,
+// then the record. Members delete their own files; admins any in the organisation.
 func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserID(r.Context())
-	file, err := h.repo.GetFileForUser(r.Context(), r.PathValue("id"), userID)
+	scope := scopeOf(r)
+	file, err := h.repo.GetEditableFile(r.Context(), scope, r.PathValue("id"))
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "file not found")
@@ -321,7 +421,7 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	store, err := h.svc.StoreFor(r.Context(), userID, file.Bucket)
+	store, err := h.svc.StoreFor(r.Context(), scope.OrgID, file.Bucket)
 	switch {
 	case err == nil:
 		ctx, cancel := context.WithTimeout(r.Context(), storageOpTimeout)
@@ -329,7 +429,7 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		// Keep the record if the object couldn't be removed, so the user can retry.
 		if err := store.Delete(ctx, file.ObjectKey); err != nil {
 			log.Printf("delete object %s: %v", file.ObjectKey, err)
-			writeError(w, http.StatusBadGateway, "couldn't delete from your storage: "+storage.Describe(err))
+			writeError(w, http.StatusBadGateway, "couldn't delete from storage: "+storage.Describe(err))
 			return
 		}
 	case errors.Is(err, errStorageNotConfigured), errors.Is(err, errStorageDisabled):
@@ -339,7 +439,7 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.DeleteFile(r.Context(), file.PublicID, userID); err != nil && !errors.Is(err, repository.ErrNotFound) {
+	if err := h.repo.DeleteFile(r.Context(), file.ID, scope.OrgID); err != nil && !errors.Is(err, repository.ErrNotFound) {
 		log.Printf("delete file: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -348,7 +448,7 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // Public: GET /api/files/{id}. Redirects to a short-lived signed URL in the
-// owner's private bucket.
+// organisation's private bucket.
 func (h *FileHandler) Serve(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !publicIDPattern.MatchString(id) || !h.svc.Enabled() {
@@ -363,7 +463,7 @@ func (h *FileHandler) Serve(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "file not found")
 		return
 	}
-	store, err := h.svc.StoreFor(r.Context(), file.UserID, file.Bucket)
+	store, err := h.svc.StoreFor(r.Context(), file.OrgID, file.Bucket)
 	if err != nil {
 		if !errors.Is(err, errStorageNotConfigured) {
 			log.Printf("serve file %s: %v", id, err)
@@ -389,6 +489,67 @@ func (h *FileHandler) Serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d", int(redirectMaxAge.Seconds())))
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	http.Redirect(w, r, url, http.StatusFound)
+}
+
+// Protected (admins): GET /api/org/files/{id}/grants. The users a file has
+// been granted to, on top of everyone who sees it anyway.
+func (h *FileHandler) Grants(w http.ResponseWriter, r *http.Request) {
+	file, ok := h.grantableFile(w, r)
+	if !ok {
+		return
+	}
+	users, err := h.repo.ListFileGrants(r.Context(), file.ID)
+	if err != nil {
+		log.Printf("list grants: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"users": users})
+}
+
+// Protected (admins): PUT /api/org/files/{id}/grants {"user_ids": [...]}.
+// Replaces the list of users the file is granted to.
+func (h *FileHandler) SetGrants(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserIDs []int64 `json:"user_ids"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if len(req.UserIDs) > 1000 {
+		writeError(w, http.StatusBadRequest, "too many users")
+		return
+	}
+	file, ok := h.grantableFile(w, r)
+	if !ok {
+		return
+	}
+	p := middleware.PrincipalFrom(r.Context())
+	if err := h.repo.ReplaceFileGrants(r.Context(), file.ID, p.OrgID, p.UserID, req.UserIDs); err != nil {
+		log.Printf("set grants: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.Grants(w, r)
+}
+
+// grantableFile loads a file whose access can be managed: any non-shared file in the organisation.
+func (h *FileHandler) grantableFile(w http.ResponseWriter, r *http.Request) (*models.File, bool) {
+	file, err := h.repo.GetFile(r.Context(), scopeOf(r), r.PathValue("id"))
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "file not found")
+			return nil, false
+		}
+		log.Printf("get file: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return nil, false
+	}
+	if file.Area == models.AreaShared {
+		writeError(w, http.StatusBadRequest, "everyone in your organisation can already see shared files")
+		return nil, false
+	}
+	return file, true
 }
 
 // referencedFileIDs pulls the file ids a card's data points at. The backend
