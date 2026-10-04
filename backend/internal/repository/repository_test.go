@@ -147,10 +147,12 @@ func TestRepositoryIntegration(t *testing.T) {
 
 		// Create Lead
 		lead1 := &models.Lead{
-			ProfileID: profile.ID,
-			Name:      "John Doe",
-			Email:     "john@example.com",
-			Notes:     "Interested in product",
+			ProfileID:        profile.ID,
+			Name:             "John Doe",
+			Email:            "john@example.com",
+			PhoneCountryCode: "+91",
+			PhoneNumber:      "9876543210",
+			Notes:            "Interested in product",
 		}
 		err := repo.CreateLead(ctx, lead1)
 		assert.NoError(t, err)
@@ -173,6 +175,22 @@ func TestRepositoryIntegration(t *testing.T) {
 		// Should be descending order by created_at
 		assert.Equal(t, lead2.ID, leads[0].ID)
 		assert.Equal(t, lead1.ID, leads[1].ID)
+		// The phone round-trips as two parts; a lead without one reads back empty.
+		assert.Equal(t, "+91", leads[1].PhoneCountryCode)
+		assert.Equal(t, "9876543210", leads[1].PhoneNumber)
+		assert.Empty(t, leads[0].PhoneCountryCode)
+		assert.Empty(t, leads[0].PhoneNumber)
+
+		// Search matches the phone number too
+		found, total, err := repo.ListLeadsForUser(ctx, user.ID, repository.LeadFilter{Search: "98765", Limit: 10})
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, total)
+		require.Len(t, found, 1)
+		assert.Equal(t, lead1.ID, found[0].ID)
+
+		// The check constraint rejects a half-filled or malformed phone
+		bad := &models.Lead{ProfileID: profile.ID, Name: "x", Email: "x@example.com", PhoneNumber: "98765 43210"}
+		assert.Error(t, repo.CreateLead(ctx, bad))
 
 		// Lead count is reported with the profile list
 		profiles, err := repo.GetProfilesByUserID(ctx, user.ID)

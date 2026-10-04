@@ -9,7 +9,7 @@ The Fronko web app is a Svelte 5 + SvelteKit single-page app that compiles to st
 - **Leads** (`/dashboard/leads`): all leads across cards, filtered by card, searchable, paginated and exportable.
 - **Files** (`/dashboard/files`): the photo and PDF library stored in the user's own S3 bucket.
 - **Settings** (`/dashboard/settings`): connect that bucket (R2, B2, AWS S3, MinIO).
-- **Public card** (`/p/{slug}`): the page an NFC tap or QR scan opens. Visitors can save the contact as a vCard, share it, show a QR code, or send their own details back as a lead.
+- **Public card** (`/p/{slug}`): the page an NFC tap or QR scan opens. Visitors can save the contact as a vCard, share it, book a meeting, or send their own details back as a lead.
 
 It talks to the [Go backend](../backend/README.md). The endpoints are listed in the [API reference](../backend/API.md).
 
@@ -111,9 +111,13 @@ frontend/
 │       │   ├── settings/+page.svelte # Storage connection (S3 keys)
 │       │   └── [id]/+page.svelte  # Card editor + leads
 │       └── p/[slug]/+page.svelte  # Public card
-├── static/robots.txt
+├── static/
+│   ├── robots.txt
+│   └── config.js                  # Runtime settings placeholder (overwritten in Docker)
+├── docker/
+│   ├── default.conf.template      # nginx server + API proxy (env-templated)
+│   └── 40-runtime-config.sh       # Writes config.js from API_URL at container start
 ├── components.json                # shadcn-svelte CLI config
-├── nginx.conf                     # Production server + API proxy
 ├── Dockerfile
 └── vite.config.ts
 ```
@@ -127,9 +131,9 @@ frontend/
 | `/dashboard` | Signed in | Overview: stats (cards, leads all time, leads in the last 7 days), a grid of cards with copy link, QR code and delete actions, and the latest leads across all cards |
 | `/dashboard/leads` | Signed in | Every lead across your cards. Filter by card (`?card=ID`, kept in the URL so it can be linked to), search, page size and pages, and CSV export of everything that matches. Clicking a lead's card filters to that card |
 | `/dashboard/files` | Signed in | The shared **file library**: drag-and-drop upload with progress, Photos/PDFs tabs, thumbnails, inline rename, "Used on" (which cards use each file), delete with a usage warning, pagination. Shows a "Connect storage" state until a bucket is connected |
-| `/dashboard/settings` | Signed in | **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
-| `/dashboard/{id}` | Signed in | Editor. The **Card** tab has sections for Profile, Contact, Links (add, reorder, remove), Appearance (accent, light/dark theme) and Sharing (public slug, lead collection). A sticky preview pane on the right switches between the card and its QR code; below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
-| `/p/{slug}` | Public | The visitor-facing card. "Save contact" downloads a `.vcf`, plus share (Web Share API, falling back to the clipboard), a QR code, and a lead form when `collect_leads` is on |
+| `/dashboard/settings` | Signed in | **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
+| `/dashboard/{id}` | Signed in | Editor. The **Card** tab has sections for Profile (with photo and 3:1 cover, both cropped before upload), Contact (email, mobile with country picker, website, booking link), Links (add, reorder, remove), Appearance (accent, light/dark theme) and Sharing (public slug, lead collection). A sticky preview pane on the right switches between the card and its QR code; below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
+| `/p/{slug}` | Public | The visitor-facing card. "Save contact" downloads a `.vcf`, plus share (Web Share API, falling back to the clipboard), a "Book a meeting" button when a booking link is set, and a lead form (name, email, optional mobile number, message) when `collect_leads` is on |
 
 `/dashboard/+layout.svelte` acts as the auth guard. While the session check is pending it shows a spinner. If the check finds no session, it redirects to `/login?next=<current path>`. Protected content never renders before the session is known.
 
@@ -139,7 +143,8 @@ Once signed in, the layout renders the app shell. From 1024px up, a fixed sideba
 
 All requests go through `apiClient` in `src/lib/api/client.ts`:
 
-- **Relative URLs** (`/api/...`, `/auth/...`). In development Vite proxies them, and in production nginx does. Requests are always same-origin, so the HttpOnly cookie is sent automatically.
+- **Base URL from runtime config.** `API_URL` comes from `window.__FRONKO_CONFIG__.apiUrl`, set by `/config.js` (loaded first in `app.html`). Empty (the default, and always in dev) means relative URLs: Vite or nginx proxies `/api` and `/auth`, so requests are same-origin. When set, e.g. `https://api.fronko.com`, requests go there directly and the backend must allow this site in `CORS_ALLOWED_ORIGINS`.
+- **Credentials.** Requests use `credentials: 'include'` so the HttpOnly cookie is sent in both setups. Build any other backend URL with `apiUrl(path)` from `client.ts`. `uploadFile` (XHR, for progress) does the same and sets `withCredentials`.
 - **JSON in and out.** `Content-Type: application/json` is set whenever there's a body, and a `204` resolves to `undefined`.
 - **Errors** throw `ApiError(message, status)`:
   - `message` is the backend's `{"error": "..."}` text, which is written for users and can go straight into a toast or alert.
@@ -176,10 +181,14 @@ interface CardData {
   bio: string;
   avatar_url: string;     // must be http(s); used only when avatar_file is empty
   avatar_file: string;    // library photo (public file id); takes precedence
+  cover_file: string;     // library image (public file id) for the 3:1 cover banner
   documents: CardDocument[]; // { id, file, title }: PDF brochures from the library, up to 10
   email: string;
-  phone: string;
+  phone_country: string;      // ISO country ("IN"); +1 and others are shared, so the picker needs it
+  phone_country_code: string; // dial code, "+91"; empty when there is no number
+  phone_number: string;       // national number, digits only
   website: string;
+  calendar_url: string;   // booking page (Calendly, Cal.com, …), shown as "Book a meeting"
   location: string;
   links: CardLink[];      // { id, label, url }, shown in order
   accent: AccentKey;      // 'indigo' | 'violet' | 'rose' | 'orange' | 'emerald' | 'sky' | 'slate'
@@ -188,17 +197,19 @@ interface CardData {
 }
 ```
 
-**Always read stored data through `normalizeCard(raw)`.** It turns anything (missing fields, wrong types, `null`) into a complete `CardData`, with these defaults: accent `indigo`, theme `light`, `collect_leads: true`. It also upgrades links from older profiles that were saved as plain strings. If you add a field, add it to `CardData`, `emptyCard()` and `normalizeCard()` so older profiles keep loading.
+**Always read stored data through `normalizeCard(raw)`.** It turns anything (missing fields, wrong types, `null`) into a complete `CardData`, with these defaults: accent `indigo`, theme `light`, `collect_leads: true`. It also upgrades links from older profiles that were saved as plain strings, and splits an old free-text `phone` into the dial code and number. A number without a leading `+` keeps its digits, and the editor asks for the country code. If you add a field, add it to `CardData`, `emptyCard()` and `normalizeCard()` so older profiles keep loading.
 
 Other helpers in `card.ts`:
 
 | Helper | Purpose |
 | ------ | ------- |
 | `emptyCard(name?)` | Default card for new profiles |
+| `coverSrc(card)` | Cover banner URL from `cover_file`, or `null` to show the accent gradient |
+| `detectCalendar(url)` | Recognizes Calendly, Cal.com, Google Calendar, HubSpot, Zoho Bookings, Microsoft Bookings and others, for the booking button |
 | `avatarSrc(card)` | Photo URL: `avatar_file` (served via `/api/files/{id}`), then a safe `avatar_url`, else `null` for initials |
 | `safeUrl(input)` | Returns an absolute `http(s)` URL or `null`. Adds `https://` when there's no scheme, and rejects `javascript:`, `data:` and similar |
 | `displayUrl(input)` | Short form for display (`github.com/faiz`) |
-| `detectBrand(url)` / `linkLabel(link)` | Recognizes GitHub, LinkedIn, X, Instagram and others by hostname, for icons and default labels |
+| `detectBrand(url)` / `linkLabel(link)` | Recognizes about 65 sites by hostname (LinkedIn, GitHub, Indeed, Figma, Behance, YouTube, Substack, WhatsApp, PayPal and more), for icons and default labels. Icons come from `simple-icons`, plus a bundled LinkedIn path |
 | `slugify(input)` / `isValidSlug(slug)` | Client-side copies of the backend's slug rules (3–48 chars, `^[a-z0-9]+(?:-[a-z0-9]+)*$`) |
 | `buildVCard()` / `downloadVCard()` | Builds a vCard 3.0 file (escaped per the RFC) that iOS and Android both import |
 | `downloadBlob(blob, filename)` | Generic client-side download |
@@ -211,7 +222,7 @@ App-specific components live in `src/lib/components/app/`:
 
 | Component | Props | Description |
 | --------- | ----- | ----------- |
-| `ProfileCard` | `card`, `slug`, `actions?` (snippet), `files?`, `class?` | Renders a card: header in the accent colour, avatar, quick actions (email, call, website), bio and links. It uses a container query: stacked when narrow, two columns (identity left, links right) once its container is at least 42rem wide, as on the public page at desktop width. Shows a **Brochures** list. When `files` (metadata keyed by file id, from the public profile response) is given, it adds sizes and hides brochures whose file was deleted |
+| `ProfileCard` | `card`, `slug`, `actions?` (snippet), `files?`, `class?` | Renders a card: a header in the accent colour (or the cover image with an accent stripe, and an accent ring around the avatar), avatar, quick actions (email, call, website), a "Book a meeting" button when `calendar_url` is set, bio and links. It uses a container query: stacked when narrow, two columns (identity left, links right) once its container is at least 42rem wide, as on the public page at desktop width. Shows a **Brochures** list. When `files` (metadata keyed by file id, from the public profile response) is given, it adds sizes and hides brochures whose file was deleted |
 | `FileDropzone` | `kind?`, `onuploaded?`, `compact?`, `multiple?`, `disabled?` | Drag-and-drop or click to upload, with per-file progress and inline errors. It checks type and size on the client for quick feedback; the server re-checks by sniffing |
 | `FilePickerDialog` | `open` (bindable), `kind`, `title`, `selected?`, `onselect` | Pick a photo or PDF from the library (paginated), or upload a new one inline. Used by the editor's Photo and Brochures fields |
 | `FileThumb` | `id`, `kind`, `class?` | Image thumbnail (lazy, via the file redirect) or a PDF tile |
@@ -222,10 +233,12 @@ App-specific components live in `src/lib/components/app/`:
 | `CardAvatar` | `card`, `fallback`, `class?` | Avatar using the card's photo or initials on its accent colour |
 | `QrCode` | `url`, `svg` (bindable), `class?` | Renders a QR code. `qrcode` is loaded the first time one is shown. Codes are always dark-on-white so they scan reliably |
 | `QrDialog` | `open` (bindable), `slug`, `name`, `dark?` | `QrCode` in a dialog, with SVG and 1024px PNG downloads and copy link |
-| `LeadsTable` | `profileId?`, `card?`, `oncardchange?`, `filename?` | Server-paginated leads table: card filter (unless locked with `profileId`), debounced search, pagination and CSV export of every matching lead. A new filter or search goes back to page 1, and paging scrolls the table back into view. The Card column appears only when showing all cards |
+| `LeadsTable` | `profileId?`, `card?`, `oncardchange?`, `filename?` | Server-paginated leads table: card filter (unless locked with `profileId`), debounced search, a Refresh button (it also reloads the cards store so lead counts update), pagination and CSV export of every matching lead, including phone. A new filter or search goes back to page 1, and paging scrolls the table back into view. The Card column appears only when showing all cards |
 | `Pagination` | `page` (bindable), `pageSize` (bindable), `total`, `pageSizes?`, `disabled?` | "1–25 of 67", per-page menu, previous/next and page numbers with gaps (`1 … 4 5 6 … 12`) |
 | `CardFilter` | `value`, `onchange` | "All cards" or one card, with lead counts |
-| `BrandIcon` | `url`, `class?` | Brand icon for a social URL, falling back to a generic link icon |
+| `BrandIcon` | `url`, `kind?` (`'link'` or `'calendar'`), `class?` | Brand icon for a social or booking URL, falling back to a generic link or calendar icon |
+| `PhoneInput` | `country`, `code`, `number` (all bindable), `id?`, `invalid?`, `contentClass?` | Searchable country picker plus a number field that formats as you type (`libphonenumber-js`). Writes digits only, and writes nothing until the user edits, so it never marks a form dirty. Helpers live in `$lib/phone.ts` |
+| `ImageCropDialog` | `file` (bindable; set it to open), `aspect`, `shape`, `outputWidth`, `outputHeight`, `onconfirm` | Crop, zoom and rotate a freshly picked image (`svelte-easy-crop`), then hand back a WebP (or JPEG) `File`. The editor uses 1:1 / 512px for photos and 3:1 / 1500×500 for covers |
 | `Logo` | `href?`, `class?` | Wordmark link |
 
 `src/lib/components/ui/` holds **shadcn-svelte primitives** (button, card, dialog, dropdown-menu, field, tabs, table and others). The shadcn CLI generates them, so prefer re-adding or updating them with the CLI over editing them by hand:
@@ -261,11 +274,19 @@ npm run build      # → build/
 
 The output is fully static: `index.html` is the SPA fallback, and hashed assets go under `_app/immutable/`.
 
-**Docker.** `Dockerfile` builds with `node:24-alpine` and serves `build/` from `nginx:alpine`. `nginx.conf`:
+**Docker.** `Dockerfile` builds with `node:24-alpine` and serves `build/` from `nginx:alpine`. The image is configured at start-up through environment variables, so one build works anywhere:
+
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `PORT` | `3000` | Port nginx listens on (`EXPOSE 3000`) |
+| `BACKEND_UPSTREAM` | `http://backend:8080` | Where nginx proxies `/api/` and `/auth/` |
+| `API_URL` | empty | Public backend URL for the browser, written to `/config.js` by `docker/40-runtime-config.sh`. Empty keeps API calls same-origin through nginx |
+
+The nginx image renders `docker/default.conf.template` with `envsubst` (only defined variables, so nginx's own `$uri` etc. are untouched). The config:
 
 - falls back to `index.html` for client-side routes (`try_files $uri $uri/ /index.html`)
-- caches `/_app/immutable/` for a year (`immutable`)
-- proxies `/api/` and `/auth/` to `http://backend:8080`, preserving `Host` (so the backend's same-origin check matches the browser's `Origin`) and setting `X-Real-IP` (used by the backend's rate limiter when `TRUST_PROXY=true`)
+- caches `/_app/immutable/` for a year (`immutable`), and serves `/config.js` with `no-store`
+- proxies `/api/` and `/auth/` to `BACKEND_UPSTREAM`, preserving `Host` (so the backend's same-origin check matches the browser's `Origin`) and setting `X-Real-IP` (used by the backend's rate limiter when `TRUST_PROXY=true`)
 
 The `backend` hostname comes from the Docker Compose network. See `deploy/docker-compose.yml` and the [root README](../README.md).
 

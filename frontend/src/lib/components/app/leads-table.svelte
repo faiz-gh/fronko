@@ -2,6 +2,7 @@
 	import { toast } from 'svelte-sonner';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
+	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import XIcon from '@lucide/svelte/icons/x';
 	import { listAllLeads, listLeads, type Lead } from '$lib/api/lead';
@@ -17,6 +18,8 @@
 	import { ACCENTS, downloadBlob, initials, normalizeCard } from '$lib/card/card';
 	import { cards } from '$lib/cards.svelte';
 	import { formatDateTime, plural, timeAgo } from '$lib/format';
+	import { e164, formatPhone } from '$lib/phone';
+	import { session } from '$lib/session.svelte';
 	import { cn } from '$lib/utils';
 
 	let {
@@ -95,6 +98,12 @@
 			});
 	});
 
+	/** Refetches this page of leads, and the cards so the lead-count badges catch up too. */
+	function refresh() {
+		reloadToken++;
+		if (session.username) cards.load(session.username, true);
+	}
+
 	const filtered = $derived(search !== '' || (!lockedToCard && card !== null));
 	const showCardColumn = $derived(!lockedToCard && card === null);
 
@@ -130,10 +139,10 @@
 		try {
 			const all = await listAllLeads({ profileId: effectiveCard ?? undefined, q: search });
 			const header = lockedToCard
-				? ['Name', 'Email', 'Message', 'Received']
-				: ['Name', 'Email', 'Message', 'Card', 'Received'];
+				? ['Name', 'Email', 'Phone', 'Message', 'Received']
+				: ['Name', 'Email', 'Phone', 'Message', 'Card', 'Received'];
 			const rows = all.map((l) => {
-				const base = [l.name, l.email, l.notes];
+				const base = [l.name, l.email, formatPhone(l.phone_country_code ?? '', l.phone_number ?? ''), l.notes];
 				if (!lockedToCard) base.push(cardInfo(l.profile_id)?.name ?? '');
 				return [...base, new Date(l.created_at).toISOString()];
 			});
@@ -154,7 +163,7 @@
 		{/if}
 		<div class="relative order-last min-w-0 basis-full sm:order-none sm:max-w-sm sm:flex-1 sm:basis-auto">
 			<SearchIcon class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-			<Input bind:value={query} placeholder="Search name, email or message" class="pr-9 pl-9" aria-label="Search leads" />
+			<Input bind:value={query} placeholder="Search name, email, phone or message" class="pr-9 pl-9" aria-label="Search leads" />
 			{#if query}
 				<button
 					type="button"
@@ -167,9 +176,10 @@
 			{/if}
 		</div>
 		<div class="ml-auto flex items-center gap-3">
-			{#if loading && leads}
-				<Spinner class="text-muted-foreground size-4" />
-			{/if}
+			<Button variant="outline" onclick={refresh} disabled={loading} aria-label="Refresh leads">
+				<RefreshCwIcon data-icon="inline-start" class={cn(loading && 'animate-spin')} />
+				<span class="max-sm:sr-only">Refresh</span>
+			</Button>
 			<Button variant="outline" onclick={exportCsv} disabled={exporting || total === 0}>
 				{#if exporting}
 					<Spinner data-icon="inline-start" />
@@ -240,6 +250,14 @@
 										<a href="mailto:{lead.email}" class="text-muted-foreground hover:text-foreground truncate text-xs hover:underline">
 											{lead.email}
 										</a>
+										{#if lead.phone_number}
+											<a
+												href="tel:{e164(lead.phone_country_code ?? '', lead.phone_number)}"
+												class="text-muted-foreground hover:text-foreground truncate text-xs tabular-nums hover:underline"
+											>
+												{formatPhone(lead.phone_country_code ?? '', lead.phone_number)}
+											</a>
+										{/if}
 										{#if info}
 											<span class="text-muted-foreground mt-1 flex items-center gap-1.5 text-xs md:hidden">
 												<span class="size-2 shrink-0 rounded-full" style="background: {info.color}"></span>

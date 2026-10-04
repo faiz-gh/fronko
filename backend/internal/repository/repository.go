@@ -181,13 +181,28 @@ func (r *Repository) GetProfilesByUserID(ctx context.Context, userID int64) ([]*
 // Lead Methods
 // ----------------------------------------------------------------------------
 
+// leadColumns lists the columns scanLead expects, optionally table-qualified.
+func leadColumns(p string) string {
+	return p + "lead_id, " + p + "profile_id, " + p + "name, " + p + "email, " +
+		"COALESCE(" + p + "phone_country_code, ''), COALESCE(" + p + "phone_number, ''), " +
+		"COALESCE(" + p + "notes, ''), " + p + "created_at"
+}
+
+func scanLead(rows pgx.Rows) (*models.Lead, error) {
+	var l models.Lead
+	err := rows.Scan(&l.ID, &l.ProfileID, &l.Name, &l.Email, &l.PhoneCountryCode, &l.PhoneNumber, &l.Notes, &l.CreatedAt)
+	return &l, err
+}
+
 // CreateLead returns ErrNotFound if the profile does not exist.
 func (r *Repository) CreateLead(ctx context.Context, lead *models.Lead) error {
 	query := `
-		INSERT INTO leads (profile_id, name, email, notes)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO leads (profile_id, name, email, phone_country_code, phone_number, notes)
+		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6)
 		RETURNING lead_id, created_at`
-	err := r.db.QueryRow(ctx, query, lead.ProfileID, lead.Name, lead.Email, lead.Notes).Scan(
+	err := r.db.QueryRow(ctx, query,
+		lead.ProfileID, lead.Name, lead.Email, lead.PhoneCountryCode, lead.PhoneNumber, lead.Notes,
+	).Scan(
 		&lead.ID, &lead.CreatedAt,
 	)
 	return mapError(err)
@@ -196,7 +211,7 @@ func (r *Repository) CreateLead(ctx context.Context, lead *models.Lead) error {
 // LeadFilter narrows a user's leads. Zero values mean "no filter".
 type LeadFilter struct {
 	ProfileID int64     // only this profile's leads
-	Search    string    // case-insensitive substring of name, email or notes
+	Search    string    // case-insensitive substring of name, email, phone number or notes
 	Since     time.Time // received at or after this time
 	Limit     int
 	Offset    int
@@ -226,7 +241,7 @@ func (r *Repository) ListLeadsForUser(ctx context.Context, userID int64, f LeadF
 		JOIN profiles p ON p.profile_id = l.profile_id
 		WHERE p.user_id = $1
 		  AND ($2::bigint = 0 OR l.profile_id = $2)
-		  AND ($3::text = '' OR l.name ILIKE $3 OR l.email ILIKE $3 OR l.notes ILIKE $3)
+		  AND ($3::text = '' OR l.name ILIKE $3 OR l.email ILIKE $3 OR l.phone_number ILIKE $3 OR l.notes ILIKE $3)
 		  AND ($4::timestamptz IS NULL OR l.created_at >= $4)`
 	args := []any{userID, f.ProfileID, search, since}
 
@@ -236,7 +251,7 @@ func (r *Repository) ListLeadsForUser(ctx context.Context, userID int64, f LeadF
 	}
 
 	rows, err := r.db.Query(ctx,
-		`SELECT l.lead_id, l.profile_id, l.name, l.email, COALESCE(l.notes, ''), l.created_at`+where+`
+		`SELECT `+leadColumns("l.")+where+`
 		ORDER BY l.created_at DESC, l.lead_id DESC
 		LIMIT $5 OFFSET $6`,
 		append(args, f.Limit, f.Offset)...)
@@ -247,11 +262,11 @@ func (r *Repository) ListLeadsForUser(ctx context.Context, userID int64, f LeadF
 
 	leads := []*models.Lead{}
 	for rows.Next() {
-		var l models.Lead
-		if err := rows.Scan(&l.ID, &l.ProfileID, &l.Name, &l.Email, &l.Notes, &l.CreatedAt); err != nil {
+		l, err := scanLead(rows)
+		if err != nil {
 			return nil, 0, err
 		}
-		leads = append(leads, &l)
+		leads = append(leads, l)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
@@ -261,7 +276,7 @@ func (r *Repository) ListLeadsForUser(ctx context.Context, userID int64, f LeadF
 }
 
 func (r *Repository) GetLeadsByProfileID(ctx context.Context, profileID int64) ([]*models.Lead, error) {
-	query := `SELECT lead_id, profile_id, name, email, COALESCE(notes, ''), created_at FROM leads WHERE profile_id = $1 ORDER BY created_at DESC`
+	query := `SELECT ` + leadColumns("") + ` FROM leads WHERE profile_id = $1 ORDER BY created_at DESC`
 	rows, err := r.db.Query(ctx, query, profileID)
 	if err != nil {
 		return nil, err
@@ -270,11 +285,11 @@ func (r *Repository) GetLeadsByProfileID(ctx context.Context, profileID int64) (
 
 	leads := []*models.Lead{}
 	for rows.Next() {
-		var l models.Lead
-		if err := rows.Scan(&l.ID, &l.ProfileID, &l.Name, &l.Email, &l.Notes, &l.CreatedAt); err != nil {
+		l, err := scanLead(rows)
+		if err != nil {
 			return nil, err
 		}
-		leads = append(leads, &l)
+		leads = append(leads, l)
 	}
 
 	if err := rows.Err(); err != nil {

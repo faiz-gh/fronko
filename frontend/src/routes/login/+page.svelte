@@ -23,7 +23,9 @@
 		company: 'Tidewater Coffee',
 		location: 'Austin, TX',
 		email: 'daniel@example.com',
-		phone: '+1 512 555 0199',
+		phone_country: 'US',
+		phone_country_code: '+1',
+		phone_number: '5125550199',
 		website: 'tidewater.example',
 		accent: 'orange',
 		links: [{ id: '1', label: '', url: 'https://instagram.com/tidewater' }]

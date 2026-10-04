@@ -10,9 +10,9 @@ Built as a high-performance alternative to proprietary platforms like Mobilo and
 
 * **📱 One-tap Save to Contacts:** Visitors download a vCard 3.0 (`.vcf`), which both iOS and Android import directly.
 
-* **🎨 Card Editor:** A live-preview editor for profile details, contact info, social links (with brand icons), a photo, PDF brochures, an accent colour and a light or dark theme. You can keep several cards, each with its own link and QR code.
+* **🎨 Card Editor:** A live-preview editor for profile details, contact info (with a country-code phone picker), a booking link (Calendly, Cal.com, Google Calendar…), social links (with brand icons for about 65 sites), a cropped photo and cover banner, PDF brochures, an accent colour and a light or dark theme. You can keep several cards, each with its own link and QR code.
 
-* **🤝 Lead Capture:** A built-in form lets recipients share their details back. Leads land in one inbox with card filters, search, pagination and CSV export.
+* **🤝 Lead Capture:** A built-in form lets recipients share their details back, with an optional mobile number. Leads land in one inbox with card filters, search, pagination and CSV export.
 
 * **☁️ Bring Your Own Storage:** Photos and brochures go to each user's own S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3, MinIO). Keys are encrypted at rest and buckets stay private.
 
@@ -83,6 +83,12 @@ JWT_SECRET=replace-with-a-long-random-string
 # Optional: enables photo and brochure uploads to each user's own S3 bucket.
 # Encrypts their keys at rest. Keep it stable and backed up.
 SECRETS_KEY=generate-with-openssl-rand-base64-32
+
+# Public URLs. FRONTEND_URL is allowed as a CORS origin (comma-separate several).
+# BACKEND_URL is the API URL the browser calls; leave empty to go through the
+# frontend's nginx (same-origin, no CORS needed).
+FRONTEND_URL=https://fronko.example.com
+BACKEND_URL=
 ```
 
 With `SECRETS_KEY` set, each user connects their own bucket (Cloudflare R2, Backblaze B2, AWS S3 or MinIO) under **Settings** in the dashboard. Fronko never needs a bucket of its own.
@@ -95,14 +101,15 @@ For every backend option, see the [configuration reference](backend/README.md#co
 docker compose up -d --build
 ```
 
-* The app is served at `http://localhost:3000`. The API sits on the same origin under `/api` and `/auth`.
-* The backend isn't exposed directly. Only the frontend container publishes a port.
-* In production, put a TLS-terminating reverse proxy in front of port 3000. With the default `COOKIE_SECURE=true`, the session cookie is only sent over HTTPS.
+* No ports are bound on the host: the frontend `expose`s `3000` and the backend `8080` on the Docker network only, so they never clash with other services. Attach your TLS-terminating reverse proxy (Traefik, Caddy, Coolify, …) to the same network and route your domain to `frontend:3000`. With the default `COOKIE_SECURE=true`, the session cookie is only sent over HTTPS.
+* **Single domain (default, `BACKEND_URL` empty):** the frontend's nginx proxies `/api` and `/auth` to the backend, so everything is same-origin.
+* **Separate API domain:** route e.g. `api.fronko.example.com` to `backend:8080`, then set `BACKEND_URL` to it and `FRONTEND_URL` to the site's origin. Use a subdomain of the same site so the `SameSite=Lax` session cookie is still sent, and let that proxy accept request bodies up to 25 MB for uploads.
+* Both URLs are read when the containers start, so changing them only needs a restart, not a rebuild.
 
 ### Local development
 
 * **Without Docker:** run the backend and frontend separately. See [backend → Run locally](backend/README.md#run-locally) and [frontend → Getting started](frontend/README.md#getting-started).
-* **With Docker against a Postgres on your machine:** `docker compose -f docker-compose.local.yml up --build`. Edit its hard-coded `DATABASE_URL` first. This file also sets a development `SECRETS_KEY` and `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`, so storage can point at a local S3 server such as MinIO or SeaweedFS on `http://host.docker.internal:9000`.
+* **With Docker against a Postgres on your machine:** `docker compose -f docker-compose.local.yml up --build`. Edit its hard-coded `DATABASE_URL` first. This file also sets a development `SECRETS_KEY` and `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`, so storage can point at a local S3 server such as MinIO or SeaweedFS on `http://host.docker.internal:9000`. It binds the app to `http://localhost:3000` and ignores `FRONTEND_URL`/`BACKEND_URL` from `.env`, so local runs always stay same-origin.
 
 ## 🪣 Connecting storage (photos & brochures)
 

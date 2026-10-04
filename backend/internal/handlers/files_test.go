@@ -86,8 +86,9 @@ func TestCleanFileName(t *testing.T) {
 func TestReferencedFileIDs(t *testing.T) {
 	a := strings.Repeat("a", 22)
 	b := strings.Repeat("b", 22)
-	data := []byte(`{"name":"x","avatar_file":"` + a + `","documents":[{"file":"` + b + `"},{"file":"` + a + `"},{"file":"not-an-id"}],"other":"` + strings.Repeat("c", 22) + `"}`)
-	assert.Equal(t, []string{a, b}, referencedFileIDs(data), "deduplicated, invalid ids and unrelated keys ignored")
+	c := strings.Repeat("d", 22)
+	data := []byte(`{"name":"x","avatar_file":"` + a + `","cover_file":"` + c + `","documents":[{"file":"` + b + `"},{"file":"` + a + `"},{"file":"not-an-id"}],"other":"` + strings.Repeat("c", 22) + `"}`)
+	assert.Equal(t, []string{a, c, b}, referencedFileIDs(data), "deduplicated, invalid ids and unrelated keys ignored")
 
 	assert.Empty(t, referencedFileIDs([]byte(`{}`)))
 	assert.Empty(t, referencedFileIDs([]byte(`not json`)))

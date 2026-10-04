@@ -59,6 +59,7 @@ backend/
 │   │   ├── respond.go            # JSON encode/decode helpers, body size cap
 │   │   └── session.go            # Session cookie set/clear
 │   ├── middleware/
+│   │   ├── cors.go               # CORS headers + preflight for CORS_ALLOWED_ORIGINS
 │   │   ├── jwt.go                # Cookie → JWT → user ID in request context
 │   │   ├── origin.go             # Same-origin check for state-changing requests
 │   │   └── ratelimit.go          # Per-IP token bucket limiter
@@ -134,6 +135,7 @@ All configuration comes from environment variables and is read once at startup b
 | `COOKIE_SECURE` |    | `true` | Puts the `Secure` flag on the session cookie. Only the exact value `false` disables it. Set it to `false` only when serving over plain HTTP, for example in local development. |
 | `TRUST_PROXY`   |    | `false` | When set to the exact value `true`, the rate limiter takes the client IP from the `X-Real-IP` header. **Enable this only behind a proxy that always sets that header**, such as the bundled nginx. Otherwise clients can spoof it to dodge rate limits. |
 | `SECRETS_KEY`   |    | none | Base64 of 32 random bytes (`openssl rand -base64 32`). It encrypts users' storage keys. **Unset disables file storage**: the storage endpoints return 503, and everything else works. A malformed value stops startup. **Keep it stable and backed up**: if it changes or is lost, saved storage keys can't be decrypted and users must re-enter them. |
+| `CORS_ALLOWED_ORIGINS` |    | none | Comma-separated browser origins (e.g. `https://fronko.com`) allowed to call the API cross-origin with the session cookie. Matching requests get `Access-Control-Allow-Origin` + `Allow-Credentials`, preflights are answered with 204, and the same-origin check accepts them. Leave empty when the frontend's nginx proxies the API (same-origin). In Docker it's set from `FRONTEND_URL`. |
 | `STORAGE_ALLOW_PRIVATE_ENDPOINTS` | | `false` | `true` lets storage endpoints use `http` and private or loopback addresses, e.g. a local MinIO. **Development only**: in production it would let users make the server connect to internal hosts. |
 
 ### Server and pool settings
@@ -150,7 +152,8 @@ These are hard-coded:
 
 ## Database
 
-The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`).
+The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone).
+- `leads.phone_country_code` and `leads.phone_number` (004) store a visitor's number as two digit-only parts. A check constraint requires both or neither, and enforces the E.164 shape.
 - `user_storage` holds one row per user with encrypted key columns (`BYTEA`).
 - `files` stores a random `public_id`, the `bucket` and `object_key`, the sniffed `kind` and `content_type`, the size, the original name and an optional title. The bucket is stored per file, so changing buckets later doesn't silently re-point old files.
 
@@ -181,6 +184,8 @@ erDiagram
         bigint profile_id FK "ON DELETE CASCADE"
         text name
         text email
+        text phone_country_code "nullable, e.g. +91"
+        text phone_number "nullable, digits only"
         text notes "nullable"
         timestamptz created_at
     }
@@ -230,14 +235,15 @@ Ownership checks happen in SQL: `WHERE profile_id = $1 AND user_id = $2`. So ano
 
 ```
 Request
-  └─ SameOrigin                       (all routes; rejects cross-origin POST/PUT/DELETE)
-       └─ ServeMux
-            ├─ GET  /health
-            ├─ /auth/login, /auth/register → authLimiter → handler
-            ├─ /auth/logout                → handler
-            ├─ GET  /api/profiles/{slug}   → handler
-            ├─ POST /api/profiles/{id}/leads → leadLimiter → handler
-            └─ /api/me/*                   → JWTMiddleware → protected ServeMux → handler
+  └─ CORS                             (all routes; CORS headers + preflight for CORS_ALLOWED_ORIGINS)
+     └─ SameOrigin                    (rejects cross-origin POST/PUT/DELETE not in CORS_ALLOWED_ORIGINS)
+          └─ ServeMux
+               ├─ GET  /health
+               ├─ /auth/login, /auth/register → authLimiter → handler
+               ├─ /auth/logout                → handler
+               ├─ GET  /api/profiles/{slug}   → handler
+               ├─ POST /api/profiles/{id}/leads → leadLimiter → handler
+               └─ /api/me/*                   → JWTMiddleware → protected ServeMux → handler
 ```
 
 Protected routes live on their own `ServeMux`, which is mounted at `/api/me/` behind `JWTMiddleware`. Any route added under `/api/me/` is authenticated automatically. Inside a protected handler, call `middleware.UserID(r.Context())` to get the caller's ID.
@@ -266,14 +272,15 @@ If the account behind a valid token no longer exists, `GET /api/me/user` clears 
 | Threat | Mitigation | Where |
 | ------ | ---------- | ----- |
 | Token theft via XSS | JWT lives only in an HttpOnly cookie | `handlers/session.go` |
-| CSRF | `SameSite=Lax`, plus `SameOrigin` middleware that rejects POST/PUT/DELETE whose `Origin` host differs from `Host` | `middleware/origin.go` |
+| CSRF | `SameSite=Lax`, plus `SameOrigin` middleware that rejects POST/PUT/DELETE whose `Origin` host differs from `Host` unless it's listed in `CORS_ALLOWED_ORIGINS` | `middleware/origin.go` |
+| Cross-origin reads | CORS headers are only sent to origins in `CORS_ALLOWED_ORIGINS` (exact match, no wildcard) | `middleware/cors.go` |
 | JWT algorithm confusion | `jwt.WithValidMethods(["HS256"])` and `WithExpirationRequired()` | `auth/auth.go` |
 | Weak or empty signing key | Startup fails when `JWT_SECRET` is shorter than 16 chars | `config/config.go` |
 | Username enumeration via timing | Unknown usernames still run a bcrypt compare against a dummy hash | `handlers/auth.go` |
 | Brute force or lead spam | Per-IP token-bucket rate limits on auth and lead endpoints | `middleware/ratelimit.go` |
 | Rate-limit bypass via spoofed headers | `X-Real-IP` is only trusted when `TRUST_PROXY=true` | `middleware/ratelimit.go` |
 | bcrypt 72-byte truncation | Passwords are limited to 8–72 bytes at registration | `handlers/auth.go` |
-| Oversized bodies | `http.MaxBytesReader` caps JSON bodies at 64 KiB and uploads at 21 MiB; nginx caps `/api/` at 25 MB | `handlers/respond.go`, `handlers/files.go`, `frontend/nginx.conf` |
+| Oversized bodies | `http.MaxBytesReader` caps JSON bodies at 64 KiB and uploads at 21 MiB; nginx caps `/api/` at 25 MB | `handlers/respond.go`, `handlers/files.go`, `frontend/docker/default.conf.template` |
 | Storage keys leaking from the database | AES-256-GCM with `SECRETS_KEY`. The AAD binds each ciphertext to its user and field. Keys are write-only in the API, and only a 4-char hint is stored in plain text | `secrets/`, `handlers/storage.go` |
 | SSRF through a user-supplied endpoint | https only, no literal private addresses, and a dialer `Control` hook that rejects private, loopback, link-local, CGNAT and metadata addresses **after DNS resolution** (defeats DNS rebinding). Redirects aren't followed and env proxies are ignored | `storage/storage.go` |
 | Malicious uploads (HTML/SVG posing as images) | The type is sniffed from the bytes, and only JPEG, PNG, WebP and PDF are accepted. The stored content type comes from sniffing, not the client | `handlers/files.go` |
@@ -309,7 +316,7 @@ make test-integration   # repository integration tests (needs a database, see be
 ```
 
 Unit tests cover:
-- `middleware`: rate limiter, same-origin check.
+- `middleware`: rate limiter, same-origin check, CORS.
 - `secrets`: sealing round trip, tamper, wrong AAD and wrong key.
 - `storage`: endpoint validation, private-address dialing, the connection probe against a fake S3 server.
 - `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals.

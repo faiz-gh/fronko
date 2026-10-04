@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/mail"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,37 @@ const (
 	maxLeadPageSize     = 100
 	maxLeadSearchLen    = 100
 )
+
+var (
+	dialCodePattern    = regexp.MustCompile(`^\+[1-9][0-9]{0,2}$`)
+	phoneNumberPattern = regexp.MustCompile(`^[0-9]{4,14}$`)
+	// Visual separators people type or paste; anything else is rejected.
+	phoneSeparators = strings.NewReplacer(" ", "", "-", "", ".", "", "(", "", ")", "")
+)
+
+// maxPhoneDigits is the E.164 limit for dial code plus national number.
+const maxPhoneDigits = 15
+
+// normalizeLeadPhone strips separators and checks the two phone parts. Both
+// empty means no phone; otherwise both must be present and well-formed. The
+// result is digits only, matching the leads_phone_format check constraint.
+func normalizeLeadPhone(code, number string) (string, string, bool) {
+	code = phoneSeparators.Replace(strings.TrimSpace(code))
+	number = phoneSeparators.Replace(strings.TrimSpace(number))
+	if code == "" && number == "" {
+		return "", "", true
+	}
+	if code != "" && !strings.HasPrefix(code, "+") {
+		code = "+" + code
+	}
+	if !dialCodePattern.MatchString(code) || !phoneNumberPattern.MatchString(number) {
+		return "", "", false
+	}
+	if len(code)-1+len(number) > maxPhoneDigits {
+		return "", "", false
+	}
+	return code, number, true
+}
 
 // LeadPage is one page of leads plus the paging state needed to render controls.
 type LeadPage struct {
@@ -50,9 +82,11 @@ func (h *LeadHandler) SubmitLead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name  string `json:"name"`
-		Email string `json:"email"`
-		Notes string `json:"notes"`
+		Name             string `json:"name"`
+		Email            string `json:"email"`
+		PhoneCountryCode string `json:"phone_country_code"`
+		PhoneNumber      string `json:"phone_number"`
+		Notes            string `json:"notes"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -70,16 +104,23 @@ func (h *LeadHandler) SubmitLead(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "please enter a valid email address")
 		return
 	}
+	phoneCode, phoneNumber, ok := normalizeLeadPhone(req.PhoneCountryCode, req.PhoneNumber)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "please enter a valid mobile number with its country code")
+		return
+	}
 	if len(req.Notes) > maxLeadNotesLen {
 		writeError(w, http.StatusBadRequest, "message is too long")
 		return
 	}
 
 	lead := &models.Lead{
-		ProfileID: profileID,
-		Name:      req.Name,
-		Email:     req.Email,
-		Notes:     req.Notes,
+		ProfileID:        profileID,
+		Name:             req.Name,
+		Email:            req.Email,
+		PhoneCountryCode: phoneCode,
+		PhoneNumber:      phoneNumber,
+		Notes:            req.Notes,
 	}
 
 	// A missing profile surfaces as a foreign key violation, mapped to ErrNotFound.

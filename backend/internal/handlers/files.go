@@ -392,11 +392,12 @@ func (h *FileHandler) Serve(w http.ResponseWriter, r *http.Request) {
 }
 
 // referencedFileIDs pulls the file ids a card's data points at. The backend
-// otherwise treats card data as opaque; these two keys are the exception, so a
+// otherwise treats card data as opaque; these keys are the exception, so a
 // public card only ever reveals files it actually uses.
 func referencedFileIDs(data []byte) []string {
 	var card struct {
 		AvatarFile string `json:"avatar_file"`
+		CoverFile  string `json:"cover_file"`
 		Documents  []struct {
 			File string `json:"file"`
 		} `json:"documents"`
@@ -413,6 +414,7 @@ func referencedFileIDs(data []byte) []string {
 		}
 	}
 	add(card.AvatarFile)
+	add(card.CoverFile)
 	for _, d := range card.Documents {
 		add(d.File)
 	}
