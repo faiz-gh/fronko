@@ -41,7 +41,9 @@ It talks to the [Go backend](../backend/README.md). The endpoints are listed in 
 | Language | TypeScript (strict) |
 | UI kit | [shadcn-svelte](https://shadcn-svelte.com) ("nova" style) on [bits-ui](https://bits-ui.com) |
 | Styling | Tailwind CSS v4 (`@tailwindcss/vite`), `tw-animate-css`, Geist variable font |
-| Icons | `@lucide/svelte` (UI), `simple-icons` (social brands) |
+| Icons | `@lucide/svelte` (UI), `simple-icons` (social and booking brands) |
+| Phone numbers | `libphonenumber-js`: country list, as-you-type formatting, validation |
+| Image cropping | `svelte-easy-crop`, plus canvas helpers in `$lib/image.ts` |
 | Toasts | `svelte-sonner` |
 | QR codes | `qrcode`, lazy-loaded |
 
@@ -89,6 +91,8 @@ frontend/
 │   │   │   └── files.ts           # file library, uploadFile() with progress, fileUrl()
 │   │   ├── card/card.ts           # CardData model, normalization, URL safety, vCard, brand detection
 │   │   ├── card/qr.ts             # Lazy-loaded QR generation and PNG/SVG downloads
+│   │   ├── phone.ts               # Country list, dial codes, formatting, validation, legacy phone parsing
+│   │   ├── image.ts               # Canvas crop/rotate → WebP/JPEG File, used by ImageCropDialog
 │   │   ├── components/
 │   │   │   ├── app/               # App-specific components (see below)
 │   │   │   └── ui/                # shadcn-svelte primitives (generated, see Conventions)
@@ -129,7 +133,7 @@ frontend/
 | `/` | Public | Marketing page with a demo `ProfileCard`. The header shows "Dashboard" or "Sign in" depending on the session |
 | `/login` | Public | Sign in and register tabs. Query params: `mode=register` opens the register tab, `next=/path` sets where to go afterwards (only same-site relative paths are followed), and `expired=1` shows a "session expired" notice |
 | `/dashboard` | Signed in | Overview: stats (cards, leads all time, leads in the last 7 days), a grid of cards with copy link, QR code and delete actions, and the latest leads across all cards |
-| `/dashboard/leads` | Signed in | Every lead across your cards. Filter by card (`?card=ID`, kept in the URL so it can be linked to), search, page size and pages, and CSV export of everything that matches. Clicking a lead's card filters to that card |
+| `/dashboard/leads` | Signed in | Every lead across your cards. Filter by card (`?card=ID`, kept in the URL so it can be linked to), search (name, email, phone or message), page size and pages, a Refresh button that refetches leads and lead counts without reloading the page, and CSV export of everything that matches (including phone). Clicking a lead's card filters to that card |
 | `/dashboard/files` | Signed in | The shared **file library**: drag-and-drop upload with progress, Photos/PDFs tabs, thumbnails, inline rename, "Used on" (which cards use each file), delete with a usage warning, pagination. Shows a "Connect storage" state until a bucket is connected |
 | `/dashboard/settings` | Signed in | **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
 | `/dashboard/{id}` | Signed in | Editor. The **Card** tab has sections for Profile (with photo and 3:1 cover, both cropped before upload), Contact (email, mobile with country picker, website, booking link), Links (add, reorder, remove), Appearance (accent, light/dark theme) and Sharing (public slug, lead collection). A sticky preview pane on the right switches between the card and its QR code; below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
@@ -247,6 +251,8 @@ App-specific components live in `src/lib/components/app/`:
 npx shadcn-svelte@latest add <component>
 ```
 
+> **Note:** shadcn-svelte CLI v1.7 can't resolve SvelteKit 3's `"extends": "$app/tsconfig"` and fails with `File '$app/tsconfig' not found`. Until that's fixed upstream, `popover`, `command`, `slider` and `input-group` were taken directly from the registry (`https://shadcn-svelte.com/registry/styles/nova/<name>.json`). Their `$UI$` paths were rewritten to `$lib/components/ui`, and their `IconPlaceholder` elements were replaced with `@lucide/svelte` icons. Do the same if you add another component before the CLI is fixed.
+
 ## Styling & theming
 
 - **Tailwind v4** is configured CSS-first in `src/app.css`. There's no `tailwind.config.js`.
@@ -261,7 +267,7 @@ npx shadcn-svelte@latest add <component>
 ## Security notes
 
 - **No tokens in JavaScript.** Auth relies only on the HttpOnly cookie.
-- **Visitor-facing URLs go through `safeUrl()`.** That covers the avatar, website and links, so a card owner can't inject `javascript:` links.
+- **Visitor-facing URLs go through `safeUrl()`.** That covers the avatar, website, booking link and links, so a card owner can't inject `javascript:` links.
 - **Open-redirect protection.** `/login` only follows `next` values that start with `/` and not `//`.
 - **CSV injection.** Lead exports prefix cells starting with `=`, `+`, `-`, `@`, tab or CR with `'`, because lead content comes from anonymous visitors.
 - **Validation is mirrored, not trusted.** Slug, username, password and email checks in the UI exist for quick feedback. The backend enforces the real rules.

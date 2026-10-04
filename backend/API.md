@@ -86,7 +86,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 }
 ```
 
-The owner's ID and the timestamps are left out on purpose. `files` lists only the library files the card itself references (`data.avatar_file` and `data.documents[].file`) that the owner still has. Nothing else from the owner's library is revealed.
+The owner's ID and the timestamps are left out on purpose. `files` lists only the library files the card itself references (`data.avatar_file`, `data.cover_file` and `data.documents[].file`) that the owner still has. Nothing else from the owner's library is revealed.
 
 ### File
 
@@ -275,7 +275,7 @@ Returns one page of leads across all of the caller's profiles, newest first (tie
 | Param | Default | Rules |
 | ----- | ------- | ----- |
 | `profile_id` | none | Only this profile's leads. Another user's profile ID returns an empty page, never their leads |
-| `q` | none | Trimmed, at most 100 chars. Case-insensitive substring match on name, email or notes. `%` and `_` match literally |
+| `q` | none | Trimmed, at most 100 chars. Case-insensitive substring match on name, email, phone number or notes. `%` and `_` match literally |
 | `since` | none | RFC 3339 timestamp (`2026-10-01T00:00:00Z`). Only leads received at or after it |
 | `page` | `1` | 1-based |
 | `page_size` | `25` | 1–100 |
@@ -284,7 +284,7 @@ Returns one page of leads across all of the caller's profiles, newest first (tie
 
 ```json
 {
-  "leads": [ { "id": 7, "profile_id": 42, "name": "Jane Doe", "email": "jane@example.com", "notes": "", "created_at": "2026-10-03T12:10:00Z" } ],
+  "leads": [ { "id": 7, "profile_id": 42, "name": "Jane Doe", "email": "jane@example.com", "phone_country_code": "+91", "phone_number": "9876543210", "notes": "", "created_at": "2026-10-03T12:10:00Z" } ],
   "total": 67,
   "page": 1,
   "page_size": 25

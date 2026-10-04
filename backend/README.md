@@ -6,7 +6,7 @@ It handles:
 
 - **Accounts.** Username/password registration and login. Sessions are JWTs carried in an HttpOnly cookie.
 - **Profiles ("cards").** Each user can own several public profiles. Each one has a unique slug and a free-form JSONB `data` document.
-- **Leads.** Anonymous visitors can submit their name, email and a message to a profile. The owner can list those leads.
+- **Leads.** Anonymous visitors can submit their name, email, an optional mobile number (dial code and number stored separately, digits only) and a message to a profile. The owner can list and search those leads.
 
 For the full endpoint reference, see [API.md](./API.md).
 
@@ -227,7 +227,7 @@ The Docker entrypoint runs `migrate ... up` on every container start. Locally, r
 | `23505` unique_violation | `ErrConflict` | 409 |
 | `23503` foreign_key_violation | `ErrNotFound` | 404 (e.g. a lead for a missing profile) |
 
-`ListLeadsForUser` takes a `LeadFilter` (profile, search, since, limit/offset) and runs two queries: a `COUNT(*)` for the total and the page itself. Both join `profiles` on `user_id`, so a filter naming another user's profile simply matches nothing. Search input is escaped so `%` and `_` match literally.
+`ListLeadsForUser` takes a `LeadFilter` (profile, search over name, email, phone number and notes, since, limit/offset) and runs two queries: a `COUNT(*)` for the total and the page itself. Both join `profiles` on `user_id`, so a filter naming another user's profile simply matches nothing. Search input is escaped so `%` and `_` match literally.
 
 Ownership checks happen in SQL: `WHERE profile_id = $1 AND user_id = $2`. So another user's profile looks exactly like a missing one (`ErrNotFound`), and the API never confirms that someone else's profile ID exists.
 
@@ -319,7 +319,7 @@ Unit tests cover:
 - `middleware`: rate limiter, same-origin check, CORS.
 - `secrets`: sealing round trip, tamper, wrong AAD and wrong key.
 - `storage`: endpoint validation, private-address dialing, the connection probe against a fake S3 server.
-- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals.
+- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals (avatar, cover, brochures), lead phone normalization and validation.
 
 The integration tests (`internal/repository/repository_test.go`) sit behind the `integration` build tag. They read **`TEST_DATABASE_URL`**, not `DATABASE_URL`, because they `TRUNCATE` every table. Point them at a disposable database that already has the migrations applied:
 
