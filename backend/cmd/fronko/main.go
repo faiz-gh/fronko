@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os/signal"
@@ -13,6 +14,7 @@ import (
 	"github.com/faiz-gh/fronko/backend/internal/config"
 	"github.com/faiz-gh/fronko/backend/internal/database"
 	"github.com/faiz-gh/fronko/backend/internal/handlers"
+	"github.com/faiz-gh/fronko/backend/internal/mail"
 	"github.com/faiz-gh/fronko/backend/internal/middleware"
 	"github.com/faiz-gh/fronko/backend/internal/repository"
 	"github.com/faiz-gh/fronko/backend/internal/secrets"
@@ -62,7 +64,24 @@ func run() error {
 	repo := repository.New(pool)
 	authService := auth.NewService(cfg.JWTSecret)
 
-	authHandler := handlers.NewAuthHandler(repo, authService, cfg.CookieSecure)
+	var mailer mail.Sender = mail.LogSender{}
+	if cfg.SMTPHost != "" {
+		smtpSender, err := mail.NewSMTPSender(mail.SMTPConfig{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword,
+			From:     cfg.SMTPFrom,
+		})
+		if err != nil {
+			return fmt.Errorf("SMTP_FROM: %w", err)
+		}
+		mailer = smtpSender
+	} else {
+		log.Println("SMTP_HOST not set: emails (verification and reset codes) are logged, not sent")
+	}
+
+	authHandler := handlers.NewAuthHandler(repo, authService, mailer, cfg.CookieSecure)
 	profileHandler := handlers.NewProfileHandler(repo)
 	leadHandler := handlers.NewLeadHandler(repo)
 
@@ -82,7 +101,14 @@ func run() error {
 	storageHandler := handlers.NewStorageHandler(storageSvc)
 	fileHandler := handlers.NewFileHandler(storageSvc, repo)
 
-	jwtMiddleware := middleware.JWTMiddleware(authService)
+	sessions := middleware.SessionCheckerFunc(func(ctx context.Context, userID int64) (int, bool, error) {
+		version, verified, err := repo.GetSessionState(ctx, userID)
+		if errors.Is(err, repository.ErrNotFound) {
+			err = middleware.ErrSessionUserNotFound
+		}
+		return version, verified, err
+	})
+	jwtMiddleware := middleware.JWTMiddleware(authService, sessions)
 	leadLimiter := middleware.NewRateLimiter(ctx, rate.Every(leadInterval), leadBurst, cfg.TrustProxy)
 	authLimiter := middleware.NewRateLimiter(ctx, rate.Every(authInterval), authBurst, cfg.TrustProxy)
 	uploadLimiter := middleware.NewRateLimiter(ctx, rate.Every(uploadInterval), uploadBurst, cfg.TrustProxy)
@@ -97,14 +123,25 @@ func run() error {
 	// Public Routes
 	mux.HandleFunc("POST /auth/login", authLimiter.Limit(authHandler.Login))
 	mux.HandleFunc("POST /auth/register", authLimiter.Limit(authHandler.Register))
+	mux.HandleFunc("POST /auth/password/forgot", authLimiter.Limit(authHandler.ForgotPassword))
+	mux.HandleFunc("POST /auth/password/reset", authLimiter.Limit(authHandler.ResetPassword))
 	mux.HandleFunc("POST /auth/logout", authHandler.Logout)
 	mux.HandleFunc("GET /api/profiles/{slug}", profileHandler.GetProfileBySlug)
 	mux.HandleFunc("POST /api/profiles/{id}/leads", leadLimiter.Limit(leadHandler.SubmitLead))
 	mux.HandleFunc("GET /api/files/{id}", fileHandler.Serve)
 
-	// Protected Routes (Grouped under /api/me/)
+	// Signed-in routes that still work before the email is verified, so the
+	// user can see who they are and finish verification. These patterns are
+	// more specific than "/api/me/" below, so they take precedence.
+	account := func(h http.HandlerFunc) http.Handler { return jwtMiddleware(h) }
+	mux.Handle("GET /api/me/user", account(authHandler.Me))
+	mux.Handle("PUT /api/me/email", account(authLimiter.Limit(authHandler.SetEmail)))
+	mux.Handle("POST /api/me/email/verify", account(authLimiter.Limit(authHandler.VerifyEmail)))
+	mux.Handle("POST /api/me/email/resend", account(authLimiter.Limit(authHandler.ResendVerification)))
+
+	// Protected Routes (Grouped under /api/me/, verified email required)
 	protected := http.NewServeMux()
-	protected.HandleFunc("GET /api/me/user", authHandler.Me)
+	protected.HandleFunc("PUT /api/me/password", authLimiter.Limit(authHandler.ChangePassword))
 	protected.HandleFunc("GET /api/me/profiles", profileHandler.GetMyProfiles)
 	protected.HandleFunc("POST /api/me/profiles", profileHandler.CreateProfile)
 	protected.HandleFunc("GET /api/me/profiles/{id}", profileHandler.GetMyProfile)
@@ -122,7 +159,7 @@ func run() error {
 	protected.HandleFunc("DELETE /api/me/files/{id}", fileHandler.Delete)
 
 	// Mount protected routes with middleware
-	mux.Handle("/api/me/", jwtMiddleware(protected))
+	mux.Handle("/api/me/", jwtMiddleware(middleware.RequireVerified(protected)))
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,

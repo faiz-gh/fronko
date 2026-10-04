@@ -3,7 +3,7 @@
 The Fronko web app is a Svelte 5 + SvelteKit single-page app that compiles to static files and is served by nginx. It covers:
 
 - **Landing page** (`/`), with a live demo card.
-- **Auth** (`/login`): sign in or create an account.
+- **Auth** (`/login`, `/verify-email`, `/forgot-password`): sign in with a username or email, create an account, verify the email with a 6-digit code, and reset a forgotten password by emailed code.
 - **Dashboard** (`/dashboard`): an app shell with a sidebar (cards, theme toggle), and an overview with stats, cards and recent leads.
 - **Card editor** (`/dashboard/{id}`): edit a card with a live preview. Photo and brochures come from the file library. You can also view or export the card's leads.
 - **Leads** (`/dashboard/leads`): all leads across cards, filtered by card, searchable, paginated and exportable.
@@ -84,7 +84,7 @@ frontend/
 │   ├── lib/
 │   │   ├── api/
 │   │   │   ├── client.ts          # fetch wrapper, ApiError, 401 handling
-│   │   │   ├── auth.ts            # login / register / logout / me
+│   │   │   ├── auth.ts            # login / register / logout / me, email verification, password reset/change
 │   │   │   ├── profile.ts         # profile CRUD + public lookup
 │   │   │   ├── lead.ts            # submit / list leads
 │   │   │   ├── storage.ts         # bucket connection settings
@@ -107,6 +107,8 @@ frontend/
 │       ├── +layout.svelte         # Global CSS, <Toaster>, kicks off session.load()
 │       ├── +page.svelte           # Landing page
 │       ├── login/+page.svelte
+│       ├── verify-email/+page.svelte    # Enter the emailed code; add or correct the email
+│       ├── forgot-password/+page.svelte # Request a reset code, then set a new password
 │       ├── dashboard/
 │       │   ├── +layout.svelte     # Auth guard + app shell (sidebar / mobile drawer)
 │       │   ├── +page.svelte       # Overview: stats, cards grid, recent leads
@@ -131,15 +133,17 @@ frontend/
 | Path | Access | Purpose |
 | ---- | ------ | ------- |
 | `/` | Public | Marketing page with a demo `ProfileCard`. The header shows "Dashboard" or "Sign in" depending on the session |
-| `/login` | Public | Sign in and register tabs. Query params: `mode=register` opens the register tab, `next=/path` sets where to go afterwards (only same-site relative paths are followed), and `expired=1` shows a "session expired" notice |
+| `/login` | Public | Sign in (username or email, with a "Forgot password?" link) and register (username, email, password) tabs. Query params: `mode=register` opens the register tab, `next=/path` sets where to go afterwards (only same-site relative paths are followed), `expired=1` shows a "session expired" notice and `reset=1` a "password updated" one. Unverified accounts go to `/verify-email` after signing in |
+| `/verify-email` | Signed in, unverified | Six-slot code input (paste fills it, submits when complete), resend with a countdown, "Change email", and sign out. Accounts without an email start with an "Add your email" form. Verified users are sent on to `next` |
+| `/forgot-password` | Public | Step 1: email → always "if an account exists, we've sent a code". Step 2: code, new password and confirmation → `/login?reset=1` |
 | `/dashboard` | Signed in | Overview: stats (cards, leads all time, leads in the last 7 days), a grid of cards with copy link, QR code and delete actions, and the latest leads across all cards |
 | `/dashboard/leads` | Signed in | Every lead across your cards. Filter by card (`?card=ID`, kept in the URL so it can be linked to), search (name, email, phone or message), page size and pages, a Refresh button that refetches leads and lead counts without reloading the page, and CSV export of everything that matches (including phone). Clicking a lead's card filters to that card |
 | `/dashboard/files` | Signed in | The shared **file library**: drag-and-drop upload with progress, Photos/PDFs tabs, thumbnails, inline rename, "Used on" (which cards use each file), delete with a usage warning, pagination. Shows a "Connect storage" state until a bucket is connected |
-| `/dashboard/settings` | Signed in | **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
+| `/dashboard/settings` | Signed in | **Account**: username and email (with a Verified badge). **Password**: current, new and confirm; changing it signs out every other session and keeps this one. **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
 | `/dashboard/{id}` | Signed in | Editor. The **Card** tab has sections for Profile (with photo and 3:1 cover, both cropped before upload), Contact (email, mobile with country picker, website, booking link), Links (add, reorder, remove), Appearance (accent, light/dark theme) and Sharing (public slug, lead collection). A sticky preview pane on the right switches between the card and its QR code; below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
 | `/p/{slug}` | Public | The visitor-facing card. "Save contact" downloads a `.vcf`, plus share (Web Share API, falling back to the clipboard), a "Book a meeting" button when a booking link is set, and a lead form (name, email, optional mobile number, message) when `collect_leads` is on |
 
-`/dashboard/+layout.svelte` acts as the auth guard. While the session check is pending it shows a spinner. If the check finds no session, it redirects to `/login?next=<current path>`. Protected content never renders before the session is known.
+`/dashboard/+layout.svelte` acts as the auth guard. While the session check is pending it shows a spinner. If the check finds no session, it redirects to `/login?next=<current path>`; if the email isn't verified, to `/verify-email?next=<current path>`. Protected content never renders before the session is known.
 
 Once signed in, the layout renders the app shell. From 1024px up, a fixed sidebar (`AppSidebar`) lists the user's cards. Below that width, a top bar opens the same sidebar as a slide-in drawer. The layout also loads `cards` (see `cards.svelte.ts`) and mounts the global "New card" dialog, which anything can open with `cards.createOpen = true`. After a create, save or delete, call `cards.upsert()` or `cards.remove()` so the sidebar and overview stay in sync without refetching.
 
@@ -165,11 +169,13 @@ The typed wrappers are in `api/auth.ts`, `api/profile.ts` and `api/lead.ts`. Lea
 | ------ | ----------- |
 | `status` | `'unknown'` (still checking), `'authenticated'` or `'anonymous'` |
 | `username` | Signed-in username, or `null` |
+| `email` / `emailVerified` | The account's email (`null` for older accounts) and whether it's verified |
 | `isAuthenticated` | `status === 'authenticated'` |
 | `load()` | Calls `GET /api/me/user` once per page load. The root layout calls it. Safe to call repeatedly |
-| `signIn(username)` | Called after a successful login or register |
+| `signIn(user)` | Called with the `AuthUser` from login, register or a verification call |
 | `signOut()` | `POST /auth/logout`, clears state, goes to `/login` |
 | `expire()` | Clears state and redirects to login, keeping the current path in `next` |
+| `requireVerification()` | Called when an API call answers `403 email_unverified`; sends the user to `/verify-email` |
 
 The JWT itself is never visible to JavaScript, because it lives in an HttpOnly cookie. `load()` also deletes the legacy `jwt_token` and `username` keys from `localStorage` that older builds left behind.
 

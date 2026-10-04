@@ -32,7 +32,7 @@ func TestRepositoryIntegration(t *testing.T) {
 	repo := repository.New(pool)
 
 	// Clean up tables before testing
-	_, err = pool.Exec(ctx, "TRUNCATE TABLE users, profiles, leads, user_storage, files RESTART IDENTITY CASCADE")
+	_, err = pool.Exec(ctx, "TRUNCATE TABLE users, profiles, leads, user_storage, files, email_codes RESTART IDENTITY CASCADE")
 	require.NoError(t, err)
 
 	t.Run("User Flow", func(t *testing.T) {
@@ -66,6 +66,75 @@ func TestRepositoryIntegration(t *testing.T) {
 		assert.ErrorIs(t, repo.CreateUser(ctx, dup), repository.ErrConflict)
 
 		_, err = repo.GetUserByUsername(ctx, "nobody")
+		assert.ErrorIs(t, err, repository.ErrNotFound)
+	})
+
+	t.Run("Email And Codes", func(t *testing.T) {
+		email := "Mailer@Example.com"
+		user := &models.User{Username: "mailer", Email: &email, PasswordHash: "hash"}
+		require.NoError(t, repo.CreateUser(ctx, user))
+		assert.Zero(t, user.SessionVersion)
+
+		// Email lookups and uniqueness are case-insensitive
+		byEmail, err := repo.GetUserByEmail(ctx, "mailer@example.com")
+		require.NoError(t, err)
+		assert.Equal(t, user.ID, byEmail.ID)
+		assert.Nil(t, byEmail.EmailVerifiedAt)
+
+		dupEmail := "MAILER@example.com"
+		err = repo.CreateUser(ctx, &models.User{Username: "mailer2", Email: &dupEmail, PasswordHash: "x"})
+		assert.ErrorIs(t, err, repository.ErrConflict)
+		assert.True(t, repository.IsEmailConflict(err))
+
+		dupName := "unique@example.com"
+		err = repo.CreateUser(ctx, &models.User{Username: "MAILER", Email: &dupName, PasswordHash: "x"})
+		assert.ErrorIs(t, err, repository.ErrConflict)
+		assert.False(t, repository.IsEmailConflict(err))
+
+		// Verification
+		require.NoError(t, repo.MarkEmailVerified(ctx, user.ID))
+		version, verified, err := repo.GetSessionState(ctx, user.ID)
+		require.NoError(t, err)
+		assert.True(t, verified)
+		assert.Zero(t, version)
+
+		// Changing the email clears verification
+		require.NoError(t, repo.SetUserEmail(ctx, user.ID, "new@example.com"))
+		_, verified, err = repo.GetSessionState(ctx, user.ID)
+		require.NoError(t, err)
+		assert.False(t, verified)
+
+		// Password changes bump the session version
+		version, err = repo.UpdatePassword(ctx, user.ID, "newhash")
+		require.NoError(t, err)
+		assert.Equal(t, 1, version)
+
+		// Codes: attempts are capped, re-issuing resets them
+		code := &models.EmailCode{UserID: user.ID, Purpose: "verify_email", CodeHash: "h1", ExpiresAt: time.Now().Add(time.Hour)}
+		require.NoError(t, repo.UpsertEmailCode(ctx, code))
+		for i := 1; i <= 2; i++ {
+			got, err := repo.UseEmailCodeAttempt(ctx, user.ID, "verify_email", 2)
+			require.NoError(t, err)
+			assert.Equal(t, "h1", got.CodeHash)
+			assert.Equal(t, i, got.Attempts)
+		}
+		_, err = repo.UseEmailCodeAttempt(ctx, user.ID, "verify_email", 2)
+		assert.ErrorIs(t, err, repository.ErrNotFound, "attempts exhausted")
+
+		code.CodeHash = "h2"
+		require.NoError(t, repo.UpsertEmailCode(ctx, code))
+		got, err := repo.UseEmailCodeAttempt(ctx, user.ID, "verify_email", 2)
+		require.NoError(t, err)
+		assert.Equal(t, "h2", got.CodeHash)
+
+		require.NoError(t, repo.DeleteEmailCode(ctx, user.ID, "verify_email"))
+		_, err = repo.GetEmailCode(ctx, user.ID, "verify_email")
+		assert.ErrorIs(t, err, repository.ErrNotFound)
+
+		// Expired codes can't be used
+		expired := &models.EmailCode{UserID: user.ID, Purpose: "reset_password", CodeHash: "h3", ExpiresAt: time.Now().Add(-time.Minute)}
+		require.NoError(t, repo.UpsertEmailCode(ctx, expired))
+		_, err = repo.UseEmailCodeAttempt(ctx, user.ID, "reset_password", 5)
 		assert.ErrorIs(t, err, repository.ErrNotFound)
 	})
 

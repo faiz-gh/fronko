@@ -13,10 +13,16 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | Method | Path | Auth | Rate limited | Description |
 | ------ | ---- | :--: | :----------: | ----------- |
 | `GET`    | [`/health`](#get-health) | | | Liveness check |
-| `POST`   | [`/auth/register`](#post-authregister) | | ✅ auth | Create an account and sign in |
-| `POST`   | [`/auth/login`](#post-authlogin) | | ✅ auth | Sign in |
+| `POST`   | [`/auth/register`](#post-authregister) | | ✅ auth | Create an account, email a verification code, and sign in |
+| `POST`   | [`/auth/login`](#post-authlogin) | | ✅ auth | Sign in with username or email |
 | `POST`   | [`/auth/logout`](#post-authlogout) | | | Clear the session cookie |
-| `GET`    | [`/api/me/user`](#get-apimeuser) | ✅ | | Current user |
+| `POST`   | [`/auth/password/forgot`](#post-authpasswordforgot) | | ✅ auth | Email a password-reset code |
+| `POST`   | [`/auth/password/reset`](#post-authpasswordreset) | | ✅ auth | Set a new password with the code |
+| `GET`    | [`/api/me/user`](#get-apimeuser) | ✅ ✉️ | | Current user |
+| `PUT`    | [`/api/me/email`](#put-apimeemail) | ✅ ✉️ | ✅ auth | Add or correct an unverified email |
+| `POST`   | [`/api/me/email/verify`](#post-apimeemailverify) | ✅ ✉️ | ✅ auth | Verify the email with its code |
+| `POST`   | [`/api/me/email/resend`](#post-apimeemailresend) | ✅ ✉️ | ✅ auth | Send a new verification code |
+| `PUT`    | [`/api/me/password`](#put-apimepassword) | ✅ | ✅ auth | Change password; signs out other sessions |
 | `GET`    | [`/api/me/profiles`](#get-apimeprofiles) | ✅ | | List my profiles |
 | `POST`   | [`/api/me/profiles`](#post-apimeprofiles) | ✅ | | Create a profile |
 | `GET`    | [`/api/me/profiles/{id}`](#get-apimeprofilesid) | ✅ | | Get one of my profiles |
@@ -36,19 +42,22 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `GET`    | [`/api/files/{id}`](#get-apifilesid) | | | Redirect to a file (short-lived signed URL) |
 | `POST`   | [`/api/profiles/{id}/leads`](#post-apiprofilesidleads) | | ✅ lead | Submit a lead to a profile |
 
+✉️ = works before the email is verified. Every other ✅ route needs a verified email.
+
 ## Cross-cutting behaviour
 
 | Status | When |
 | ------ | ---- |
 | `400` | Body isn't valid JSON (`"invalid request body"`), the body is over 64 KiB, a path ID isn't an integer (`"invalid profile ID"`), or validation failed |
-| `401` | `/api/me/*` without a cookie (`"not signed in"`) or with an invalid or expired token (`"session expired, please sign in again"`) |
+| `401` | `/api/me/*` without a cookie (`"not signed in"`), with an invalid or expired token, or with a token from before a password change or reset (`"session expired, please sign in again"`) |
+| `403` | `/api/me/*` (except the ✉️ routes) while the email isn't verified: `{"error":"verify your email to continue","code":"email_unverified"}` |
 | `403` | A `POST`/`PUT`/`DELETE` whose `Origin` header names a different host (`"cross-origin request rejected"`). Requests without `Origin`, such as curl, are allowed |
 | `429` | Rate limit exceeded (`"too many requests, please try again shortly"`), with a `Retry-After: <seconds>` header |
 | `500` | Unexpected server error (`"internal error"` or a specific "failed to …" message) |
 
 **Rate limits** are per client IP:
 
-- **auth**: burst of 10, then 1 request per 10s. `login` and `register` share one bucket.
+- **auth**: burst of 10, then 1 request per 10s. Every route marked "auth" shares one bucket.
 - **lead**: burst of 5, then 1 request per 15s.
 
 ## Objects
@@ -56,8 +65,12 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 ### User
 
 ```json
-{ "id": 1, "username": "faiz" }
+{ "id": 1, "username": "faiz", "email": "faiz@example.com", "email_verified": true }
 ```
+
+`email` is `null` only for accounts created before emails were required; they must add and verify one before using the app.
+
+**Email codes.** Verification and password-reset codes are 6 digits, valid for 15 minutes, and allow 5 guesses, after which a new code is needed. A new code can be requested once every 60 seconds; requesting one replaces the previous code. Codes are stored only as an HMAC.
 
 ### Profile (owner view)
 
@@ -139,26 +152,27 @@ Returns `200` with the plain-text body `OK`. It doesn't touch the database.
 
 ### `POST /auth/register`
 
-Creates an account and signs it in.
+Creates an account, emails a verification code, and signs it in. Until the email is verified, only the ✉️ routes work.
 
 **Request**
 
 ```json
-{ "username": "faiz", "password": "correct horse battery" }
+{ "username": "faiz", "email": "faiz@example.com", "password": "correct horse battery" }
 ```
 
 | Field | Rules |
 | ----- | ----- |
 | `username` | Trimmed. 3–32 chars of `[a-zA-Z0-9_.-]`. Unique **case-insensitively** |
+| `email` | Trimmed and lower-cased. A bare address, at most 254 chars. Unique **case-insensitively** |
 | `password` | 8–72 bytes (bcrypt's limit) |
 
 **Responses**
 
 | Status | Body |
 | ------ | ---- |
-| `201` | [`User`](#user). Sets the `fronko_session` cookie |
-| `400` | `"username must be 3-32 characters: letters, numbers, '.', '_' or '-'"` or `"password must be 8-72 characters"` |
-| `409` | `"username already taken"` |
+| `201` | [`User`](#user) with `email_verified: false`. Sets the `fronko_session` cookie |
+| `400` | `"username must be 3-32 characters: letters, numbers, '.', '_' or '-'"`, `"enter a valid email address"` or `"password must be 8-72 characters"` |
+| `409` | `"username already taken"` or `"an account with this email already exists"` |
 
 ### `POST /auth/login`
 
@@ -168,7 +182,7 @@ Creates an account and signs it in.
 { "username": "faiz", "password": "correct horse battery" }
 ```
 
-The username match is case-insensitive.
+`username` may also be the account's email (anything containing `@` is looked up as an email). Both matches are case-insensitive. Unverified accounts can sign in; check `email_verified` in the response.
 
 **Responses**
 
@@ -183,14 +197,87 @@ Clears the session cookie. It works without a session. The JWT isn't revoked ser
 
 **Response:** `204 No Content`
 
-### `GET /api/me/user` 🔒
+### `POST /auth/password/forgot`
+
+```json
+{ "email": "faiz@example.com" }
+```
+
+Emails a reset code if a **verified** account uses this address and the 60-second cooldown has passed. It always answers the same way, so it can't reveal which emails have accounts.
+
+| Status | Body |
+| ------ | ---- |
+| `204` | Always, for any well-formed address |
+| `400` | `"enter a valid email address"` |
+
+### `POST /auth/password/reset`
+
+```json
+{ "email": "faiz@example.com", "code": "042917", "password": "new password" }
+```
+
+Sets the new password and **signs out every session** (including the one asking, if any). Sign in again afterwards.
+
+| Status | Body |
+| ------ | ---- |
+| `204` | Password changed |
+| `400` | `"invalid or expired code"` (wrong, expired, used up, or never issued; each wrong guess counts) or `"password must be 8-72 characters"` |
+
+### `GET /api/me/user` 🔒 ✉️
 
 Returns the signed-in user. The SPA calls this at startup to restore the session, because it can't read the HttpOnly cookie.
 
 | Status | Body |
 | ------ | ---- |
 | `200` | [`User`](#user) |
-| `401` | Not signed in or session expired. If the token is valid but the account was deleted, the cookie is cleared and the body is `"account no longer exists"` |
+| `401` | Not signed in, session expired, or the account no longer exists (`"account no longer exists"`) |
+
+### `PUT /api/me/email` 🔒 ✉️
+
+```json
+{ "email": "faiz@example.com" }
+```
+
+Adds an email to an older account, or corrects a typo before verification, and sends a verification code to it. A new address always gets a fresh code; re-sending the same address respects the cooldown. A verified email can't be changed.
+
+| Status | Body |
+| ------ | ---- |
+| `200` | [`User`](#user) |
+| `400` | `"enter a valid email address"` |
+| `409` | `"your email is already verified"` or `"an account with this email already exists"` |
+
+### `POST /api/me/email/verify` 🔒 ✉️
+
+```json
+{ "code": "042917" }
+```
+
+| Status | Body |
+| ------ | ---- |
+| `200` | [`User`](#user) with `email_verified: true` (also when it already was) |
+| `400` | `"invalid or expired code"` or `"add an email address first"` |
+
+### `POST /api/me/email/resend` 🔒 ✉️
+
+| Status | Body |
+| ------ | ---- |
+| `204` | A new code was sent |
+| `400` | `"add an email address first"` |
+| `409` | `"your email is already verified"` |
+| `429` | `"please wait before requesting another code"`, with `Retry-After` |
+
+### `PUT /api/me/password` 🔒
+
+```json
+{ "current_password": "old password", "new_password": "new password" }
+```
+
+Signs out every other session. This response sets a fresh `fronko_session` cookie, so the caller stays signed in.
+
+| Status | Body |
+| ------ | ---- |
+| `204` | Password changed |
+| `400` | `"current password is incorrect"`, `"password must be 8-72 characters"` or `"choose a password different from your current one"` |
 
 ---
 
@@ -468,10 +555,15 @@ The server accepts leads even when the card's `data.collect_leads` is `false`. T
 BASE=http://localhost:8080
 JAR=$(mktemp)
 
-# Register (sets cookie)
+# Register (sets cookie and emails a code; locally, read it at http://localhost:8025)
 curl -s -c $JAR -X POST $BASE/auth/register \
   -H 'Content-Type: application/json' \
-  -d '{"username":"demo","password":"password123"}'
+  -d '{"username":"demo","email":"demo@example.com","password":"password123"}'
+
+# Verify the email with the code from the message
+curl -s -b $JAR -X POST $BASE/api/me/email/verify \
+  -H 'Content-Type: application/json' \
+  -d '{"code":"123456"}'
 
 # Create a profile
 curl -s -b $JAR -X POST $BASE/api/me/profiles \

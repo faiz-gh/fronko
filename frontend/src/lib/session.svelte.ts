@@ -1,5 +1,5 @@
 import { goto } from '$app/navigation';
-import { logout, me } from '$lib/api/auth';
+import { logout, me, type AuthUser } from '$lib/api/auth';
 
 type Status = 'unknown' | 'authenticated' | 'anonymous';
 
@@ -10,6 +10,8 @@ type Status = 'unknown' | 'authenticated' | 'anonymous';
 class Session {
 	status = $state<Status>('unknown');
 	username = $state<string | null>(null);
+	email = $state<string | null>(null);
+	emailVerified = $state(false);
 
 	get isAuthenticated() {
 		return this.status === 'authenticated';
@@ -28,8 +30,7 @@ class Session {
 				// Storage unavailable; nothing to clean up.
 			}
 			try {
-				const user = await me();
-				this.signIn(user.username);
+				this.signIn(await me());
 			} catch {
 				this.clear();
 			}
@@ -37,13 +38,17 @@ class Session {
 		return this.#loading;
 	}
 
-	signIn(username: string) {
-		this.username = username;
+	signIn(user: AuthUser) {
+		this.username = user.username;
+		this.email = user.email;
+		this.emailVerified = user.email_verified;
 		this.status = 'authenticated';
 	}
 
 	clear() {
 		this.username = null;
+		this.email = null;
+		this.emailVerified = false;
 		this.status = 'anonymous';
 	}
 
@@ -54,6 +59,15 @@ class Session {
 			this.clear();
 			await goto('/login');
 		}
+	}
+
+	/** Called when the API says the email must be verified before going further. */
+	requireVerification() {
+		if (this.status !== 'authenticated') return;
+		this.emailVerified = false;
+		if (location.pathname === '/verify-email') return;
+		const next = location.pathname + location.search;
+		goto(`/verify-email?next=${encodeURIComponent(next)}`, { replaceState: true });
 	}
 
 	/** Called when the API rejects the cookie; returns the user to where they were after login. */

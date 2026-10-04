@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/faiz-gh/fronko/backend/internal/auth"
+	"github.com/faiz-gh/fronko/backend/internal/mail"
 	"github.com/faiz-gh/fronko/backend/internal/middleware"
 	"github.com/faiz-gh/fronko/backend/internal/models"
 	"github.com/faiz-gh/fronko/backend/internal/repository"
@@ -18,6 +19,7 @@ var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_.-]{3,32}$`)
 type AuthHandler struct {
 	repo        *repository.Repository
 	authService *auth.Service
+	mailer      mail.Sender
 	// cookieSecure sets the Secure flag on the session cookie.
 	cookieSecure bool
 	// dummyHash is compared against when a username doesn't exist, so login
@@ -25,7 +27,7 @@ type AuthHandler struct {
 	dummyHash string
 }
 
-func NewAuthHandler(repo *repository.Repository, authService *auth.Service, cookieSecure bool) *AuthHandler {
+func NewAuthHandler(repo *repository.Repository, authService *auth.Service, mailer mail.Sender, cookieSecure bool) *AuthHandler {
 	dummy, err := authService.HashPassword("fronko-timing-equalizer")
 	if err != nil {
 		log.Fatalf("hashing dummy password: %v", err)
@@ -33,20 +35,40 @@ func NewAuthHandler(repo *repository.Repository, authService *auth.Service, cook
 	return &AuthHandler{
 		repo:         repo,
 		authService:  authService,
+		mailer:       mailer,
 		cookieSecure: cookieSecure,
 		dummyHash:    dummy,
 	}
 }
 
 type AuthRequest struct {
+	// Username also accepts an email address on login.
 	Username string `json:"username"`
+	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
 // AuthResponse deliberately omits the token: it's only ever sent as an HttpOnly cookie.
 type AuthResponse struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
+	ID            int64   `json:"id"`
+	Username      string  `json:"username"`
+	Email         *string `json:"email"`
+	EmailVerified bool    `json:"email_verified"`
+}
+
+func authResponse(u *models.User) AuthResponse {
+	return AuthResponse{ID: u.ID, Username: u.Username, Email: u.Email, EmailVerified: u.EmailVerifiedAt != nil}
+}
+
+// signIn issues a session for the user's current session version.
+func (h *AuthHandler) signIn(w http.ResponseWriter, u *models.User) bool {
+	token, err := h.authService.GenerateJWT(u.ID, u.SessionVersion)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to generate token")
+		return false
+	}
+	setSessionCookie(w, token, h.cookieSecure)
+	return true
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +78,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Username = strings.TrimSpace(req.Username)
 
-	user, err := h.repo.GetUserByUsername(r.Context(), req.Username)
+	var user *models.User
+	var err error
+	if strings.Contains(req.Username, "@") {
+		user, err = h.repo.GetUserByEmail(r.Context(), req.Username)
+	} else {
+		user, err = h.repo.GetUserByUsername(r.Context(), req.Username)
+	}
 	if err != nil {
 		if !errors.Is(err, repository.ErrNotFound) {
 			log.Printf("login lookup: %v", err)
@@ -73,14 +101,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.authService.GenerateJWT(user.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to generate token")
+	if !h.signIn(w, user) {
 		return
 	}
-
-	setSessionCookie(w, token, h.cookieSecure)
-	writeJSON(w, http.StatusOK, AuthResponse{ID: user.ID, Username: user.Username})
+	writeJSON(w, http.StatusOK, authResponse(user))
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -94,9 +118,12 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "username must be 3-32 characters: letters, numbers, '.', '_' or '-'")
 		return
 	}
-	// bcrypt ignores everything past 72 bytes, so reject longer passwords outright.
-	if len(req.Password) < 8 || len(req.Password) > 72 {
-		writeError(w, http.StatusBadRequest, "password must be 8-72 characters")
+	email, ok := normalizeEmail(req.Email)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "enter a valid email address")
+		return
+	}
+	if !validPassword(w, req.Password) {
 		return
 	}
 
@@ -108,13 +135,18 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	user := &models.User{
 		Username:     req.Username,
+		Email:        &email,
 		PasswordHash: hash,
 	}
 
-	// The unique index on LOWER(username) is the source of truth for duplicates.
+	// The unique indexes on LOWER(username) and LOWER(email) are the source of truth for duplicates.
 	if err := h.repo.CreateUser(r.Context(), user); err != nil {
 		if errors.Is(err, repository.ErrConflict) {
-			writeError(w, http.StatusConflict, "username already taken")
+			if repository.IsEmailConflict(err) {
+				writeError(w, http.StatusConflict, "an account with this email already exists")
+			} else {
+				writeError(w, http.StatusConflict, "username already taken")
+			}
 			return
 		}
 		log.Printf("create user: %v", err)
@@ -122,14 +154,15 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.authService.GenerateJWT(user.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to generate token")
-		return
+	// The account exists either way; if this fails the user can resend.
+	if _, err := h.issueCode(r.Context(), user, auth.PurposeVerifyEmail, true); err != nil {
+		log.Printf("issue verification code: %v", err)
 	}
 
-	setSessionCookie(w, token, h.cookieSecure)
-	writeJSON(w, http.StatusCreated, AuthResponse{ID: user.ID, Username: user.Username})
+	if !h.signIn(w, user) {
+		return
+	}
+	writeJSON(w, http.StatusCreated, authResponse(user))
 }
 
 // Public: POST /auth/logout. Stateless JWTs can't be revoked server-side, so
@@ -139,21 +172,29 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Protected: GET /api/me/user. The SPA can't read the HttpOnly cookie, so it
-// asks who is signed in.
+// Protected (allowed while unverified): GET /api/me/user. The SPA can't read
+// the HttpOnly cookie, so it asks who is signed in.
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, authResponse(user))
+}
+
+// currentUser loads the signed-in user, writing an error response if it can't.
+func (h *AuthHandler) currentUser(w http.ResponseWriter, r *http.Request) (*models.User, bool) {
 	user, err := h.repo.GetUserByID(r.Context(), middleware.UserID(r.Context()))
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			// Valid token for a deleted account.
+			// Deleted between the middleware's check and now.
 			clearSessionCookie(w, h.cookieSecure)
 			writeError(w, http.StatusUnauthorized, "account no longer exists")
-			return
+			return nil, false
 		}
 		log.Printf("get current user: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, false
 	}
-
-	writeJSON(w, http.StatusOK, AuthResponse{ID: user.ID, Username: user.Username})
+	return user, true
 }

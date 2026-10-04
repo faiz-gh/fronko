@@ -3,7 +3,11 @@ import { session } from '$lib/session.svelte';
 export class ApiError extends Error {
 	constructor(
 		message: string,
-		readonly status: number
+		readonly status: number,
+		/** Machine-readable reason, when the backend sends one (e.g. "email_unverified"). */
+		readonly code?: string,
+		/** Seconds from a 429's Retry-After header. */
+		readonly retryAfter?: number
 	) {
 		super(message);
 	}
@@ -52,7 +56,12 @@ export async function apiClient<T>(
 			session.expire();
 		}
 		const body = await response.json().catch(() => ({}));
-		throw new ApiError(body.error || `Request failed (${response.status})`, response.status);
+		// Signed in but the email isn't verified yet: finish that first.
+		if (response.status === 403 && body.code === 'email_unverified') {
+			session.requireVerification();
+		}
+		const retryAfter = Number(response.headers.get('Retry-After')) || undefined;
+		throw new ApiError(body.error || `Request failed (${response.status})`, response.status, body.code, retryAfter);
 	}
 
 	if (response.status === 204) {

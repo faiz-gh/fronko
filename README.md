@@ -14,6 +14,8 @@ Built as a high-performance alternative to proprietary platforms like Mobilo and
 
 * **🤝 Lead Capture:** A built-in form lets recipients share their details back, with an optional mobile number. Leads land in one inbox with card filters, search, pagination and CSV export.
 
+* **🔐 Accounts:** Sign up with a username and email, verified by a 6-digit emailed code. Sign in with either. Forgotten passwords are reset with an emailed code, and changing a password in **Settings** signs out every other device.
+
 * **☁️ Bring Your Own Storage:** Photos and brochures go to each user's own S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3, MinIO). Keys are encrypted at rest and buckets stay private.
 
 ## 🏗️ Architecture & Data Flow
@@ -84,6 +86,14 @@ JWT_SECRET=replace-with-a-long-random-string
 # Encrypts their keys at rest. Keep it stable and backed up.
 SECRETS_KEY=generate-with-openssl-rand-base64-32
 
+# Email for verification and password-reset codes, via any SMTP provider
+# (Resend, Amazon SES, Brevo, ...). Without SMTP_HOST, codes only go to the backend log.
+SMTP_HOST=smtp.resend.com
+SMTP_PORT=587
+SMTP_USERNAME=resend
+SMTP_PASSWORD=your-api-key
+SMTP_FROM="Fronko <no-reply@fronko.example.com>"
+
 # Public URLs. FRONTEND_URL is allowed as a CORS origin (comma-separate several).
 # BACKEND_URL is the API URL the browser calls; leave empty to go through the
 # frontend's nginx (same-origin, no CORS needed).
@@ -109,7 +119,7 @@ docker compose up -d --build
 ### Local development
 
 * **Without Docker:** run the backend and frontend separately. See [backend → Run locally](backend/README.md#run-locally) and [frontend → Getting started](frontend/README.md#getting-started).
-* **With Docker against a Postgres on your machine:** `docker compose -f docker-compose.local.yml up --build`. Edit its hard-coded `DATABASE_URL` first. This file also sets a development `SECRETS_KEY` and `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`, so storage can point at a local S3 server such as MinIO or SeaweedFS on `http://host.docker.internal:9000`. It binds the app to `http://localhost:3000` and ignores `FRONTEND_URL`/`BACKEND_URL` from `.env`, so local runs always stay same-origin.
+* **With Docker against a Postgres on your machine:** `docker compose -f docker-compose.local.yml up --build`. Edit its hard-coded `DATABASE_URL` first. This file also sets a development `SECRETS_KEY` and `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`, so storage can point at a local S3 server such as MinIO or SeaweedFS on `http://host.docker.internal:9000`. It binds the app to `http://localhost:3000` and ignores `FRONTEND_URL`/`BACKEND_URL` from `.env`, so local runs always stay same-origin. It also starts **Mailpit**, which catches every email the backend sends (verification and reset codes): open its inbox at `http://localhost:8025`.
 
 ## 🪣 Connecting storage (photos & brochures)
 
@@ -140,7 +150,7 @@ Fronko is hardware-agnostic. You can purchase any blank NTAG215 or NTAG216 PVC c
 
 Planned, but not built yet:
 
-* **Account email & verification:** add an `email` column to users, send a one-time code (OTP) to confirm it at sign-up, and support password recovery by email. Needs an SMTP/transactional email provider.
+* **Changing a verified email:** today the address can only be corrected before it's verified.
 * **Shared rate limiting:** rate limits are kept in memory per backend instance. Running several instances needs a shared store such as Redis.
 * **CRM integrations:** push new leads to HubSpot or Salesforce.
 * **Richer profile blocks:** more content types on the public card (calendars, embeds, galleries) and a block-based layout.

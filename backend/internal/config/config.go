@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/faiz-gh/fronko/backend/internal/secrets"
@@ -24,6 +25,14 @@ type Config struct {
 	CORSAllowedOrigins []string
 	// StorageAllowPrivate lets storage endpoints use http and private addresses (local MinIO only).
 	StorageAllowPrivate bool
+
+	// Outgoing mail for verification and password-reset codes. An empty
+	// SMTPHost logs messages instead of sending them (development only).
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string
 }
 
 // Load reads configuration from the environment. DATABASE_URL and JWT_SECRET
@@ -44,6 +53,12 @@ func Load() (*Config, error) {
 		CORSAllowedOrigins: strings.Split(os.Getenv("CORS_ALLOWED_ORIGINS"), ","),
 
 		StorageAllowPrivate: os.Getenv("STORAGE_ALLOW_PRIVATE_ENDPOINTS") == "true",
+
+		SMTPHost:     os.Getenv("SMTP_HOST"),
+		SMTPPort:     587,
+		SMTPUsername: os.Getenv("SMTP_USERNAME"),
+		SMTPPassword: os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:     os.Getenv("SMTP_FROM"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -51,6 +66,17 @@ func Load() (*Config, error) {
 	}
 	if len(cfg.JWTSecret) < 16 {
 		return nil, errors.New("JWT_SECRET is required and must be at least 16 characters")
+	}
+
+	if raw := os.Getenv("SMTP_PORT"); raw != "" {
+		port, err := strconv.Atoi(raw)
+		if err != nil || port < 1 || port > 65535 {
+			return nil, fmt.Errorf("SMTP_PORT: invalid port %q", raw)
+		}
+		cfg.SMTPPort = port
+	}
+	if cfg.SMTPHost != "" && cfg.SMTPFrom == "" {
+		return nil, errors.New("SMTP_FROM is required when SMTP_HOST is set")
 	}
 
 	// Optional: without it the app runs, but file storage is switched off.
