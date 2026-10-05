@@ -34,7 +34,7 @@
 	--border: oklch(0.918 0.004 265);
 	--input: oklch(0.885 0.006 265);
 	--ring: oklch(0.56 0.19 268);
-	/* Brand indigo: logo, active states, focus. Used sparingly. */
+	/* Brand indigo: active states, focus. Used sparingly. */
 	--brand: oklch(0.52 0.21 268);
 	--brand-foreground: oklch(0.985 0 0);
 	--brand-soft: oklch(0.955 0.03 268);

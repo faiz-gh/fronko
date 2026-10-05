@@ -105,7 +105,7 @@ frontend/
 │   │   ├── storage.svelte.ts      # Storage connection status (storage.ready), shared by Files/Settings/editor
 │   │   ├── format.ts              # timeAgo(), formatDateTime(), plural()
 │   │   ├── utils.ts               # cn() class merger + shadcn type helpers
-│   │   └── assets/favicon.svg
+│   │   └── assets/favicon.svg     # Stacked-card F; switches to light colours in dark browser themes
 │   └── routes/
 │       ├── +layout.ts             # ssr = false, prerender = false
 │       ├── +layout.svelte         # Global CSS, <Toaster>, kicks off session.load()
@@ -127,6 +127,7 @@ frontend/
 │       └── p/[slug]/+page.svelte  # Public card
 ├── static/
 │   ├── robots.txt
+│   ├── fronko-mark.svg            # 512px app-icon mark (F on a light tile), served at /fronko-mark.svg
 │   └── config.js                  # Runtime settings placeholder (overwritten in Docker)
 ├── docker/
 │   ├── default.conf.template      # nginx server + API proxy (env-templated)
@@ -294,7 +295,7 @@ App-specific components live in `src/lib/components/app/`:
 | `BrandIcon` | `url`, `kind?` (`'link'` or `'calendar'`), `class?` | Brand icon for a social or booking URL, falling back to a generic link or calendar icon |
 | `PhoneInput` | `country`, `code`, `number` (all bindable), `id?`, `invalid?`, `contentClass?` | Searchable country picker plus a number field that formats as you type (`libphonenumber-js`). Writes digits only, and writes nothing until the user edits, so it never marks a form dirty. Helpers live in `$lib/phone.ts` |
 | `ImageCropDialog` | `file` (bindable; set it to open), `aspect`, `shape`, `outputWidth`, `outputHeight`, `onconfirm` | Crop, zoom and rotate a freshly picked image (`svelte-easy-crop`), then hand back a WebP (or JPEG) `File`. The editor uses 1:1 / 512px for photos and 3:1 / 1500×500 for covers |
-| `Logo` | `href?`, `class?` | Wordmark link |
+| `Logo` | `href?`, `class?` | Wordmark link: the stacked-card F (stem follows the text colour, arms are Fronko orange) and "fronko" |
 | `AuthLayout` | `children` (snippet) | The split frame shared by `/login`, `/verify-email` and `/forgot-password`: logo and form column on the left, sample card on the right (from 1024px) |
 | `CodeInput` | `value` (bindable), `id?`, `disabled?`, `invalid?`, `oncomplete?` | Six-slot input for emailed codes (shadcn `input-otp`, digits only, `autocomplete="one-time-code"`). Pasting fills every slot; `oncomplete` fires once all six are in |
 | `ChangeEmailForm` | `onclose` | Settings flow for changing a verified email: new address + current password → code sent to the new address → confirm, with resend countdown and "Use a different address". Updates the session and toasts on success |
@@ -311,7 +312,7 @@ npx shadcn-svelte@latest add <component>
 
 - **Tailwind v4** is configured CSS-first in `src/app.css`. There's no `tailwind.config.js`.
 - **Design tokens** are OKLCH CSS variables (`--background`, `--primary`, `--radius` and so on) defined on `:root` and overridden under `.dark`. The `dark:` variant matches any descendant of `.dark`.
-- **Palette.** The UI uses graphite neutrals, and the primary (action) colour is ink. Indigo (`--brand`, with `bg-brand`, `text-brand` and `bg-brand-soft`) is reserved for the logo, lead-count badges and focus rings, so use it sparingly. Each card's own accent colour belongs to the card, not the app.
+- **Palette.** The UI uses graphite neutrals, and the primary (action) colour is ink. Indigo (`--brand`, with `bg-brand`, `text-brand` and `bg-brand-soft`) is reserved for lead-count badges and focus rings, so use it sparingly. The logo has its own orange (`orange-600`, `orange-400` in dark mode). Each card's own accent colour belongs to the card, not the app.
 - **Dashboard dark mode.** `$lib/theme.svelte.ts` stores a Light, Dark or System preference in localStorage (`fronko-theme`), and the sidebar's `ThemeToggle` sets it. The dashboard layout adds `.dark` to `<html>` only while you're in `/dashboard`, so portalled dialogs, menus and toasts match, and the marketing and public pages stay light. An inline script in `app.html` applies the theme before first paint on dashboard URLs. `ProfileCard` always scopes itself with `.dark` or `.light`, so a light card previews as light inside the dark dashboard. The `dark:` variant skips anything inside `.light` for the same reason.
 - **Utilities.** `bg-dots` draws the faint dot grid used behind previews, and `tabular` sets tabular numerals for counts.
 - **Layout widths.** App pages are full width (the overview caps at 1680px), and the sidebar is `w-68`. Breakpoints that change the structure: `lg` (1024px) shows the sidebar, `xl` (1280px) shows the editor's preview pane, `2xl` (1536px) puts section headings beside the fields and moves recent leads into their own column.
