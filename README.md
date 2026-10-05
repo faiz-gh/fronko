@@ -1,65 +1,117 @@
-# 📇 Fronko: The Open-Source Digital Business Card
+<div align="center">
 
-Fronko is a lightweight, self-hostable digital business card platform designed for frictionless networking. It combines NFC, QR codes, and a zero-friction mobile web experience to replace traditional paper business cards.
+<img src="frontend/static/fronko-mark.svg" alt="Fronko logo" width="96" height="96" />
 
-Built as a high-performance alternative to proprietary platforms like Mobilo and Popl, Fronko gives individuals, freelancers, and businesses complete ownership of their data, profiles, and routing logic without enterprise lock-in.
+# Fronko
 
-## ✨ Core Features
+**Open-source, self-hostable digital business cards for teams.**
 
-* **⚡ Frictionless Exchange:** The recipient does not need an app. Tapping an NFC card or scanning a QR code instantly renders a lightning-fast web profile.
+Share a card with an NFC tap or a QR scan. No app needed to view it, it saves to contacts in one tap, and leads come back to your team.
 
-* **📱 One-tap Save to Contacts:** Visitors download a vCard 3.0 (`.vcf`), which both iOS and Android import directly.
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](backend/go.mod)
+[![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte&logoColor=white)](frontend/package.json)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-4169E1?logo=postgresql&logoColor=white)](backend/README.md#prerequisites)
+[![Docker Compose](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED?logo=docker&logoColor=white)](deploy/docker-compose.yml)
 
-* **🎨 Card Editor:** A live-preview editor for profile details, contact info (with a country-code phone picker), a booking link (Calendly, Cal.com, Google Calendar…), social links (with brand icons for about 65 sites), a cropped photo and cover banner, PDF brochures, an accent colour and a light or dark theme. You can keep several cards, each with its own link and QR code.
+[Features](#features) · [Quick start](#quick-start) · [Documentation](#documentation) · [Contributing](#contributing)
 
-* **🤝 Lead Capture:** A built-in form lets recipients share their details back, with an optional mobile number. Leads land in one inbox with card filters, search, pagination and CSV export.
+</div>
 
-* **🔐 Accounts:** Sign up with a username and email, verified by a 6-digit emailed code. Sign in with either. Forgotten passwords are reset with an emailed code. In **Settings** you can change your email (password plus a code to the new address; the old one is notified) or your password (which signs out every other device).
+---
 
-* **🏢 Organisations and users:** Every sign-up is an organisation. Its owner (and any admins they promote) creates accounts for the team; each person is emailed their username and a temporary password, then confirms their email and picks their own password on first sign-in. The org assigns cards to people, who can edit everything on them except the link. Each person sees only their own cards and the leads those cards collected while they held them; admins see everything and can filter leads by person. Admins can suspend users, reset their passwords, or delete them without losing their cards, files or leads.
+## Overview
 
-* **📁 Files with access control:** Everyone uploads to the organisation's storage. Files live in three areas: each person's own files (with a storage limit per person), the organisation's private files, and a shared area for company-wide brochures. Admins can give individual people access to extra files.
+Fronko replaces paper business cards with a web page. Write a card's link to any NFC card or print its QR code. When someone taps or scans it, the card opens in their mobile browser with nothing to install.
 
-* **☁️ Bring Your Own Storage:** Photos and brochures go to the organisation owner's own S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3, MinIO). Keys are encrypted at rest and buckets stay private.
+Fronko is an open-source alternative to hosted platforms such as Popl and Mobilo. You run it on your own infrastructure, uploaded files go to your own S3-compatible bucket, and you own all of your data: profiles, contacts and leads.
 
-## 🏗️ Architecture & Data Flow
+## Table of contents
 
-When a networking event happens, speed is everything. A tap or scan opens a static, app-less web page that loads the card with a single API call.
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Tech stack](#tech-stack)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Connecting storage](#connecting-storage)
+- [Writing NFC cards](#writing-nfc-cards)
+- [Local development](#local-development)
+- [Documentation](#documentation)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [Security](#security)
+- [License](#license)
+
+## Features
+
+### For the people receiving a card
+
+- **No app required.** An NFC tap or QR scan opens the card as an ordinary web page.
+- **One-tap save to contacts.** Visitors download a vCard 3.0 (`.vcf`) file, which iOS and Android import directly.
+- **Share details back.** A built-in form lets visitors send their name and email, plus an optional phone number and note.
+
+### For card owners
+
+- **Live-preview card editor.** Edit profile details, contact information (with a country-code phone picker), a booking link (Calendly, Cal.com, Google Calendar and others), social links with brand icons, a cropped photo and cover banner, PDF brochures, an accent colour and a light or dark theme.
+- **Multiple cards.** Each card has its own link and a QR code you can download as SVG or PNG.
+- **Lead inbox.** Leads from every card land in one place, with card filters, search, pagination and CSV export.
+
+### For organisations
+
+- **Organisation accounts.** Every sign-up creates an organisation. The owner, and any admins they promote, create accounts for the team. Each new user is emailed their username and a temporary password, then confirms their email and chooses their own password on first sign-in.
+- **Role-based access.** Admins assign cards to people. Each person can edit everything on their cards except the link, and sees only their own cards and the leads those cards collected while assigned to them. Admins see everything and can filter leads by person.
+- **User management.** Admins can suspend users, reset their passwords, or delete them without losing their cards, files or leads.
+- **Files with access control.** Files are kept in three areas: each person's own files (with an optional per-person storage limit), the organisation's private files, and a shared area for company-wide brochures. Admins can give individual people access to extra files.
+
+### Accounts and security
+
+- **Verified sign-up.** Users sign up with a username and an email address, which they confirm with a 6-digit emailed code. They can sign in with either.
+- **Self-service recovery.** Forgotten passwords are reset with an emailed code. From **Settings**, users can change their email address (the old address is notified) or their password (which signs out every other device).
+- **Bring your own storage.** Photos and brochures go to the organisation's own S3-compatible bucket. Storage keys are encrypted at rest with AES-256-GCM, buckets stay private, and visitors get short-lived signed links.
+
+## How it works
+
+A tap or scan opens a static public page that loads the card in a single API call.
 
 ```mermaid
 graph TD
-    A[NFC tap / QR scan] -->|opens /p/slug| C{App-less public card}
+    A[NFC tap / QR scan] -->|opens /p/slug| C{Public card page}
     E[Dashboard: card editor] -->|saves card data| D[(PostgreSQL)]
-    E -->|uploads photo / PDFs| S[(Organisation's own S3 bucket)]
-    D -->|card + file metadata| C
+    E -->|uploads photos and PDFs| S[(Organisation's S3 bucket)]
+    D -->|card and file metadata| C
     S -->|short-lived signed links| C
     C -->|Save contact| F[vCard download]
-    C -->|Share your contact| G[Lead form]
+    C -->|Share your details| G[Lead form]
     G -->|stores lead| D
-    D -->|leads inbox, CSV export| E
+    D -->|lead inbox, CSV export| E
 ```
 
-### 💻 The Tech Stack
+Fronko is deployed as two containers:
 
-* **Backend:** Go (Standard Library `net/http`). High concurrency, ultra-low memory footprint, and near-zero latency for tap routing.
+- **`backend`**: the Go API server. It applies database migrations automatically on startup.
+- **`frontend`**: nginx serving the static Svelte app and proxying `/api` and `/auth` to the backend.
 
-* **Frontend:** Svelte 5 (Vite SPA) + shadcn-svelte. Compiles to tiny vanilla JavaScript for instantaneous mobile loading over cellular networks without the overhead of SSR.
+PostgreSQL is not part of the stack. Bring your own instance, managed or self-hosted.
 
-* **Database:** PostgreSQL. Strict relational integrity for users, with `JSONB` support for dynamic profile blocks.
+## Tech stack
 
-* **Storage:** Each organisation's own S3-compatible bucket (R2, B2, S3, MinIO), reached through aws-sdk-go-v2. Credentials are sealed with AES-256-GCM.
+| Layer | Technology |
+| ----- | ---------- |
+| Backend | Go 1.27, standard library `net/http`, `pgx` |
+| Frontend | Svelte 5 and SvelteKit (static single-page build), Tailwind CSS v4, shadcn-svelte |
+| Database | PostgreSQL 14+, with schema migrations via `golang-migrate` |
+| File storage | Any S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3, MinIO) via `aws-sdk-go-v2` |
+| Email | Any SMTP provider (Resend, Amazon SES, Brevo and others) |
+| Deployment | Docker Compose, with nginx serving the frontend |
 
-* **Deployment:** Multi-container Docker Compose (Nginx for static frontend serving).
+## Quick start
 
-## 📚 Documentation
+### Prerequisites
 
-* **[Backend](backend/README.md):** setup, configuration, database schema, auth and security model, testing.
-* **[API Reference](backend/API.md):** every endpoint with its request and response shapes and error codes.
-* **[Frontend](frontend/README.md):** routes, session handling, the card data model, components and styling.
-
-## 🚀 Getting Started (Self-Hosting)
-
-Fronko is deployed with Docker Compose. The stack is two containers: the Go **backend**, and an nginx **frontend** that serves the SPA and proxies `/api` and `/auth` to the backend. PostgreSQL is **not** part of the stack, so bring your own instance. The backend runs database migrations automatically on startup.
+- Docker with Docker Compose
+- A PostgreSQL 14+ database
+- A reverse proxy that terminates TLS (for example Traefik, Caddy or Coolify)
+- An SMTP account for verification and password-reset emails (recommended)
 
 ### 1. Clone the repository
 
@@ -68,98 +120,149 @@ git clone https://github.com/faiz-gh/fronko.git
 cd fronko/deploy
 ```
 
-### 2. Configure environment variables
+### 2. Configure the environment
 
 ```bash
 cp .env.example .env
 ```
 
-*Example `deploy/.env`:*
+Edit `deploy/.env`. At a minimum, set `DATABASE_URL` and `JWT_SECRET`:
 
 ```env
-# PostgreSQL (managed externally)
-DATABASE_URL=postgres://fronko_admin:password@your-db-host:5432/fronko_db?sslmode=require
+DATABASE_URL=postgres://fronko:password@your-db-host:5432/fronko?sslmode=require
+JWT_SECRET=replace-with-output-of-openssl-rand-base64-32
+SECRETS_KEY=replace-with-output-of-openssl-rand-base64-32
+FRONTEND_URL=https://cards.example.com
 
-# At least 16 characters, e.g. `openssl rand -base64 32`
-JWT_SECRET=replace-with-a-long-random-string
-
-# The session cookie is HTTPS-only by default. Set to false only for plain-http testing.
-# COOKIE_SECURE=false
-
-# Optional: enables photo and brochure uploads to each organisation's own S3 bucket.
-# Encrypts their keys at rest. Keep it stable and backed up.
-SECRETS_KEY=generate-with-openssl-rand-base64-32
-
-# Email for verification and password-reset codes, via any SMTP provider
-# (Resend, Amazon SES, Brevo, ...). Without SMTP_HOST, codes only go to the backend log.
 SMTP_HOST=smtp.resend.com
 SMTP_PORT=587
 SMTP_USERNAME=resend
 SMTP_PASSWORD=your-api-key
-SMTP_FROM="Fronko <no-reply@fronko.example.com>"
-
-# Public URLs. FRONTEND_URL is allowed as a CORS origin (comma-separate several).
-# BACKEND_URL is the API URL the browser calls; leave empty to go through the
-# frontend's nginx (same-origin, no CORS needed).
-FRONTEND_URL=https://fronko.example.com
-BACKEND_URL=
+SMTP_FROM="Fronko <no-reply@example.com>"
 ```
 
-With `SECRETS_KEY` set, each organisation's owner connects their own bucket (Cloudflare R2, Backblaze B2, AWS S3 or MinIO) under **Settings** in the dashboard. Fronko never needs a bucket of its own.
+See [Configuration](#configuration) for every option.
 
-For every backend option, see the [configuration reference](backend/README.md#configuration).
-
-### 3. Spin up the containers
+### 3. Start the stack
 
 ```bash
 docker compose up -d --build
 ```
 
-* No ports are bound on the host: the frontend `expose`s `3000` and the backend `8080` on the Docker network only, so they never clash with other services. Attach your TLS-terminating reverse proxy (Traefik, Caddy, Coolify, …) to the same network and route your domain to `frontend:3000`. With the default `COOKIE_SECURE=true`, the session cookie is only sent over HTTPS.
-* **Single domain (default, `BACKEND_URL` empty):** the frontend's nginx proxies `/api` and `/auth` to the backend, so everything is same-origin.
-* **Separate API domain:** route e.g. `api.fronko.example.com` to `backend:8080`, then set `BACKEND_URL` to it and `FRONTEND_URL` to the site's origin. Use a subdomain of the same site so the `SameSite=Lax` session cookie is still sent, and let that proxy accept request bodies up to 25 MB for uploads.
-* Both URLs are read when the containers start, so changing them only needs a restart, not a rebuild.
+### 4. Route traffic to Fronko
 
-### Local development
+No ports are bound on the host. The frontend exposes port `3000` and the backend port `8080` on the Docker network only. Attach your reverse proxy to the same network and route your domain to `frontend:3000`.
 
-* **Without Docker:** run the backend and frontend separately. See [backend → Run locally](backend/README.md#run-locally) and [frontend → Getting started](frontend/README.md#getting-started).
-* **With Docker against a Postgres on your machine:** `docker compose -f docker-compose.local.yml up --build`. Edit its hard-coded `DATABASE_URL` first. This file also sets a development `SECRETS_KEY` and `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`, so storage can point at a local S3 server such as MinIO or SeaweedFS on `http://host.docker.internal:9000`. It binds the app to `http://localhost:3000` and ignores `FRONTEND_URL`/`BACKEND_URL` from `.env`, so local runs always stay same-origin. It also starts **Mailpit**, which catches every email the backend sends (verification and reset codes): open its inbox at `http://localhost:8025`.
+The session cookie is sent over HTTPS only by default (`COOKIE_SECURE=true`), so serve the site over TLS.
 
-## 🪣 Connecting storage (photos & brochures)
+Open your domain, create an account, and you become the owner of a new organisation.
 
-Each organisation's owner connects a bucket under **Dashboard → Settings → Storage**, and everyone in the organisation uploads to it. The server only needs `SECRETS_KEY` set (see above). Buckets stay **private**: visitors get 15-minute signed links. You don't need public access, a custom domain or CORS rules, because uploads go through the Fronko backend.
+### Deployment topologies
 
-**Keys need:** write and delete on objects in the bucket, and read for serving. Nothing account-wide. Fronko checks this when you save, by writing and deleting a `.fronko-probe` object.
+| Topology | Setup |
+| -------- | ----- |
+| **Single domain** (default) | Leave `BACKEND_URL` empty. The frontend's nginx proxies `/api` and `/auth`, so all requests are same-origin and need no CORS setup. |
+| **Separate API domain** | Route a domain such as `api.cards.example.com` to `backend:8080`, then set `BACKEND_URL` to it and `FRONTEND_URL` to the site's origin. Use a subdomain of the same site so the `SameSite=Lax` session cookie is still sent, and allow request bodies up to 25 MB on that proxy for uploads. |
+
+Both URLs are read when the containers start, so changing them needs only a restart, not a rebuild.
+
+## Configuration
+
+All settings are environment variables, set in `deploy/.env`.
+
+| Variable | Required | Description |
+| -------- | :------: | ----------- |
+| `DATABASE_URL` | Yes | PostgreSQL connection string. |
+| `JWT_SECRET` | Yes | Key for signing session tokens. Must be at least 16 characters; generate one with `openssl rand -base64 32`. |
+| `SECRETS_KEY` | | Base64 of 32 random bytes. Encrypts storage credentials at rest. Without it, photo and brochure uploads are disabled. **Keep it stable and backed up**: if it changes or is lost, saved storage credentials can't be decrypted. |
+| `FRONTEND_URL` | | Public origin of the site. Allowed as a CORS origin; comma-separate several. |
+| `BACKEND_URL` | | Public API URL the browser calls. Leave empty to proxy through the frontend (same-origin). |
+| `COOKIE_SECURE` | | Defaults to `true`. Set to `false` only when testing over plain HTTP. |
+| `SMTP_HOST` | | Outgoing mail server. Without it, emails (including their codes) are only written to the backend log. |
+| `SMTP_PORT` | | Defaults to `587`. Port `465` uses implicit TLS; other ports upgrade with STARTTLS. |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | | SMTP credentials. |
+| `SMTP_FROM` | With `SMTP_HOST` | Sender address, such as `Fronko <no-reply@example.com>`. Must be an address your provider lets you send from. |
+
+The [backend configuration reference](backend/README.md#configuration) covers every option, including `PORT`, `TRUST_PROXY` and `STORAGE_ALLOW_PRIVATE_ENDPOINTS`, plus the fixed server and connection-pool settings.
+
+## Connecting storage
+
+Each organisation's owner connects a bucket under **Dashboard → Settings → Storage**, and everyone in the organisation uploads to it. The server only needs `SECRETS_KEY` set.
+
+Buckets stay **private**, and visitors get signed links that expire after 15 minutes. You don't need public access, a custom domain or CORS rules, because uploads go through the Fronko backend.
+
+The access keys need write and delete permission on objects in the bucket, plus read permission for serving them. They need no account-wide permissions. Fronko checks the keys when you save them by writing and then deleting a `.fronko-probe` object.
 
 | Provider | Endpoint | Region | Path-style | Keys |
 | -------- | -------- | ------ | :--------: | ---- |
 | **Cloudflare R2** | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` (EU jurisdiction: `https://<ACCOUNT_ID>.eu.r2.cloudflarestorage.com`) | `auto` | On | R2 → Manage API tokens → Create API token → **Object Read & Write**, scoped to the bucket |
-| **Backblaze B2** | `https://s3.<region>.backblazeb2.com` (shown on the bucket page) | e.g. `us-west-004` | Off | Application Keys → new key with **Read and Write** for the bucket only (keyID / applicationKey) |
-| **AWS S3** | `https://s3.<region>.amazonaws.com` | the bucket's region | Off | IAM user with `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on `arn:aws:s3:::<bucket>/*` |
-| **MinIO / other** | your HTTPS S3 API URL | `us-east-1` unless configured | On | access key with a read/write policy on the bucket |
+| **Backblaze B2** | `https://s3.<region>.backblazeb2.com` (shown on the bucket page) | e.g. `us-west-004` | Off | Application Keys → new key with **Read and Write** access to this bucket only |
+| **AWS S3** | `https://s3.<region>.amazonaws.com` | The bucket's region | Off | IAM user with `s3:GetObject`, `s3:PutObject` and `s3:DeleteObject` on `arn:aws:s3:::<bucket>/*` |
+| **MinIO / other** | Your HTTPS S3 API URL | `us-east-1` unless configured | On | Access key with a read/write policy on the bucket |
 
-Uploaded files are stored as `fronko/<org_id>/<user_id>/<file_id>.<ext>` (files from before organisations keep their `fronko/<user_id>/…` keys). Keep the bucket private, and don't enable a public `r2.dev` URL; Fronko doesn't need one.
+Objects are stored as `fronko/<org_id>/<user_id>/<file_id>.<ext>`. Keep the bucket private; for R2, don't enable a public `r2.dev` URL.
 
-## 💳 Writing to Physical NFC Cards
+## Writing NFC cards
 
-Fronko is hardware-agnostic. You can purchase any blank NTAG215 or NTAG216 PVC card from Amazon.
+Fronko works with any NFC hardware that can store a URL. Blank NTAG215 or NTAG216 cards are inexpensive and widely available.
 
-1. Generate your profile URL in the Fronko dashboard (e.g., `https://yourdomain.com/p/faiz`).
+1. Copy the card's public link from the Fronko dashboard, for example `https://cards.example.com/p/jane`.
+2. Install an NFC writer app on iOS or Android, such as NFC Tools.
+3. Choose **Write → URL/URI**, paste the link, and hold the phone to the blank card.
 
-2. Download a free NFC writer app (like NFC Tools) on iOS or Android.
+## Local development
 
-3. Select "Write URI", paste your generated URL, and hold your phone to the blank card.
+**Without Docker.** Run the backend and frontend separately. The Vite dev server proxies API calls to the backend on `localhost:8080`.
 
-## 🗺️ Backlog
+```bash
+# Backend (Go 1.27+). See backend/README.md for environment variables and migrations.
+cd backend && make run
 
-Planned, but not built yet:
+# Frontend (Node.js 24), in a second terminal
+cd frontend && npm install && npm run dev   # http://localhost:5173
+```
 
-* **Shared rate limiting:** rate limits are kept in memory per backend instance. Running several instances needs a shared store such as Redis.
-* **CRM integrations:** push new leads to HubSpot or Salesforce.
-* **Richer profile blocks:** more content types on the public card (calendars, embeds, galleries) and a block-based layout.
+See [backend: Run locally](backend/README.md#run-locally) and [frontend: Getting started](frontend/README.md#getting-started) for the full steps.
 
-## 🤝 Contributing
+**With Docker, against a local PostgreSQL.** Edit the hard-coded `DATABASE_URL` in `deploy/docker-compose.local.yml`, then run:
 
-We welcome contributions from the open-source community! Whether it is adding new profile blocks, expanding CRM integrations (HubSpot, Salesforce), or optimizing the Svelte UI, please submit a pull request.
+```bash
+cd deploy
+docker compose -f docker-compose.local.yml up --build
+```
 
-Please ensure all Go code passes `gofmt` and Svelte components adhere to the existing `shadcn-svelte` design system.
+This setup:
+
+- serves the app on `http://localhost:3000`, always same-origin (it ignores `FRONTEND_URL` and `BACKEND_URL` from `.env`)
+- sets a development `SECRETS_KEY` and `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`, so storage can point at a local S3 server such as MinIO on `http://host.docker.internal:9000`
+- starts [Mailpit](https://mailpit.axllent.org/), which catches every email the backend sends; its inbox is at `http://localhost:8025`
+
+## Documentation
+
+| Document | Contents |
+| -------- | -------- |
+| [Backend](backend/README.md) | Setup, configuration, database schema, authentication and security model, testing |
+| [API reference](backend/API.md) | Every endpoint, with request and response shapes and error codes |
+| [Frontend](frontend/README.md) | Routes, session handling, the card data model, components and styling |
+
+## Roadmap
+
+Planned but not yet built:
+
+- **Shared rate limiting.** Rate limits are currently kept in memory per backend instance. Running several instances needs a shared store such as Redis.
+- **CRM integrations.** Push new leads to HubSpot or Salesforce.
+- **Richer profile blocks.** More content types on the public card (calendars, embeds, galleries) and a block-based layout.
+
+Ideas and feedback are welcome in [GitHub Issues](https://github.com/faiz-gh/fronko/issues).
+
+## Contributing
+
+Contributions are welcome, from bug reports and documentation fixes to new features. Read the [contributing guide](CONTRIBUTING.md) to set up a development environment, learn the coding guidelines, and submit a pull request.
+
+## Security
+
+If you find a security vulnerability, **please do not open a public issue.** Report it privately as described in the [security policy](SECURITY.md), which also covers how to harden a self-hosted deployment.
+
+## License
+
+Fronko is licensed under the [GNU General Public License v3.0](LICENSE).
