@@ -5,6 +5,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 - **Content type.** Requests and responses use `application/json`.
 - **Auth.** Protected endpoints (`/api/me/*` and `/api/org/*`) need the `fronko_session` cookie, which login or register sets. Browsers send it automatically. With `curl`, use a cookie jar (`-c`/`-b`).
 - **Organisations and roles.** Every account belongs to an organisation. Registering creates one, with the new account as its **owner**. The owner and **admins** see and manage everything in the organisation. **Members**, whom the organisation creates, see only the cards assigned to them, the leads those cards collected while they held them, their own files, the shared area and files granted to them. The [Organisation](#organisation--) endpoints manage users.
+- **Platform admin.** The [Platform admin](#platform-admin-) endpoints (`/auth/admin/*`, `/api/admin/*`) are for whoever runs the server. They use a separate account and cookie, `fronko_admin`; the user cookie is never accepted there, and the admin cookie never works on user routes.
 - **Errors.** Every error body has the shape `{"error": "<message>"}`, and the message is safe to show to users.
 - **Timestamps.** RFC 3339 strings, for example `"2026-10-03T12:34:56.789Z"`.
 - **IDs.** 64-bit integers.
@@ -52,11 +53,27 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `PUT`    | [`/api/org/profiles/{id}/assignee`](#put-apiorgprofilesidassignee) | 🛡️ | | Assign a card to a user, or back to the organisation |
 | `GET`    | [`/api/org/files/{id}/grants`](#get-apiorgfilesidgrants) | 🛡️ | | Who a file has been granted to |
 | `PUT`    | [`/api/org/files/{id}/grants`](#put-apiorgfilesidgrants) | 🛡️ | | Replace who a file is granted to |
+| `POST`   | [`/api/me/feedback`](#post-apimefeedback) | ✅ | ✅ feedback | Send product feedback to the platform admins |
+| `POST`   | [`/auth/admin/login`](#post-authadminlogin) | | ✅ auth | Platform admin sign-in |
+| `POST`   | [`/auth/admin/logout`](#post-authadminlogout) | | | Clear the admin cookie |
+| `GET`    | [`/api/admin/me`](#get-apiadminme) | 🖥️ | | Signed-in platform admin |
+| `GET`    | [`/api/admin/summary`](#get-apiadminsummary) | 🖥️ | | Platform totals |
+| `GET`    | [`/api/admin/trends`](#get-apiadmintrends) | 🖥️ | | Daily platform totals |
+| `GET`    | [`/api/admin/orgs`](#get-apiadminorgs) | 🖥️ | | Organisations with their usage, paginated |
+| `GET`    | [`/api/admin/orgs/{id}`](#get-apiadminorgsid) | 🖥️ | | One organisation's usage |
+| `GET`    | [`/api/admin/orgs/{id}/trends`](#get-apiadminorgsidtrends) | 🖥️ | | One organisation's daily usage |
+| `POST`   | [`/api/admin/orgs/{id}/suspend`](#post-apiadminorgsidsuspend) | 🖥️ | | Suspend an organisation and email its owner |
+| `POST`   | [`/api/admin/orgs/{id}/reinstate`](#post-apiadminorgsidreinstate) | 🖥️ | | Lift a suspension and email the owner |
+| `GET`    | [`/api/admin/feedback`](#get-apiadminfeedback) | 🖥️ | | Feedback inbox, paginated, with counts by status |
+| `GET`    | [`/api/admin/feedback/{id}`](#get-apiadminfeedbackid) | 🖥️ | | One piece of feedback and its replies |
+| `PATCH`  | [`/api/admin/feedback/{id}`](#patch-apiadminfeedbackid) | 🖥️ | | Set the status |
+| `POST`   | [`/api/admin/feedback/{id}/replies`](#post-apiadminfeedbackidreplies) | 🖥️ | | Email a reply to the sender |
+| `GET`    | [`/api/admin/audit`](#get-apiadminaudit) | 🖥️ | | What platform admins did, newest first |
 | `GET`    | [`/api/profiles/{slug}`](#get-apiprofilesslug) | | | Public profile by slug |
 | `GET`    | [`/api/files/{id}`](#get-apifilesid) | | | Redirect to a file (short-lived signed URL) |
 | `POST`   | [`/api/profiles/{id}/leads`](#post-apiprofilesidleads) | | ✅ lead | Submit a lead to a profile |
 
-✉️ = works before the email is verified. 🔑 = works while the user still has a temporary password. Every other signed-in route needs a verified email and a password the user chose. 🛡️ = owner and admins only. 👑 = owner only. Others get `403`.
+✉️ = works before the email is verified. 🔑 = works while the user still has a temporary password. Every other signed-in route needs a verified email and a password the user chose. 🛡️ = owner and admins only. 👑 = owner only. Others get `403`. 🖥️ = platform admins only (`fronko_admin` cookie); anything else gets `401`.
 
 ## Cross-cutting behaviour
 
@@ -65,6 +82,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `400` | Body isn't valid JSON (`"invalid request body"`), the body is over 64 KiB, a path ID isn't an integer (`"invalid profile ID"`), or validation failed |
 | `401` | `/api/me/*` without a cookie (`"not signed in"`), with an invalid or expired token, or with a token from before a password change or reset (`"session expired, please sign in again"`) |
 | `401` | A suspended account: `{"error":"this account is suspended; contact your organisation","code":"account_suspended"}`. Suspending also ends existing sessions, which then get `"session expired, please sign in again"` |
+| `401` | Anyone in a suspended organisation: `{"error":"your organisation has been suspended","code":"org_suspended","reason":"<the admin's reason>"}`. This is checked before the session version, so open sessions get it too |
 | `403` | Signed-in routes (except the ✉️ routes) while the email isn't verified: `{"error":"verify your email to continue","code":"email_unverified"}` |
 | `403` | Signed-in routes (except ✉️ and 🔑) while the user still has the temporary password their organisation set: `{"error":"choose a new password to continue","code":"password_change_required"}` |
 | `403` | A 🛡️ or 👑 route called by someone without that role: `"only your organisation's admins can do this"` or `"only your organisation's owner can do this"` |
@@ -76,6 +94,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 
 - **auth**: burst of 10, then 1 request per 10s. Every route marked "auth" shares one bucket.
 - **lead**: burst of 5, then 1 request per 15s.
+- **feedback**: burst of 5, then 1 request per 12 minutes.
 
 ## Objects
 
@@ -231,6 +250,7 @@ Creates an organisation with this account as its owner, emails a verification co
 | `200` | [`User`](#user). Sets the `fronko_session` cookie |
 | `401` | `"invalid username or password"`. The same message and similar timing whether or not the user exists |
 | `403` | `{"error":"this account is suspended; contact your organisation","code":"account_suspended"}`, only after a correct password |
+| `403` | `{"error":"your organisation has been suspended","code":"org_suspended","reason":"…"}`, only after a correct password |
 
 The first sign-in of a user the organisation created emails them a verification code (subject to the 60-second resend cooldown).
 
@@ -702,6 +722,7 @@ Looks up a profile for the public card page (`/p/{slug}`). The slug match is cas
 | ------ | ---- |
 | `200` | [`PublicProfile`](#publicprofile-visitor-view) |
 | `404` | `"profile not found"` |
+| `410` | `{"error":"this card is unavailable","code":"org_suspended"}` while its organisation is suspended. Visitors aren't told why |
 
 ### `GET /api/files/{id}`
 
@@ -710,7 +731,7 @@ Serves a library file to anyone who has its ID: on cards, the photo and brochure
 - The response has `Content-Type` and `Content-Disposition: inline; filename=…` set.
 - The redirect is sent with `Cache-Control: private, max-age=300` and `Referrer-Policy: no-referrer`.
 
-Unknown IDs, deleted files and files whose owner disconnected storage all return `404`.
+Unknown IDs, deleted files, files whose owner disconnected storage, and files of a suspended organisation all return `404`.
 
 ### `POST /api/profiles/{id}/leads`
 
@@ -739,10 +760,168 @@ A visitor shares their details with the profile owner. The path takes the numeri
 | ------ | ---- |
 | `201` | `{"status": "ok"}` |
 | `400` | `"please enter your name"`, `"please enter a valid email address"`, `"please enter a valid mobile number with its country code"` or `"message is too long"` |
-| `404` | `"profile not found"` |
+| `404` | `"profile not found"`, also while the card's organisation is suspended |
 | `429` | Rate limited |
 
 The server accepts leads even when the card's `data.collect_leads` is `false`. That flag only hides the form in the UI.
+
+---
+
+## Feedback 🔒
+
+### `POST /api/me/feedback`
+
+Any signed-in user (verified, with a password they chose) sends feedback about Fronko to the platform admins. Their email and organisation name are stored with it, so admins can reply. When `FEEDBACK_NOTIFY_EMAIL` is set, it's also emailed there, with the sender as Reply-To.
+
+```json
+{ "category": "idea", "rating": 4, "message": "Could leads export to CSV?", "page_path": "/dashboard/leads" }
+```
+
+| Field | Rules |
+| ----- | ----- |
+| `category` | Required: `bug`, `idea` or `other` |
+| `rating` | Optional: 1–5, or `null` |
+| `message` | Required, 1–5000 characters after trimming |
+| `page_path` | Optional context: the app page they were on. Dropped unless it starts with `/`, is at most 200 bytes and has no control characters |
+
+| Status | Body |
+| ------ | ---- |
+| `201` | `{"id": 12}` |
+| `400` | `"choose bug, idea or other"`, `"rating must be from 1 to 5"`, `"write a message"` or `"message must be at most 5000 characters"` |
+| `429` | Rate limited (feedback bucket) |
+
+---
+
+## Platform admin 🖥️
+
+For whoever runs the server. Admin accounts are separate from organisation users and are created on the command line (`./fronko admin create --email …`; see the [backend README](README.md#platform-admin)). These endpoints return **aggregates only**: no card data, leads, file names or member details. The owner's email and the feedback sender's email are the only personal data.
+
+### `POST /auth/admin/login`
+
+`{"email": "you@example.com", "password": "…"}`. On success: `200` with a [`PlatformAdmin`](#platformadmin) and the `fronko_admin` cookie (HttpOnly, `SameSite=Strict`, 8 hours). Wrong email or password: `401 "invalid email or password"`, with similar timing either way. Shares the **auth** rate limit.
+
+### `POST /auth/admin/logout`
+
+Clears the admin cookie. `204`.
+
+### `GET /api/admin/me`
+
+The signed-in [`PlatformAdmin`](#platformadmin). `401` without a valid admin cookie (`"not signed in"`, `"session expired, please sign in again"` or `"account no longer exists"`).
+
+#### PlatformAdmin
+
+```json
+{ "id": 1, "email": "you@example.com", "last_login_at": "2026-10-06T15:35:45Z", "created_at": "2026-10-01T09:00:00Z" }
+```
+
+### `GET /api/admin/summary`
+
+```json
+{
+  "org_count": 10, "suspended_org_count": 1, "new_orgs_30d": 4, "active_orgs_30d": 6,
+  "user_count": 31, "card_count": 18, "lead_count": 420, "file_count": 57,
+  "orgs_with_storage": 5, "storage_used_bytes": 734003200, "new_feedback": 2
+}
+```
+
+`active_orgs_30d` counts organisations where someone signed in within 30 days. `new_feedback` counts feedback with status `new`.
+
+### `GET /api/admin/trends`
+
+`?days=` 1–366 (default 30). Returns `{"days": 30, "points": [UsagePoint…]}`, oldest first. One point per day with a snapshot (UTC): `date`, `org_count`, `user_count`, `card_count`, `lead_count`, `file_count`, `orgs_with_storage`, `storage_used_bytes`, `new_orgs` and `feedback_count` (both received that day). Snapshots are taken at startup and hourly, so today's point is at most an hour old. Days the server was down are missing.
+
+### `GET /api/admin/orgs`
+
+| Query | Meaning |
+| ----- | ------- |
+| `q` | Case-insensitive substring of the name or owner email (`%` and `_` match literally) |
+| `status` | `active`, `suspended`, or empty for both |
+| `sort` | `newest` (default), `oldest`, `name`, `last_active`, `users`, `cards`, `leads` or `storage` |
+| `page`, `page_size` | 1-based; `page_size` defaults to 25, at most 100 |
+
+Returns `{"items": [OrgUsage…], "total": 10, "page": 1, "page_size": 25}`. An unknown `status` or `sort` is a `400`.
+
+#### OrgUsage
+
+```json
+{
+  "id": 9, "name": "Acme", "created_at": "2026-10-04T20:12:32Z",
+  "owner_email": "owner@acme.example", "suspended_at": null,
+  "user_count": 3, "admin_count": 1, "member_count": 1, "suspended_user_count": 0,
+  "card_count": 3, "lead_count": 68, "file_count": 8, "storage_used_bytes": 704376,
+  "storage_connected": true, "storage_verified": true, "storage_provider": "r2",
+  "default_quota_bytes": null, "last_active_at": "2026-10-06T12:55:10Z"
+}
+```
+
+`user_count` includes the owner. `storage_used_bytes` sums files uploaded through Fronko, not everything in the bucket. `storage_provider` is the type only (`r2`, `b2`, `s3`, `minio`, `other`); the bucket, endpoint and keys are never returned. `owner_email` is `null` for old accounts without one. `last_active_at` is the latest sign-in of anyone in the organisation.
+
+### `GET /api/admin/orgs/{id}`
+
+One [`OrgUsage`](#orgusage), plus `suspended_reason` while suspended. `404 "organisation not found"`.
+
+### `GET /api/admin/orgs/{id}/trends`
+
+Like [`/api/admin/trends`](#get-apiadmintrends) for one organisation. Points have `date`, `user_count`, `card_count`, `lead_count`, `file_count` and `storage_used_bytes`.
+
+### `POST /api/admin/orgs/{id}/suspend`
+
+`{"reason": "Spam cards reported by visitors"}`. The reason is required: 1–500 characters on one line. It's emailed to the owner and shown to members when they try to sign in.
+
+Suspending signs out everyone in the organisation and blocks sign-in (`org_suspended`). Its public cards answer `410`, and its leads and public files are refused. Nothing is deleted.
+
+| Status | Body |
+| ------ | ---- |
+| `200` | The updated [`OrgUsage`](#orgusage) |
+| `400` | `"give a reason of 1-500 characters on one line"` |
+| `404` | `"organisation not found"` |
+| `409` | `"this organisation is already suspended"` |
+
+### `POST /api/admin/orgs/{id}/reinstate`
+
+No body. Lifts the suspension and emails the owner. `200` with the updated [`OrgUsage`](#orgusage), `404`, or `409 "this organisation isn't suspended"`. Members sign in again; sessions ended by the suspension stay ended.
+
+### `GET /api/admin/feedback`
+
+`?status=` `new`, `read`, `resolved` or empty for all; `page`, `page_size` (default 25, at most 100). Returns newest first:
+
+```json
+{
+  "items": [{
+    "id": 1, "org_id": 9, "sender_email": "rep@example.com", "org_name": "Acme",
+    "category": "idea", "rating": 4, "message": "Could leads export to CSV?",
+    "page_path": "/dashboard/leads", "status": "new", "reply_count": 0,
+    "created_at": "2026-10-06T15:36:09Z", "updated_at": "2026-10-06T15:36:09Z"
+  }],
+  "total": 1, "page": 1, "page_size": 25,
+  "counts": { "new": 1, "read": 0, "resolved": 0 }
+}
+```
+
+`org_id` becomes `null` if the organisation is deleted; `org_name` and `sender_email` are copies, so they stay.
+
+### `GET /api/admin/feedback/{id}`
+
+The feedback with `replies`, oldest first: `[{"id", "admin_email", "body", "email_sent", "created_at"}]`. `admin_email` is `null` if that admin was deleted. `404 "feedback not found"`.
+
+### `PATCH /api/admin/feedback/{id}`
+
+`{"status": "resolved"}` (`new`, `read` or `resolved`). Returns the feedback with its replies. Changes are audited.
+
+### `POST /api/admin/feedback/{id}/replies`
+
+`{"body": "…"}`, 1–5000 characters. Emails the reply to `sender_email` with their message quoted (Reply-To: `FEEDBACK_NOTIFY_EMAIL` when set), then stores it. `new` feedback becomes `read`. The reply is kept even if the email fails; check `email_sent` on the last reply. Returns the feedback with its replies.
+
+### `GET /api/admin/audit`
+
+`?page=`, `page_size` (default 50, at most 200). Returns `{"items": [AuditEntry…], "total", "page", "page_size"}`, newest first:
+
+```json
+{ "id": 3, "admin_email": "you@example.com", "action": "org.suspend", "target_type": "org", "target_id": 9,
+  "detail": { "org_name": "Acme", "reason": "Spam cards", "email_sent": true }, "created_at": "2026-10-06T15:36:24Z" }
+```
+
+Actions: `admin.login`, `org.suspend`, `org.reinstate` (`detail`: `org_name`, `email_sent`), `feedback.reply` (`email_sent`) and `feedback.status` (`from`, `to`).
 
 ---
 

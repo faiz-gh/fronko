@@ -155,10 +155,13 @@ func (r *Repository) GetUserInOrg(ctx context.Context, userID, orgID int64) (*mo
 func (r *Repository) GetSessionState(ctx context.Context, userID int64) (models.SessionState, error) {
 	var s models.SessionState
 	err := r.db.QueryRow(ctx, `
-		SELECT session_version, email_verified_at IS NOT NULL, org_id, role,
-		       suspended_at IS NOT NULL, must_change_password
-		FROM users WHERE user_id = $1`, userID,
-	).Scan(&s.Version, &s.Verified, &s.OrgID, &s.Role, &s.Suspended, &s.MustChangePassword)
+		SELECT u.session_version, u.email_verified_at IS NOT NULL, u.org_id, u.role,
+		       u.suspended_at IS NOT NULL, u.must_change_password,
+		       o.suspended_at IS NOT NULL, COALESCE(o.suspended_reason, '')
+		FROM users u JOIN organizations o ON o.org_id = u.org_id
+		WHERE u.user_id = $1`, userID,
+	).Scan(&s.Version, &s.Verified, &s.OrgID, &s.Role, &s.Suspended, &s.MustChangePassword,
+		&s.OrgSuspended, &s.OrgSuspendedReason)
 	return s, mapError(err)
 }
 
@@ -347,11 +350,13 @@ func scanProfile(row pgx.Row) (*models.Profile, error) {
 }
 
 func (r *Repository) GetProfileBySlug(ctx context.Context, slug string) (*models.Profile, error) {
-	query := `SELECT profile_id, org_id, user_id, assigned_user_id, slug, data, created_at, updated_at
-		FROM profiles WHERE LOWER(slug) = LOWER($1)`
+	query := `SELECT p.profile_id, p.org_id, p.user_id, p.assigned_user_id, p.slug, p.data, p.created_at, p.updated_at,
+		       o.suspended_at IS NOT NULL
+		FROM profiles p JOIN organizations o ON o.org_id = p.org_id
+		WHERE LOWER(p.slug) = LOWER($1)`
 	var p models.Profile
 	err := r.db.QueryRow(ctx, query, slug).Scan(
-		&p.ID, &p.OrgID, &p.UserID, &p.AssignedUserID, &p.Slug, &p.Data, &p.CreatedAt, &p.UpdatedAt,
+		&p.ID, &p.OrgID, &p.UserID, &p.AssignedUserID, &p.Slug, &p.Data, &p.CreatedAt, &p.UpdatedAt, &p.OrgSuspended,
 	)
 	if err != nil {
 		return nil, mapError(err)
@@ -413,12 +418,13 @@ func scanLead(rows pgx.Rows) (*models.Lead, error) {
 
 // CreateLead stores a lead against whoever holds the card right now, so it
 // stays theirs if the card is later reassigned. It returns ErrNotFound if
-// the profile does not exist.
+// the profile does not exist or its organisation is suspended.
 func (r *Repository) CreateLead(ctx context.Context, lead *models.Lead) error {
 	query := `
 		INSERT INTO leads (profile_id, name, email, phone_country_code, phone_number, notes, assigned_user_id)
 		SELECT p.profile_id, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6, p.assigned_user_id
-		FROM profiles p WHERE p.profile_id = $1
+		FROM profiles p JOIN organizations o ON o.org_id = p.org_id
+		WHERE p.profile_id = $1 AND o.suspended_at IS NULL
 		RETURNING lead_id, created_at`
 	err := r.db.QueryRow(ctx, query,
 		lead.ProfileID, lead.Name, lead.Email, lead.PhoneCountryCode, lead.PhoneNumber, lead.Notes,

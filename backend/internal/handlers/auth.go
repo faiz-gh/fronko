@@ -145,6 +145,24 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	org, err := h.repo.GetOrganization(r.Context(), user.OrgID)
+	if err != nil {
+		log.Printf("login org lookup: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if org.SuspendedAt != nil {
+		reason := ""
+		if org.SuspendedReason != nil {
+			reason = *org.SuspendedReason
+		}
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error":  middleware.OrgSuspendedMessage,
+			"code":   middleware.CodeOrgSuspended,
+			"reason": reason,
+		})
+		return
+	}
 
 	if !h.signIn(w, user) {
 		return

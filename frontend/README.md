@@ -9,6 +9,8 @@ The Fronko web app is a Svelte 5 + SvelteKit single-page app that compiles to st
 - **Leads** (`/dashboard/leads`): all leads across cards, filtered by card, searchable, paginated and exportable.
 - **Files** (`/dashboard/files`): the photo and PDF library stored in the user's own S3 bucket.
 - **Settings** (`/dashboard/settings`): connect that bucket (R2, B2, AWS S3, MinIO).
+- **Send feedback**: a dialog in the sidebar's account menu (bug, idea or other, an optional 1–5 rating and a message).
+- **Platform admin panel** (`/admin`): for whoever runs the server, with its own sign-in. Usage totals and trends per organisation, the feedback inbox with email replies, suspending organisations, and an audit log.
 - **Public card** (`/p/{slug}`): the page an NFC tap or QR scan opens. Visitors can save the contact as a vCard, share it, book a meeting, or send their own details back as a lead.
 
 It talks to the [Go backend](../backend/README.md). The endpoints are listed in the [API reference](../backend/API.md).
@@ -89,15 +91,19 @@ frontend/
 │   │   │   ├── lead.ts            # submit / list leads
 │   │   │   ├── storage.ts         # bucket connection settings
 │   │   │   ├── files.ts           # files by area, uploadFile() with progress, fileUrl()
-│   │   │   └── org.ts             # organisation, users, card assignment, file grants
+│   │   │   ├── org.ts             # organisation, users, card assignment, file grants
+│   │   │   ├── feedback.ts        # sendFeedback(), feedback categories
+│   │   │   └── admin.ts           # platform admin: sign-in, summary, trends, orgs, suspension, feedback inbox, audit
 │   │   ├── card/card.ts           # CardData model, normalization, URL safety, vCard, brand detection
 │   │   ├── card/qr.ts             # Lazy-loaded QR generation and PNG/SVG downloads
 │   │   ├── phone.ts               # Country list, dial codes, formatting, validation, legacy phone parsing
 │   │   ├── image.ts               # Canvas crop/rotate → WebP/JPEG File, used by ImageCropDialog
 │   │   ├── components/
-│   │   │   ├── app/               # App-specific components (see below)
+│   │   │   ├── app/               # App-specific components (see below); app/admin/ holds the admin panel's
 │   │   │   └── ui/                # shadcn-svelte primitives (generated, see Conventions)
 │   │   ├── session.svelte.ts      # Global reactive session store
+│   │   ├── admin-session.svelte.ts # Platform admin session (separate cookie and sign-in)
+│   │   ├── admin-nav.svelte.ts    # Admin sidebar badge (new feedback count)
 │   │   ├── cooldown.svelte.ts     # Resend countdown for emailed codes (RESEND_COOLDOWN_SECONDS = 60)
 │   │   ├── cards.svelte.ts        # The cards the user can see, shared by the sidebar and dashboard pages
 │   │   ├── org-users.svelte.ts    # Everyone in the organisation (admins), for pickers, filters and Users
@@ -124,6 +130,15 @@ frontend/
 │       │   ├── files/+page.svelte # Files by area: upload, browse, rename, delete, manage access
 │       │   ├── settings/+page.svelte # Account (email change), password, storage connection (S3 keys)
 │       │   └── [id]/+page.svelte  # Card editor + leads
+│       ├── admin/
+│       │   ├── +layout.svelte     # Admin guard + shell (AdminSidebar / mobile drawer); /admin/login renders bare
+│       │   ├── login/+page.svelte # Platform admin sign-in
+│       │   ├── +page.svelte       # Platform totals and trend charts
+│       │   ├── orgs/+page.svelte  # Organisations: search, status filter, sort, pagination
+│       │   ├── orgs/[id]/+page.svelte # One organisation: usage, trends, suspend / reinstate
+│       │   ├── feedback/+page.svelte  # Inbox by status
+│       │   ├── feedback/[id]/+page.svelte # Message, reply thread, reply box, status
+│       │   └── audit/+page.svelte # Audit log
 │       └── p/[slug]/+page.svelte  # Public card
 ├── static/
 │   ├── robots.txt
@@ -154,7 +169,14 @@ frontend/
 | `/dashboard/files` | Signed in | The shared **file library**: drag-and-drop upload with progress, Photos/PDFs tabs, thumbnails, inline rename, "Used on" (which cards use each file), delete with a usage warning, pagination. Shows a "Connect storage" state until a bucket is connected |
 | `/dashboard/settings` | Signed in | **Account**: username and email (with a Verified badge). **Change** opens `ChangeEmailForm`: new address + current password → a code sent to the new address → confirm; resend has a countdown, and the current email stays until confirmed. **Password**: current, new and confirm; changing it signs out every other session and keeps this one. **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
 | `/dashboard/{id}` | Signed in | Editor. The **Card** tab has sections for Profile (with photo and 3:1 cover, both cropped before upload), Contact (email, mobile with country picker, website, booking link), Links (add, reorder, remove), Appearance (accent, light/dark theme) and Sharing (public slug, lead collection). A sticky preview pane on the right switches between the card and its QR code; below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
-| `/p/{slug}` | Public | The visitor-facing card. "Save contact" downloads a `.vcf`, plus share (Web Share API, falling back to the clipboard), a "Book a meeting" button when a booking link is set, and a lead form (name, email, optional mobile number, message) when `collect_leads` is on |
+| `/admin/login` | Public | Platform admin sign-in (email and password). `next=/admin/...` sets where to go afterwards; `expired=1` shows a "session expired" notice |
+| `/admin` | Platform admin | Totals (organisations, active organisations, users, cards and leads, storage used, new feedback) and trend charts (organisations, users, cards, leads, storage used, organisations with storage) over 30 days, 90 days or a year |
+| `/admin/orgs` | Platform admin | Every organisation with owner email, users, cards, leads, storage (connected, provider, used) and last activity. Debounced search, All/Active/Suspended filter, sort menu, pagination. Rows open the organisation |
+| `/admin/orgs/{id}` | Platform admin | One organisation's totals and trends. **Suspend** asks for a reason (emailed to the owner, shown on their sign-in page); **Reinstate** confirms first |
+| `/admin/feedback` | Platform admin | Feedback by status (New, Read, Resolved, All), with category, rating, sender, organisation and reply count |
+| `/admin/feedback/{id}` | Platform admin | The message and its context (sender, organisation, page, time), the status toggle, the reply thread and a reply box. Opening new feedback marks it read. Replies are emailed to the sender |
+| `/admin/audit` | Platform admin | Sign-ins, suspensions, replies and status changes, newest first |
+| `/p/{slug}` | Public | The visitor-facing card. "Save contact" downloads a `.vcf`, plus share (Web Share API, falling back to the clipboard), a "Book a meeting" button when a booking link is set, and a lead form (name, email, optional mobile number, message) when `collect_leads` is on. While the card's organisation is suspended (`410`), it shows "This card is unavailable" |
 
 ### Organisations and roles
 
@@ -173,6 +195,18 @@ Users the organisation creates are emailed their username and a temporary passwo
 
 `/dashboard/+layout.svelte` acts as the auth guard. While the session check is pending it shows a spinner. If the check finds no session, it redirects to `/login?next=<current path>`; if the email isn't verified, to `/verify-email?next=<current path>`; if the password is still the organisation's temporary one, to `/set-password?next=<current path>`. Protected content never renders before the session is known. Pages for admins only (Cards, Users) send members back to `/dashboard`.
 
+### Platform admin panel
+
+`/admin` is separate from the dashboard. It has its own session (`adminSession` in `admin-session.svelte.ts`, which calls `GET /api/admin/me`) and its own HttpOnly cookie, so someone can be signed in as a user and as an admin at once. `routes/admin/+layout.svelte` sends signed-out visitors to `/admin/login` and renders the login page without the shell. Admin accounts are created on the server with `./fronko admin create` (see the [root README](../README.md#5-create-a-platform-admin-optional)). The backend enforces all of it; the guard only stops the shell from flashing.
+
+Trend charts are `TrendChart`, a hand-drawn SVG with one series per chart (no legend needed), a crosshair tooltip and a hidden table for screen readers.
+
+### Feedback and suspension
+
+"Send feedback" in the `AppSidebar` account menu opens `FeedbackDialog`, which posts to `/api/me/feedback` with the current path for context.
+
+If the platform suspends the organisation, any API call answers `401 org_suspended` with a reason. `apiClient` then calls `session.suspend(reason)`, which signs the user out and goes to `/login`, where an alert shows the reason. Signing in again shows the same alert.
+
 Once signed in, the layout renders the app shell. From 1024px up, a fixed sidebar (`AppSidebar`) shows the organisation, the navigation and, for members, their cards. Below that width, a top bar opens the same sidebar as a slide-in drawer. The layout also loads `cards` (see `cards.svelte.ts`), `storage` and, for admins, `orgUsers`, and mounts the global "New card" dialog, which anything can open with `cards.createOpen = true`. After a create, save or delete, call `cards.upsert()` or `cards.remove()` so the sidebar and overview stay in sync without refetching.
 
 ## How it talks to the backend
@@ -182,12 +216,15 @@ All requests go through `apiClient` in `src/lib/api/client.ts`:
 - **Base URL from runtime config.** `API_URL` comes from `window.__FRONKO_CONFIG__.apiUrl`, set by `/config.js` (loaded first in `app.html`). Empty (the default, and always in dev) means relative URLs: Vite or nginx proxies `/api` and `/auth`, so requests are same-origin. When set, e.g. `https://api.fronko.com`, requests go there directly and the backend must allow this site in `CORS_ALLOWED_ORIGINS`.
 - **Credentials.** Requests use `credentials: 'include'` so the HttpOnly cookie is sent in both setups. Build any other backend URL with `apiUrl(path)` from `client.ts`. `uploadFile` (XHR, for progress) does the same and sets `withCredentials`.
 - **JSON in and out.** `Content-Type: application/json` is set whenever there's a body, and a `204` resolves to `undefined`.
-- **Errors** throw `ApiError(message, status, code?, retryAfter?)`:
+- **Errors** throw `ApiError(message, status, code?, retryAfter?, reason?)`:
   - `message` is the backend's `{"error": "..."}` text, which is written for users and can go straight into a toast or alert.
   - `code` is the backend's machine-readable `code`, when it sends one (e.g. `email_unverified`).
+  - `reason` is the suspension reason on an `org_suspended` error.
   - `retryAfter` is the `Retry-After` header in seconds, set on `429`s. The code screens use it to start their resend countdown.
   - A network failure throws with `status = 0` and a "Could not reach the server" message.
 - **Expired sessions.** A `401` from any `/api/me/*` call runs `session.expire()`, which sends the user to `/login?next=…&expired=1`. You can opt out per call with `{ redirectOnUnauthorized: false }`. `me()` does this, because a 401 there just means nobody is signed in. Changing or resetting the password elsewhere also ends up here, because it revokes older sessions.
+- **Suspended organisation.** A `401` with `code: "org_suspended"` (on any call) runs `session.suspend(reason)`.
+- **Admin session.** A `401` from `/api/admin/*` runs `adminSession.expire()`, which sends the admin to `/admin/login?next=…&expired=1`.
 - **Unverified email.** A `403` with `code: "email_unverified"` runs `session.requireVerification()`, which sends the user to `/verify-email?next=…`.
 - **Temporary password.** A `403` with `code: "password_change_required"` runs `session.requirePasswordChange()`, which sends the user to `/set-password?next=…`.
 
@@ -212,6 +249,7 @@ The typed wrappers are in `api/auth.ts`, `api/profile.ts` and `api/lead.ts`. Lea
 | `signIn(user)` | Called with the `AuthUser` from login, register or a verification call |
 | `signOut()` | `POST /auth/logout`, clears state, goes to `/login` |
 | `expire()` | Clears state and redirects to login, keeping the current path in `next` |
+| `suspend(reason)` / `suspendedReason` | Called when the organisation is suspended: clears state, goes to `/login`, and keeps the reason for its alert |
 | `requireVerification()` | Called when an API call answers `403 email_unverified`; sends the user to `/verify-email` |
 | `requirePasswordChange()` | Called when an API call answers `403 password_change_required`; sends the user to `/set-password` |
 
@@ -298,6 +336,13 @@ App-specific components live in `src/lib/components/app/`:
 | `Logo` | `href?`, `class?` | Wordmark link: the stacked-card F (stem follows the text colour, arms are Fronko orange) and "fronko" |
 | `AuthLayout` | `children` (snippet) | The split frame shared by `/login`, `/verify-email` and `/forgot-password`: logo and form column on the left, sample card on the right (from 1024px) |
 | `CodeInput` | `value` (bindable), `id?`, `disabled?`, `invalid?`, `oncomplete?` | Six-slot input for emailed codes (shadcn `input-otp`, digits only, `autocomplete="one-time-code"`). Pasting fills every slot; `oncomplete` fires once all six are in |
+| `FeedbackDialog` | `open` (bindable) | Category toggle (bug, idea, other), optional 1–5 star rating, message (up to 5000 characters). Sends the current path along. Opened from the `AppSidebar` account menu |
+| `admin/AdminSidebar` | `onnavigate?` | Admin navigation (Overview, Organisations, Feedback with a new-count badge, Audit log), theme toggle, sign out |
+| `admin/TrendChart` | `label`, `points` (`{date, value}[]`), `format?`, `class?` | One-series line and area chart with the latest value and change over the range, a crosshair tooltip snapped to the nearest day, round axis ticks and a screen-reader table |
+| `admin/RangeToggle` | `days` (bindable) | 30 days, 90 days or 1 year |
+| `admin/StorageCell` | `org` | "Not connected", or bytes used and the provider (flags unverified keys) |
+| `admin/SuspendOrgDialog` | `org`, `open` (bindable), `onchanged?` | Suspend (with a required one-line reason) or reinstate, explaining the effect on members and public cards |
+| `admin/RatingStars` | `rating`, `class?` | Read-only 1–5 stars |
 | `ChangeEmailForm` | `onclose` | Settings flow for changing a verified email: new address + current password → code sent to the new address → confirm, with resend countdown and "Use a different address". Updates the session and toasts on success |
 
 `src/lib/components/ui/` holds **shadcn-svelte primitives** (button, card, dialog, dropdown-menu, field, tabs, table and others). The shadcn CLI generates them, so prefer re-adding or updating them with the CLI over editing them by hand:
@@ -313,7 +358,7 @@ npx shadcn-svelte@latest add <component>
 - **Tailwind v4** is configured CSS-first in `src/app.css`. There's no `tailwind.config.js`.
 - **Design tokens** are OKLCH CSS variables (`--background`, `--primary`, `--radius` and so on) defined on `:root` and overridden under `.dark`. The `dark:` variant matches any descendant of `.dark`.
 - **Palette.** The UI uses graphite neutrals, and the primary (action) colour is ink. Indigo (`--brand`, with `bg-brand`, `text-brand` and `bg-brand-soft`) is reserved for lead-count badges and focus rings, so use it sparingly. The logo has its own orange (`orange-600`, `orange-400` in dark mode). Each card's own accent colour belongs to the card, not the app.
-- **Dashboard dark mode.** `$lib/theme.svelte.ts` stores a Light, Dark or System preference in localStorage (`fronko-theme`), and the sidebar's `ThemeToggle` sets it. The dashboard layout adds `.dark` to `<html>` only while you're in `/dashboard`, so portalled dialogs, menus and toasts match, and the marketing and public pages stay light. An inline script in `app.html` applies the theme before first paint on dashboard URLs. `ProfileCard` always scopes itself with `.dark` or `.light`, so a light card previews as light inside the dark dashboard. The `dark:` variant skips anything inside `.light` for the same reason.
+- **Dashboard dark mode.** `$lib/theme.svelte.ts` stores a Light, Dark or System preference in localStorage (`fronko-theme`), and the sidebar's `ThemeToggle` sets it. The dashboard and admin layouts add `.dark` to `<html>` only while you're in `/dashboard` or `/admin`, so portalled dialogs, menus and toasts match, and the marketing and public pages stay light. An inline script in `app.html` applies the theme before first paint on dashboard and admin URLs. `ProfileCard` always scopes itself with `.dark` or `.light`, so a light card previews as light inside the dark dashboard. The `dark:` variant skips anything inside `.light` for the same reason.
 - **Utilities.** `bg-dots` draws the faint dot grid used behind previews, and `tabular` sets tabular numerals for counts.
 - **Layout widths.** App pages are full width (the overview caps at 1680px), and the sidebar is `w-68`. Breakpoints that change the structure: `lg` (1024px) shows the sidebar, `xl` (1280px) shows the editor's preview pane, `2xl` (1536px) puts section headings beside the fields and moves recent leads into their own column.
 - **Per-card theming.** `ProfileCard` sets `--card-accent` from `ACCENTS[card.accent]`. The public page wraps the card in a `.dark` element when `card.theme === 'dark'`, so a single card can be dark without switching the whole app.
@@ -323,7 +368,7 @@ npx shadcn-svelte@latest add <component>
 
 - **No tokens in JavaScript.** Auth relies only on the HttpOnly cookie.
 - **Visitor-facing URLs go through `safeUrl()`.** That covers the avatar, website, booking link and links, so a card owner can't inject `javascript:` links.
-- **Open-redirect protection.** `/login` and `/verify-email` only follow `next` values that start with `/` and not `//`.
+- **Open-redirect protection.** `/login` and `/verify-email` only follow `next` values that start with `/` and not `//`. `/admin/login` only follows paths inside `/admin`.
 - **No account enumeration from the UI.** `/forgot-password` always shows the same "if an account exists" message.
 - **CSV injection.** Lead exports prefix cells starting with `=`, `+`, `-`, `@`, tab or CR with `'`, because lead content comes from anonymous visitors.
 - **Validation is mirrored, not trusted.** Slug, username, password and email checks in the UI exist for quick feedback. The backend enforces the real rules.

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/mail"
 	"os"
 	"strconv"
 	"strings"
@@ -33,6 +34,10 @@ type Config struct {
 	SMTPUsername string
 	SMTPPassword string
 	SMTPFrom     string
+
+	// FeedbackNotifyEmail gets an email for each piece of product feedback,
+	// and is the Reply-To on admins' replies. Optional.
+	FeedbackNotifyEmail string
 }
 
 // Load reads configuration from the environment. DATABASE_URL and JWT_SECRET
@@ -59,6 +64,8 @@ func Load() (*Config, error) {
 		SMTPUsername: os.Getenv("SMTP_USERNAME"),
 		SMTPPassword: os.Getenv("SMTP_PASSWORD"),
 		SMTPFrom:     os.Getenv("SMTP_FROM"),
+
+		FeedbackNotifyEmail: strings.TrimSpace(os.Getenv("FEEDBACK_NOTIFY_EMAIL")),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -77,6 +84,14 @@ func Load() (*Config, error) {
 	}
 	if cfg.SMTPHost != "" && cfg.SMTPFrom == "" {
 		return nil, errors.New("SMTP_FROM is required when SMTP_HOST is set")
+	}
+
+	if cfg.FeedbackNotifyEmail != "" {
+		addr, err := mail.ParseAddress(cfg.FeedbackNotifyEmail)
+		if err != nil {
+			return nil, fmt.Errorf("FEEDBACK_NOTIFY_EMAIL: %w", err)
+		}
+		cfg.FeedbackNotifyEmail = addr.Address
 	}
 
 	// Optional: without it the app runs, but file storage is switched off.

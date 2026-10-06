@@ -41,3 +41,21 @@ func TestJWTCarriesSessionVersion(t *testing.T) {
 	_, _, err = NewService("another-secret-0123456").ValidateJWT(token)
 	assert.Error(t, err)
 }
+
+func TestAdminAndUserTokensDontMix(t *testing.T) {
+	s := NewService("test-secret-0123456789")
+	admin, err := s.GenerateAdminJWT(5, 2)
+	require.NoError(t, err)
+	user, err := s.GenerateJWT(5, 2)
+	require.NoError(t, err)
+
+	id, version, err := s.ValidateAdminJWT(admin)
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), id)
+	assert.Equal(t, 2, version)
+
+	_, _, err = s.ValidateJWT(admin)
+	assert.Error(t, err, "admin token must not work as a user session")
+	_, _, err = s.ValidateAdminJWT(user)
+	assert.Error(t, err, "user token must not work as an admin session")
+}

@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"strings"
 	"time"
+	"unicode"
 )
 
 var codeHTML = template.Must(template.New("code").Parse(`<!doctype html>
@@ -25,6 +26,12 @@ var codeHTML = template.Must(template.New("code").Parse(`<!doctype html>
           </table>
         </td></tr>
         {{- end}}
+        {{- range .Quotes}}
+        <tr><td style="padding-bottom:20px">
+          {{- if .Label}}<div style="font-size:13px;color:#78716c;padding-bottom:6px">{{.Label}}</div>{{end}}
+          <div style="border-left:3px solid #d6d3d1;padding:4px 0 4px 12px;font-size:14px;line-height:1.6;white-space:pre-wrap;word-break:break-word">{{.Text}}</div>
+        </td></tr>
+        {{- end}}
         {{- if .Code}}
         <tr><td style="font-size:32px;font-weight:600;letter-spacing:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;padding-bottom:20px">{{.Code}}</td></tr>
         <tr><td style="font-size:13px;line-height:1.5;color:#78716c">This code expires in {{.Minutes}} minutes. {{.Footer}}</td></tr>
@@ -41,6 +48,8 @@ type codeEmail struct {
 	Intro string
 	// Details are labelled values shown in a box under the intro (e.g. sign-in details).
 	Details []detail
+	// Quotes are blocks of free text, such as a feedback message, shown as written.
+	Quotes  []quote
 	Code    string
 	Minutes int
 	Footer  string
@@ -50,7 +59,12 @@ type detail struct {
 	Label, Value string
 }
 
+type quote struct {
+	Label, Text string
+}
+
 func codeMessage(subject string, data codeEmail) Message {
+	subject = cleanSubject(subject)
 	var html bytes.Buffer
 	if err := codeHTML.Execute(&html, data); err != nil {
 		// The template and data are fixed; this can't fail at runtime.
@@ -62,6 +76,17 @@ func codeMessage(subject string, data codeEmail) Message {
 		b.WriteString(intro + "\n")
 		for _, d := range data.Details {
 			fmt.Fprintf(&b, "\n    %s: %s", d.Label, d.Value)
+		}
+		intro = b.String()
+	}
+	for _, q := range data.Quotes {
+		var b strings.Builder
+		b.WriteString(intro + "\n")
+		if q.Label != "" {
+			b.WriteString("\n" + q.Label + "\n")
+		}
+		for _, line := range strings.Split(q.Text, "\n") {
+			b.WriteString("\n    " + line)
 		}
 		intro = b.String()
 	}
@@ -132,5 +157,81 @@ func MemberInviteMessage(orgName, username, tempPassword string) Message {
 		},
 		Footer: "When you first sign in, you'll confirm this email address with a code we send you, then choose your own password. " +
 			"If you weren't expecting this, you can ignore this email.",
+	})
+}
+
+// cleanSubject turns control characters (line breaks above all) into spaces,
+// since subjects can include names and text that users typed.
+func cleanSubject(s string) string {
+	return strings.Join(strings.FieldsFunc(s, unicode.IsControl), " ")
+}
+
+// truncate shortens s to at most n runes, adding an ellipsis when it cuts.
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
+}
+
+// FeedbackDetails describes feedback for the notice sent to the platform admin.
+type FeedbackDetails struct {
+	SenderEmail string
+	OrgName     string
+	Category    string
+	Rating      *int16
+	PagePath    string
+	Message     string
+}
+
+// FeedbackNotice tells the platform admin that someone sent feedback.
+func FeedbackNotice(f FeedbackDetails) Message {
+	details := []detail{
+		{"From", f.SenderEmail},
+		{"Organisation", f.OrgName},
+		{"Category", f.Category},
+	}
+	if f.Rating != nil {
+		details = append(details, detail{"Rating", fmt.Sprintf("%d / 5", *f.Rating)})
+	}
+	if f.PagePath != "" {
+		details = append(details, detail{"Page", f.PagePath})
+	}
+	return codeMessage("New Fronko feedback ("+f.Category+") from "+f.OrgName, codeEmail{
+		Intro:   "Someone sent feedback about Fronko:",
+		Details: details,
+		Quotes:  []quote{{"", f.Message}},
+		Footer:  "Reply to it from the Feedback page of the admin panel.",
+	})
+}
+
+// FeedbackReplyMessage carries a platform admin's reply to the person who sent feedback.
+func FeedbackReplyMessage(original, reply string) Message {
+	return codeMessage("Re: your Fronko feedback", codeEmail{
+		Intro: "Thanks for your feedback on Fronko. Here's our reply:",
+		Quotes: []quote{
+			{"", reply},
+			{"You wrote:", truncate(original, 1000)},
+		},
+		Footer: "You can reply to this email to continue the conversation.",
+	})
+}
+
+// OrgSuspendedMessage tells an organisation's owner that it was suspended, and why.
+func OrgSuspendedMessage(orgName, reason string) Message {
+	return codeMessage(orgName+" has been suspended on Fronko", codeEmail{
+		Intro: "Your organisation " + orgName + " has been suspended. Nobody in it can sign in, " +
+			"and its public cards are unavailable until it is reinstated.",
+		Quotes: []quote{{"Reason:", reason}},
+		Footer: "If you think this is a mistake, reply to this email or contact whoever runs this Fronko server.",
+	})
+}
+
+// OrgReinstatedMessage tells an organisation's owner that its suspension was lifted.
+func OrgReinstatedMessage(orgName string) Message {
+	return codeMessage(orgName+" has been reinstated on Fronko", codeEmail{
+		Intro:  "Your organisation " + orgName + " has been reinstated. Everyone can sign in again, and its public cards are back online.",
+		Footer: "Thanks for your patience.",
 	})
 }

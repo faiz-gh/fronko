@@ -77,6 +77,12 @@ func (h *ProfileHandler) GetProfileBySlug(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	// A suspended organisation's cards are offline. Visitors only learn that
+	// the card is unavailable, not why.
+	if profile.OrgSuspended {
+		writeJSON(w, http.StatusGone, map[string]string{"error": "this card is unavailable", "code": middleware.CodeOrgSuspended})
+		return
+	}
 
 	// Resolve only the files this card uses, and only ones its organisation still has.
 	public := models.PublicProfile{ID: profile.ID, Slug: profile.Slug, Data: profile.Data, Files: []models.PublicFile{}}

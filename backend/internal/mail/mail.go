@@ -26,6 +26,8 @@ type Message struct {
 	Subject string
 	Text    string
 	HTML    string
+	// ReplyTo, when set, is where replies to the email go instead of the sender.
+	ReplyTo string
 }
 
 type Sender interface {
@@ -137,6 +139,15 @@ func buildMessage(from *mail.Address, to string, m Message, now time.Time) ([]by
 	if err != nil {
 		return nil, fmt.Errorf("invalid recipient address: %w", err)
 	}
+	var replyTo *mail.Address
+	if m.ReplyTo != "" {
+		if strings.ContainsAny(m.ReplyTo, "\r\n") {
+			return nil, errors.New("invalid reply-to address")
+		}
+		if replyTo, err = mail.ParseAddress(m.ReplyTo); err != nil {
+			return nil, fmt.Errorf("invalid reply-to address: %w", err)
+		}
+	}
 
 	boundary, err := randomHex(16)
 	if err != nil {
@@ -152,6 +163,9 @@ func buildMessage(from *mail.Address, to string, m Message, now time.Time) ([]by
 	header := func(k, v string) { fmt.Fprintf(&b, "%s: %s\r\n", k, v) }
 	header("From", from.String())
 	header("To", toAddr.String())
+	if replyTo != nil {
+		header("Reply-To", replyTo.String())
+	}
 	header("Subject", mime.QEncoding.Encode("utf-8", m.Subject))
 	header("Date", now.Format(time.RFC1123Z))
 	header("Message-ID", fmt.Sprintf("<%s@%s>", msgID, domain))

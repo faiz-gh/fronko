@@ -7,6 +7,7 @@ It handles:
 - **Accounts.** Username/password registration and login. Sessions are JWTs carried in an HttpOnly cookie.
 - **Profiles ("cards").** Each user can own several public profiles. Each one has a unique slug and a free-form JSONB `data` document.
 - **Leads.** Anonymous visitors can submit their name, email, an optional mobile number (dial code and number stored separately, digits only) and a message to a profile. The owner can list and search those leads.
+- **Platform admin.** Separate admin accounts (created with `./fronko admin create`) get usage totals per organisation, daily usage trends, a product-feedback inbox with email replies, organisation suspension and an audit log. See [Platform admin](#platform-admin).
 
 For the full endpoint reference, see [API.md](./API.md).
 
@@ -21,6 +22,7 @@ For the full endpoint reference, see [API.md](./API.md).
 - [Database](#database)
 - [Request pipeline](#request-pipeline)
 - [Authentication & sessions](#authentication--sessions)
+- [Platform admin](#platform-admin)
 - [Security measures](#security-measures)
 - [Error handling conventions](#error-handling-conventions)
 - [Testing](#testing)
@@ -46,6 +48,7 @@ For the full endpoint reference, see [API.md](./API.md).
 ```
 backend/
 ├── cmd/fronko/main.go        # Entry point: config, DI wiring, routes, graceful shutdown
+├── cmd/fronko/admin.go       # `fronko admin create|set-password` subcommand for platform admins
 ├── internal/
 │   ├── auth/auth.go              # Password hashing (bcrypt) and JWT issue/validate (with session version)
 │   ├── auth/otp.go               # 6-digit email codes: generation, HMAC hashing, TTL/attempt/cooldown limits
@@ -53,6 +56,9 @@ backend/
 │   ├── database/db.go            # pgxpool construction and connectivity check
 │   ├── handlers/
 │   │   ├── auth.go               # /auth/login, /auth/register, /auth/logout, /api/me/user
+│   │   ├── admin_auth.go         # Platform admin sign-in/out (/auth/admin/*) and /api/admin/me
+│   │   ├── admin.go              # /api/admin/*: usage, trends, suspend/reinstate, feedback inbox, audit log
+│   │   ├── feedback.go           # POST /api/me/feedback (users sending product feedback)
 │   │   ├── account.go            # Email verification and change, forgot/reset password, change password
 │   │   ├── files.go              # File library: upload (type sniffing), list, rename, delete, public redirect
 │   │   ├── storage.go            # StorageService (decrypt keys → bucket client) and /api/me/storage
@@ -63,11 +69,16 @@ backend/
 │   ├── middleware/
 │   │   ├── cors.go               # CORS headers + preflight for CORS_ALLOWED_ORIGINS
 │   │   ├── jwt.go                # Cookie → JWT → session-version check → user ID in context; RequireVerified
+│   │   ├── admin.go              # AdminMiddleware: fronko_admin cookie → admin JWT → platform admin in context
 │   │   ├── origin.go             # Same-origin check for state-changing requests
 │   │   └── ratelimit.go          # Per-IP token bucket limiter
 │   ├── mail/                     # SMTP sender (implicit TLS / STARTTLS), log fallback, code and notice templates
 │   ├── models/models.go          # User, EmailCode, Profile, PublicProfile, Lead, StorageSettings, File
+│   ├── models/admin.go           # PlatformAdmin, OrgUsage, PlatformSummary, UsagePoint, Feedback, AuditEntry
 │   ├── repository/repository.go  # All SQL; maps pg errors to ErrNotFound / ErrConflict
+│   ├── repository/admin.go       # Platform admins, org usage aggregates, snapshots, suspension, audit log
+│   ├── repository/feedback.go    # Feedback and replies
+│   ├── snapshots/scheduler.go    # Hourly usage snapshot for the admin trends
 │   ├── secrets/secrets.go        # AES-256-GCM sealing for storage keys at rest
 │   └── storage/storage.go        # S3 client (aws-sdk-go-v2), endpoint validation, SSRF-safe dialer
 ├── migrations/                   # golang-migrate SQL files (up/down)
@@ -143,6 +154,7 @@ All configuration comes from environment variables and is read once at startup b
 | `SMTP_PORT`     |    | `587` | `465` uses implicit TLS; any other port upgrades with STARTTLS when the server offers it. |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | | none | SMTP credentials. Auth is skipped when the username is empty. Credentials are never sent over an unencrypted connection (except to localhost). |
 | `SMTP_FROM`     | with `SMTP_HOST` | none | Sender, e.g. `Fronko <no-reply@fronko.app>`. Must be an address your provider lets you send from. |
+| `FEEDBACK_NOTIFY_EMAIL` | | none | Address emailed for each piece of product feedback (with the sender as Reply-To). Also the Reply-To on admin replies and on suspension emails to owners. Unset: feedback only shows up in the admin panel. A malformed value stops startup. |
 | `STORAGE_ALLOW_PRIVATE_ENDPOINTS` | | `false` | `true` lets storage endpoints use `http` and private or loopback addresses, e.g. a local MinIO. **Development only**: in production it would let users make the server connect to internal hosts. |
 
 ### Server and pool settings
@@ -159,7 +171,8 @@ These are hard-coded:
 
 ## Database
 
-The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`, 006 changing a verified email, 007 organisations and users).
+The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`, 006 changing a verified email, 007 organisations and users, 008 platform admin).
+- **Platform admin (008).** `platform_admins` (separate from `users`; case-insensitive unique email, own `session_version`). `organizations.suspended_at` and `suspended_reason`. `feedback` (with `sender_email` and `org_name` copied in, and `org_id`/`user_id` `ON DELETE SET NULL`, so feedback outlives the org) and `feedback_replies`. `org_usage_snapshots` (one row per org per day) and `platform_usage_snapshots` (daily totals, kept apart so history survives deleted orgs). `admin_audit_log`, which also copies the admin's email.
 - **Organisations (007).** Every user belongs to one `organizations` row (`users.org_id`) with a `role`: `owner` (exactly one per org, enforced by a partial unique index), `admin` or `member`. 007 gave each existing account its own organisation, as owner. `users` also gained `must_change_password` (set while the org-chosen password is in use), `storage_quota_bytes` (`NULL`: unlimited), `suspended_at`, `created_by` and `last_login_at`.
 - **Cards** belong to the org (`profiles.org_id`); `profiles.user_id` is just the creator. `profiles.assigned_user_id` is the one user working on the card (`ON DELETE SET NULL`).
 - **Leads** record `assigned_user_id`, copied from the card when they arrive, so they stay with that person after a reassignment.
@@ -227,11 +240,11 @@ erDiagram
 
 ### Adding a migration
 
-Add a numbered pair next to the existing files:
+Add a numbered pair next to the existing files (the next number is 009):
 
 ```
-migrations/002_<description>.up.sql
-migrations/002_<description>.down.sql
+migrations/009_<description>.up.sql
+migrations/009_<description>.down.sql
 ```
 
 The Docker entrypoint runs `migrate ... up` on every container start. Locally, run the same command by hand (see [Run locally](#run-locally)).
@@ -269,9 +282,12 @@ Request
                │  POST /api/me/email/verify,
                │  POST /api/me/email/resend   → JWTMiddleware → [authLimiter] → handler   (allowed while unverified)
                ├─ PUT  /api/me/password       → JWTMiddleware → RequireVerified → authLimiter → handler   (allowed with a temporary password)
-               └─ /api/me/*, /api/org, /api/org/*
-                                              → JWTMiddleware → RequireVerified → RequirePasswordSet → protected ServeMux
-                                                   → [RequireAdmin | RequireOwner] → handler
+               ├─ /api/me/*, /api/org, /api/org/*
+               │                              → JWTMiddleware → RequireVerified → RequirePasswordSet → protected ServeMux
+               │                                   → [RequireAdmin | RequireOwner] → handler
+               ├─ POST /auth/admin/login      → authLimiter → handler
+               ├─ POST /auth/admin/logout     → handler
+               └─ /api/admin/*                → AdminMiddleware → admin ServeMux → handler
 ```
 
 Protected routes live on their own `ServeMux`, mounted at `/api/me/`, `/api/org` and `/api/org/` behind `JWTMiddleware`, `RequireVerified` and `RequirePasswordSet`. Any route added there is authenticated and requires a verified email and a user-chosen password automatically; wrap it in `middleware.RequireAdmin` or `RequireOwner` when only those roles may call it. A route that must work earlier is registered on the main mux with a more specific pattern (e.g. `GET /api/me/user`). Inside a protected handler, `middleware.PrincipalFrom(r.Context())` gives the caller's user ID, org ID and role, and `scopeOf(r)` the matching repository scope.
@@ -289,7 +305,7 @@ Protected routes live on their own `ServeMux`, mounted at `/api/me/`, `/api/org`
    | `Secure` | controlled by `COOKIE_SECURE` (default on) |
    | `Path` / `Max-Age` | `/` / 86400 |
 
-3. `JWTMiddleware` reads the cookie, validates it (HS256 pinned, `exp` required), then looks up the user's session state (one primary-key query): `session_version`, verification, org, role, suspension and `must_change_password`. A token whose `sv` doesn't match is rejected with 401, and so are a deleted or suspended account (`account_suspended`). The principal (user, org, role) and the state go into the request context.
+3. `JWTMiddleware` reads the cookie, validates it (HS256 pinned, `exp` required, and no `platform-admin` audience), then looks up the user's session state (one query joining the organisation): `session_version`, verification, org, role, suspension, `must_change_password` and whether the organisation is suspended. A suspended organisation is rejected first, with `401 {"code":"org_suspended","reason":…}`, so members see why. Then a token whose `sv` doesn't match is rejected with 401, and so are a deleted or suspended account (`account_suspended`). The principal (user, org, role) and the state go into the request context.
 4. `RequireVerified` wraps every `/api/me/` route except `GET /api/me/user` and the `/api/me/email*` routes, answering `403 {"code":"email_unverified"}` until the email is verified. Those exceptions are registered as more specific patterns on the main mux, so they bypass it.
 5. Because the SPA can't read the cookie, it calls `GET /api/me/user` to find out who is signed in.
 6. `RequirePasswordSet` answers `403 {"code":"password_change_required"}` while a user created (or reset) by their organisation still has its temporary password. `PUT /api/me/password` clears the flag. The first-login order is therefore: sign in, verify email, choose a password.
@@ -306,6 +322,30 @@ Registration (and `PUT /api/me/email`) sends a verification code, and `POST /aut
 
 Mail is sent in a background goroutine (30 s timeout, errors logged), so request timing doesn't depend on the SMTP server or reveal whether an address has an account. Forgot-password always answers 204.
 
+## Platform admin
+
+Platform admins run the Fronko server itself. They are **not** organisation users: they live in `platform_admins`, sign in at `POST /auth/admin/login` (the SPA page is `/admin/login`), and get their own cookie, `fronko_admin` (HttpOnly, `SameSite=Strict`, 8 h). Their JWT carries `aud: "platform-admin"`. `ValidateJWT` rejects that audience and `ValidateAdminJWT` requires it, so an admin token never works as a user session (or the reverse), even for matching IDs. `AdminMiddleware` checks the admin's `session_version` on every request.
+
+There's no sign-up page. Accounts are made from the command line, which reads `DATABASE_URL` and prompts for a password (12–72 characters):
+
+```bash
+./fronko admin create --email you@example.com         # docker compose exec backend ./fronko admin create ...
+./fronko admin set-password --email you@example.com   # replaces it and signs that admin out everywhere
+```
+
+**Privacy boundary.** Usage comes from one aggregate query (`orgUsageQuery` in `repository/admin.go`): per org, user counts by role, card, lead and file counts, `SUM(files.size_bytes)`, whether the owner has a `user_storage` row (and its provider), and `MAX(last_login_at)`. It never selects card `data`, lead columns, file names or member identities. The owner's email and the feedback sender's email are the only personal data the admin API returns. Storage used counts files uploaded through Fronko only, not everything in the bucket.
+
+**Trends.** `snapshots.Run` (started from `main.go`) calls `TakeUsageSnapshot` at startup and every hour. Each run upserts today's (UTC) row in both snapshot tables from the same aggregate query, so the last run of a day becomes its final value and the numbers always match the live view. Days the server was down are gaps.
+
+**Suspending an organisation** (`SuspendOrg`) sets `suspended_at` and the reason and bumps every member's `session_version` in one transaction. Then:
+- `JWTMiddleware` and `POST /auth/login` answer `org_suspended` with the reason.
+- `GET /api/profiles/{slug}` answers `410 {"code":"org_suspended"}` (visitors aren't told why), `POST /api/profiles/{id}/leads` answers 404, and `GET /api/files/{id}` answers 404.
+- The owner is emailed the reason (`mail.OrgSuspendedMessage`), and again on reinstatement. A failed email doesn't undo the action; it's recorded in the audit entry.
+
+**Feedback.** `POST /api/me/feedback` (any signed-in, verified user; `feedbackLimiter`) stores the message and emails `FEEDBACK_NOTIFY_EMAIL` in the background. An admin reply (`POST /api/admin/feedback/{id}/replies`) is emailed to the sender with their message quoted, then stored with `email_sent`, and moves `new` feedback to `read`.
+
+**Audit log.** Admin sign-ins, suspensions, reinstatements, feedback replies and status changes each add an `admin_audit_log` row.
+
 ## Security measures
 
 | Threat | Mitigation | Where |
@@ -313,6 +353,8 @@ Mail is sent in a background goroutine (30 s timeout, errors logged), so request
 | Token theft via XSS | JWT lives only in an HttpOnly cookie | `handlers/session.go` |
 | CSRF | `SameSite=Lax`, plus `SameOrigin` middleware that rejects POST/PUT/DELETE whose `Origin` host differs from `Host` unless it's listed in `CORS_ALLOWED_ORIGINS` | `middleware/origin.go` |
 | Cross-origin reads | CORS headers are only sent to origins in `CORS_ALLOWED_ORIGINS` (exact match, no wildcard) | `middleware/cors.go` |
+| Admin and user sessions crossing over | Separate cookies, an `aud: "platform-admin"` claim each validator checks, separate tables and ID spaces, and `SameSite=Strict` on the admin cookie | `auth/auth.go`, `middleware/admin.go` |
+| Admin data revealing organisations' content | Admin endpoints read only aggregates (`orgUsageQuery`); an integration test checks no card data, leads or member names appear | `repository/admin.go` |
 | JWT algorithm confusion | `jwt.WithValidMethods(["HS256"])` and `WithExpirationRequired()` | `auth/auth.go` |
 | Weak or empty signing key | Startup fails when `JWT_SECRET` is shorter than 16 chars | `config/config.go` |
 | Username enumeration via timing | Unknown usernames still run a bcrypt compare against a dummy hash | `handlers/auth.go` |
@@ -343,6 +385,9 @@ Defined as constants in `cmd/fronko/main.go`:
 | `authLimiter` | `POST /auth/login`, `/auth/register`, `/auth/password/forgot`, `/auth/password/reset`, `PUT /api/me/email`, `POST /api/me/email/verify`, `POST /api/me/email/resend`, `POST /api/me/email/change`, `POST /api/me/email/change/confirm` and `PUT /api/me/password` (one shared bucket per IP) | 10 | 1 per 10s |
 | `leadLimiter` | `POST /api/profiles/{id}/leads` | 5 | 1 per 15s |
 | `uploadLimiter` | `POST /api/me/files` | 10 | 1 per 6s |
+| `feedbackLimiter` | `POST /api/me/feedback` | 5 | 1 per 12 min |
+
+`POST /auth/admin/login` shares `authLimiter`.
 
 A rejected request gets `429 Too Many Requests` with a `Retry-After` header in seconds, and it does not use up a token. Buckets idle for more than 10 minutes are evicted every minute.
 
@@ -360,14 +405,15 @@ make test-integration   # repository integration tests (needs a database, see be
 ```
 
 Unit tests cover:
-- `auth`: email code format, HMAC binding to user/purpose/key, session version in the JWT.
-- `mail`: message building (headers, multipart), header-injection rejection, the email-changed notice (no code, masked address), the member invite (sign-in details in text and escaped HTML) and `MaskEmail`.
-- `middleware`: rate limiter, same-origin check, CORS, the principal and suspension check in `JWTMiddleware`, `RequirePasswordSet`, and the role gates.
+- `auth`: email code format, HMAC binding to user/purpose/key, session version in the JWT, and admin and user tokens not being interchangeable.
+- `mail`: message building (headers, multipart, Reply-To), header-injection rejection, the email-changed notice (no code, masked address), the member invite (sign-in details in text and escaped HTML), `MaskEmail`, and the feedback, reply and suspension messages (control characters stripped from subjects).
+- `middleware`: rate limiter, same-origin check, CORS, the principal and suspension checks in `JWTMiddleware` (including `org_suspended` and rejecting admin tokens), `RequirePasswordSet`, the role gates, and `AdminMiddleware` (user tokens, revoked and deleted admins).
+- `snapshots`: the scheduler runs at start and on each tick, and stops with its context.
 - `secrets`: sealing round trip, tamper, wrong AAD and wrong key.
 - `storage`: endpoint validation, private-address dialing, the connection probe against a fake S3 server.
-- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals (avatar, cover, brochures), lead phone normalization and validation, upload areas by role, the optional quota field, and organisation-name validation.
+- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals (avatar, cover, brochures), lead phone normalization and validation, upload areas by role, the optional quota field, organisation-name validation, and feedback validation.
 
-The integration tests (`internal/repository/repository_test.go`) sit behind the `integration` build tag. They read **`TEST_DATABASE_URL`**, not `DATABASE_URL`, because they `TRUNCATE` every table. Point them at a disposable database that already has the migrations applied:
+The integration tests (`internal/repository/repository_test.go` and `admin_test.go`) sit behind the `integration` build tag. They read **`TEST_DATABASE_URL`**, not `DATABASE_URL`, because they `TRUNCATE` every table. Point them at a disposable database that already has the migrations applied:
 
 ```bash
 export TEST_DATABASE_URL='postgres://fronko:password@localhost:5432/fronko_test?sslmode=disable'
@@ -375,7 +421,7 @@ migrate -path migrations -database "$TEST_DATABASE_URL" up
 make test-integration
 ```
 
-They cover users (case-insensitive usernames and emails, which unique index a conflict came from), email verification and changes, session-version bumps, the email-code lifecycle (attempt cap, expiry, replacement, and the target address on `change_email` codes), organisations (one owner each, org creation), profiles and assignment, leads (including who keeps them after a reassignment, and the user filters), storage settings (the org's bucket is the owner's), files (visibility by area and grant, edit rights, quota under a lock), and user management (roles, suspension, temporary passwords, deleting a user without losing their work).
+They cover users (case-insensitive usernames and emails, which unique index a conflict came from), email verification and changes, session-version bumps, the email-code lifecycle (attempt cap, expiry, replacement, and the target address on `change_email` codes), organisations (one owner each, org creation), profiles and assignment, leads (including who keeps them after a reassignment, and the user filters), storage settings (the org's bucket is the owner's), files (visibility by area and grant, edit rights, quota under a lock), and user management (roles, suspension, temporary passwords, deleting a user without losing their work). `admin_test.go` covers the usage numbers for a busy and an empty org (and that nothing private appears in them), listing filters and sorting, snapshots and trends, suspending and reinstating an org, platform admins and the audit log, and feedback surviving its org's deletion.
 
 If `TEST_DATABASE_URL` is unset, the tests are skipped.
 
@@ -417,4 +463,5 @@ For the full stack (backend + nginx-served frontend), see `deploy/` and the [roo
 - **Anyone with a file's link can open it.** `/api/files/{id}` needs no sign-in, which is how public cards show photos and brochures. IDs are 128-bit random values and only appear on cards that use them, but a link that is shared stays usable until the file is deleted.
 - **Uploads are buffered in memory**, up to 20 MB per request, so they can be type-checked before writing to the bucket. The upload rate limit keeps this bounded per IP.
 - **Deleting a file doesn't edit cards.** Cards that referenced it simply stop showing it; the editor shows the stale entry until removed.
+- **Admin sign-in has no second factor yet.** Use a long, unique password; TOTP is a planned follow-up.
 - **Changing or losing `SECRETS_KEY` breaks saved storage keys.** Users have to re-enter them. Rotation isn't automated yet; the version byte in each ciphertext is there for it.

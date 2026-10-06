@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -27,7 +28,13 @@ const (
 	CodePasswordChangeRequired = "password_change_required"
 	// CodeAccountSuspended marks the 401 for accounts the organisation suspended.
 	CodeAccountSuspended = "account_suspended"
+	// CodeOrgSuspended marks responses for an organisation the platform
+	// suspended; they carry the reason the admin gave.
+	CodeOrgSuspended = "org_suspended"
 )
+
+// OrgSuspendedMessage is the error shown to members of a suspended organisation.
+const OrgSuspendedMessage = "your organisation has been suspended"
 
 // Principal is the signed-in user and where they stand in their organisation.
 type Principal struct {
@@ -68,6 +75,14 @@ func writeErrorCode(w http.ResponseWriter, status int, msg, code string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	w.Write([]byte(`{"error":"` + msg + `","code":"` + code + `"}`))
+}
+
+// writeOrgSuspended sends the org_suspended error. The reason is free text an
+// admin typed, so it goes through the JSON encoder.
+func writeOrgSuspended(w http.ResponseWriter, reason string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	json.NewEncoder(w).Encode(map[string]string{"error": OrgSuspendedMessage, "code": CodeOrgSuspended, "reason": reason})
 }
 
 // ErrSessionUserNotFound is what a SessionChecker returns for a deleted account.
@@ -175,6 +190,12 @@ func JWTMiddleware(authService *auth.Service, sessions SessionChecker) func(http
 				}
 				log.Printf("session lookup: %v", err)
 				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			// Checked before the version, which suspending also bumps, so the
+			// user is told why rather than that their session expired.
+			if state.OrgSuspended {
+				writeOrgSuspended(w, state.OrgSuspendedReason)
 				return
 			}
 			if version != state.Version {

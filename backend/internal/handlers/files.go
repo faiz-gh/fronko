@@ -463,6 +463,14 @@ func (h *FileHandler) Serve(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "file not found")
 		return
 	}
+	// A suspended organisation's files go offline with its cards.
+	if suspended, err := h.repo.IsOrgSuspended(r.Context(), file.OrgID); err != nil || suspended {
+		if err != nil {
+			log.Printf("serve file %s: %v", id, err)
+		}
+		writeError(w, http.StatusNotFound, "file not found")
+		return
+	}
 	store, err := h.svc.StoreFor(r.Context(), file.OrgID, file.Bucket)
 	if err != nil {
 		if !errors.Is(err, errStorageNotConfigured) {

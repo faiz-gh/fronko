@@ -7,10 +7,10 @@
 		<!-- Runtime settings (API URL), written when the container starts. -->
 		<script src="/config.js"></script>
 		<script>
-			// Apply the dashboard theme before first paint to avoid a light flash.
+			// Apply the dashboard (and admin panel) theme before first paint to avoid a light flash.
 			// Mirrors $lib/theme.svelte.ts; other pages always start light.
 			(function () {
-				if (!location.pathname.startsWith('/dashboard')) return;
+				if (!/^\/(dashboard|admin)(\/|$)/.test(location.pathname)) return;
 				var pref = 'system';
 				try { pref = localStorage.getItem('fronko-theme') || 'system'; } catch (e) {}
 				var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);

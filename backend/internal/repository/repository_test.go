@@ -32,7 +32,7 @@ func TestRepositoryIntegration(t *testing.T) {
 	repo := repository.New(pool)
 
 	// Clean up tables before testing
-	_, err = pool.Exec(ctx, "TRUNCATE TABLE organizations, users, profiles, leads, user_storage, files, file_grants, email_codes RESTART IDENTITY CASCADE")
+	_, err = pool.Exec(ctx, "TRUNCATE TABLE organizations, users, profiles, leads, user_storage, files, file_grants, email_codes, platform_admins, feedback, feedback_replies, org_usage_snapshots, platform_usage_snapshots, admin_audit_log RESTART IDENTITY CASCADE")
 	require.NoError(t, err)
 
 	// newOwner registers an organisation and its owner.

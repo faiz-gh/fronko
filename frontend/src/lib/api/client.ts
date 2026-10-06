@@ -1,3 +1,4 @@
+import { adminSession } from '$lib/admin-session.svelte';
 import { session } from '$lib/session.svelte';
 
 export class ApiError extends Error {
@@ -7,7 +8,9 @@ export class ApiError extends Error {
 		/** Machine-readable reason, when the backend sends one (e.g. "email_unverified"). */
 		readonly code?: string,
 		/** Seconds from a 429's Retry-After header. */
-		readonly retryAfter?: number
+		readonly retryAfter?: number,
+		/** Why the organisation was suspended, on an "org_suspended" error. */
+		readonly reason?: string
 	) {
 		super(message);
 	}
@@ -51,11 +54,19 @@ export async function apiClient<T>(
 	}
 
 	if (!response.ok) {
+		const body = await response.json().catch(() => ({}));
+		// The platform suspended the whole organisation: sign out and say why.
+		if (response.status === 401 && body.code === 'org_suspended') {
+			session.suspend(body.reason ?? '');
+		}
 		// An expired or invalid session on a protected route: sign out and send to login.
-		if (response.status === 401 && redirectOnUnauthorized && /^\/api\/(me|org)\b/.test(endpoint)) {
+		else if (response.status === 401 && redirectOnUnauthorized && /^\/api\/(me|org)\b/.test(endpoint)) {
 			session.expire();
 		}
-		const body = await response.json().catch(() => ({}));
+		// The platform admin panel has its own session and sign-in page.
+		else if (response.status === 401 && redirectOnUnauthorized && /^\/api\/admin\b/.test(endpoint)) {
+			adminSession.expire();
+		}
 		// Signed in but the email isn't verified yet: finish that first.
 		if (response.status === 403 && body.code === 'email_unverified') {
 			session.requireVerification();
@@ -65,7 +76,13 @@ export async function apiClient<T>(
 			session.requirePasswordChange();
 		}
 		const retryAfter = Number(response.headers.get('Retry-After')) || undefined;
-		throw new ApiError(body.error || `Request failed (${response.status})`, response.status, body.code, retryAfter);
+		throw new ApiError(
+			body.error || `Request failed (${response.status})`,
+			response.status,
+			body.code,
+			retryAfter,
+			body.reason
+		);
 	}
 
 	if (response.status === 204) {
