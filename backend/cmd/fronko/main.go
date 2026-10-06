@@ -98,7 +98,7 @@ func run() error {
 	}
 
 	authHandler := handlers.NewAuthHandler(repo, authService, mailer, cfg.CookieSecure)
-	profileHandler := handlers.NewProfileHandler(repo)
+	profileHandler := handlers.NewProfileHandler(repo, cfg.CORSAllowedOrigins)
 	leadHandler := handlers.NewLeadHandler(repo)
 
 	// File storage needs SECRETS_KEY to encrypt users' bucket keys; without it the feature is off.
@@ -147,6 +147,7 @@ func run() error {
 	mux.HandleFunc("POST /auth/password/reset", authLimiter.Limit(authHandler.ResetPassword))
 	mux.HandleFunc("POST /auth/logout", authHandler.Logout)
 	mux.HandleFunc("GET /api/profiles/{slug}", profileHandler.GetProfileBySlug)
+	mux.HandleFunc("GET /api/profiles/{slug}/vcard", profileHandler.VCard)
 	mux.HandleFunc("POST /api/profiles/{id}/leads", leadLimiter.Limit(leadHandler.SubmitLead))
 	mux.HandleFunc("GET /api/files/{id}", fileHandler.Serve)
 

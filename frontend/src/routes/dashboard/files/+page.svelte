@@ -145,7 +145,9 @@
 			const c = normalizeCard(p.data);
 			const name = c.name || p.slug;
 			add(c.avatar_file, name);
+			add(c.cover_file, name);
 			for (const d of c.documents) add(d.file, name);
+			for (const b of c.blocks) if (b.type === 'gallery') for (const img of b.images) add(img.file, name);
 		}
 		return map;
 	});

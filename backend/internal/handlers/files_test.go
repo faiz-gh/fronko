@@ -90,6 +90,9 @@ func TestReferencedFileIDs(t *testing.T) {
 	data := []byte(`{"name":"x","avatar_file":"` + a + `","cover_file":"` + c + `","documents":[{"file":"` + b + `"},{"file":"` + a + `"},{"file":"not-an-id"}],"other":"` + strings.Repeat("c", 22) + `"}`)
 	assert.Equal(t, []string{a, c, b}, referencedFileIDs(data), "deduplicated, invalid ids and unrelated keys ignored")
 
+	gallery := []byte(`{"avatar_file":"` + a + `","blocks":[{"type":"bio"},{"type":"gallery","images":[{"file":"` + b + `"},{"file":"` + a + `"}]}]}`)
+	assert.Equal(t, []string{a, b}, referencedFileIDs(gallery), "gallery images are referenced")
+
 	assert.Empty(t, referencedFileIDs([]byte(`{}`)))
 	assert.Empty(t, referencedFileIDs([]byte(`not json`)))
 	assert.Empty(t, referencedFileIDs([]byte(`{"documents":"wrong shape"}`)))

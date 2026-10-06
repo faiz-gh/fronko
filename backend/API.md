@@ -70,6 +70,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `POST`   | [`/api/admin/feedback/{id}/replies`](#post-apiadminfeedbackidreplies) | 🖥️ | | Email a reply to the sender |
 | `GET`    | [`/api/admin/audit`](#get-apiadminaudit) | 🖥️ | | What platform admins did, newest first |
 | `GET`    | [`/api/profiles/{slug}`](#get-apiprofilesslug) | | | Public profile by slug |
+| `GET`    | [`/api/profiles/{slug}/vcard`](#get-apiprofilesslugvcard) | | | The card as a contact file (`.vcf`) |
 | `GET`    | [`/api/files/{id}`](#get-apifilesid) | | | Redirect to a file (short-lived signed URL) |
 | `POST`   | [`/api/profiles/{id}/leads`](#post-apiprofilesidleads) | | ✅ lead | Submit a lead to a profile |
 
@@ -144,7 +145,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 }
 ```
 
-The owner's ID and the timestamps are left out on purpose. `files` lists only the library files the card itself references (`data.avatar_file`, `data.cover_file` and `data.documents[].file`) that the card's organisation still has. Nothing else from the organisation's files is revealed.
+The owner's ID and the timestamps are left out on purpose. `files` lists only the library files the card itself references (`data.avatar_file`, `data.cover_file`, `data.documents[].file` and gallery images in `data.blocks[].images[].file`, up to 64) that the card's organisation still has. Nothing else from the organisation's files is revealed.
 
 ### File
 
@@ -194,7 +195,7 @@ The owner's ID and the timestamps are left out on purpose. `files` lists only th
 
 ### `data`
 
-`data` is a free-form JSON **object** that the frontend owns. The backend only checks that it is an object, and stores `{}` when it's missing or `null`. For the shape the web app uses, see [`CardData` in the frontend docs](../frontend/README.md#card-data-model).
+`data` is a free-form JSON **object** that the frontend owns. The backend only checks that it is an object, and stores `{}` when it's missing or `null`. It does read a few keys: `avatar_file`, `cover_file`, `documents[].file` and `blocks[].images[].file` name library files, which must be visible to the editor when newly added, and which `GET /api/profiles/{slug}` resolves (up to 64 per card). The vCard endpoint reads the contact fields. For the shape the web app uses, see [`CardData` in the frontend docs](../frontend/README.md#card-data-model).
 
 ---
 
@@ -723,6 +724,18 @@ Looks up a profile for the public card page (`/p/{slug}`). The slug match is cas
 | `200` | [`PublicProfile`](#publicprofile-visitor-view) |
 | `404` | `"profile not found"` |
 | `410` | `{"error":"this card is unavailable","code":"org_suspended"}` while its organisation is suspended. Visitors aren't told why |
+
+### `GET /api/profiles/{slug}/vcard`
+
+The card as a vCard 3.0 file (`text/vcard; charset=utf-8`, `Content-Disposition: inline; filename="{slug}.vcf"`, not cached). Opening it in a phone browser shows the "Add contact" sheet: the public page's **Save contact** button links here, and the page navigates here itself when an NFC tap or QR scan is set to save the contact.
+
+It includes the name (split into given and family name on the last space), company, title, email, mobile (`phone_country_code` + `phone_number`), website (only if it's a valid http(s) URL), location as the work address, bio as the note, and a link back to the card. That link uses the page's origin when the `Referer` is one of `CORS_ALLOWED_ORIGINS`, and otherwise this request's own origin (`X-Forwarded-Proto` and `Host` from the proxy).
+
+| Status | Body |
+| ------ | ---- |
+| `200` | The vCard |
+| `404` | `"profile not found"` |
+| `410` | `"this card is unavailable"` while its organisation is suspended |
 
 ### `GET /api/files/{id}`
 

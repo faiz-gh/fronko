@@ -25,11 +25,15 @@ const (
 
 type ProfileHandler struct {
 	repo *repository.Repository
+	// frontendOrigins are where the app is served when it isn't proxied
+	// same-origin (the CORS allow list); used to link back to a card.
+	frontendOrigins []string
 }
 
-func NewProfileHandler(repo *repository.Repository) *ProfileHandler {
+func NewProfileHandler(repo *repository.Repository, frontendOrigins []string) *ProfileHandler {
 	return &ProfileHandler{
-		repo: repo,
+		repo:            repo,
+		frontendOrigins: frontendOrigins,
 	}
 }
 

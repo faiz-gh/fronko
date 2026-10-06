@@ -47,13 +47,15 @@ Fronko is an open-source alternative to hosted platforms such as Popl and Mobilo
 ### For the people receiving a card
 
 - **No app required.** An NFC tap or QR scan opens the card as an ordinary web page.
-- **One-tap save to contacts.** Visitors download a vCard 3.0 (`.vcf`) file, which iOS and Android import directly.
+- **One-tap save to contacts.** Visitors open a vCard 3.0 (`.vcf`) file, which iOS and Android import directly.
+- **Tap straight to an action.** Each card chooses separately what an NFC tap and a QR scan do: show the card, open the phone's "Add contact" sheet with the card behind it, or open the contact form.
 - **Share details back.** A built-in form lets visitors send their name and email, plus an optional phone number and note.
 
 ### For card owners
 
 - **Live-preview card editor.** Edit profile details, contact information (with a country-code phone picker), a booking link (Calendly, Cal.com, Google Calendar and others), social links with brand icons, a cropped photo and cover banner, PDF brochures, an accent colour and a light or dark theme.
-- **Multiple cards.** Each card has its own link and a QR code you can download as SVG or PNG.
+- **Templates and blocks.** Start from a template (Classic, Event tag, Portfolio, Minimal), then reorder, hide or add blocks: headings, text, an image gallery, an event panel with a role ribbon, and dividers. Three header styles: banner, name badge or compact.
+- **Multiple cards.** Each card has its own link, an NFC link and a QR code you can download as SVG or PNG.
 - **Lead inbox.** Leads from every card land in one place, with card filters, search, pagination and CSV export.
 
 ### For organisations
@@ -81,12 +83,13 @@ A tap or scan opens a static public page that loads the card in a single API cal
 
 ```mermaid
 graph TD
-    A[NFC tap / QR scan] -->|opens /p/slug| C{Public card page}
+    A[NFC tap / QR scan] -->|opens /p/slug?via=nfc or qr| C{Public card page}
+    C -->|card's tap action| T[Show card / save contact / contact form]
     E[Dashboard: card editor] -->|saves card data| D[(PostgreSQL)]
     E -->|uploads photos and PDFs| S[(Organisation's S3 bucket)]
     D -->|card and file metadata| C
     S -->|short-lived signed links| C
-    C -->|Save contact| F[vCard download]
+    C -->|Save contact| F[vCard from /api/profiles/slug/vcard]
     C -->|Share your details| G[Lead form]
     G -->|stores lead| D
     D -->|lead inbox, CSV export| E
@@ -223,7 +226,7 @@ Objects are stored as `fronko/<org_id>/<user_id>/<file_id>.<ext>`. Keep the buck
 
 Fronko works with any NFC hardware that can store a URL. Blank NTAG215 or NTAG216 cards are inexpensive and widely available.
 
-1. Copy the card's public link from the Fronko dashboard, for example `https://cards.example.com/p/jane`.
+1. In the card editor, under **Sharing**, copy the **NFC tap** link, for example `https://cards.example.com/p/jane?via=nfc`. The `?via=nfc` tells the card it was tapped, so it runs the NFC tap action you chose there; you can change that action later without rewriting the tag.
 2. Install an NFC writer app on iOS or Android, such as NFC Tools.
 3. Choose **Write → URL/URI**, paste the link, and hold the phone to the blank card.
 
@@ -271,7 +274,7 @@ Planned but not yet built:
 
 - **Shared rate limiting.** Rate limits are currently kept in memory per backend instance. Running several instances needs a shared store such as Redis.
 - **CRM integrations.** Push new leads to HubSpot or Salesforce.
-- **Richer profile blocks.** More content types on the public card (calendars, embeds, galleries) and a block-based layout.
+- **More profile blocks.** Embeds (video, maps) and more block types for the block-based card layout.
 
 Ideas and feedback are welcome in [GitHub Issues](https://github.com/faiz-gh/fronko/issues).
 

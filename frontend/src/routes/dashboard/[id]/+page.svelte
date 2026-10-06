@@ -46,6 +46,9 @@
 	import ProfileCard from '$lib/components/app/profile-card.svelte';
 	import QrCode from '$lib/components/app/qr-code.svelte';
 	import QrDialog from '$lib/components/app/qr-dialog.svelte';
+	import TemplatePicker from '$lib/components/app/template-picker.svelte';
+	import BlockListEditor from '$lib/components/app/block-list-editor.svelte';
+	import { applyTemplate, isPreset, TEMPLATES, type TemplateKey } from '$lib/card/blocks';
 	import {
 		ACCENTS,
 		coverSrc,
@@ -56,8 +59,12 @@
 		normalizeCard,
 		publicUrl,
 		safeUrl,
+		TAP_ACTIONS,
+		tapUrl,
 		type AccentKey,
-		type CardData
+		type CardData,
+		type TapAction,
+		type TapSource
 	} from '$lib/card/card';
 	import { downloadQrPng, downloadQrSvg } from '$lib/card/qr';
 	import { cards } from '$lib/cards.svelte';
@@ -200,6 +207,26 @@
 		if (target < 0 || target >= card.links.length) return;
 		const [item] = card.links.splice(index, 1);
 		card.links.splice(target, 0, item);
+	}
+
+	const customised = $derived(!!card && !isPreset(card.blocks, card.template));
+
+	function chooseTemplate(key: TemplateKey) {
+		if (!card) return;
+		if (key === card.template && !customised) return;
+		if (customised && !confirm(`Switch to the ${TEMPLATES[key].label} layout? Your block order and hidden blocks will be reset; text, gallery and event details are kept.`)) return;
+		card.blocks = applyTemplate(card.blocks, key);
+		card.template = key;
+	}
+
+	async function copyTapUrl(via: TapSource) {
+		if (!profile) return;
+		try {
+			await navigator.clipboard.writeText(tapUrl(profile.slug, via));
+			toast.success(via === 'nfc' ? 'NFC link copied' : 'QR link copied');
+		} catch {
+			toast.error('Could not copy to clipboard');
+		}
 	}
 
 	async function copyLink() {
@@ -782,6 +809,28 @@
 						</div>
 					</FormSection>
 
+					<FormSection
+						id="layout"
+						title="Layout"
+						description="Start from a template, then reorder, hide or add blocks."
+					>
+						<div class="flex flex-col gap-6">
+							<Field.Field>
+								<Field.Label>Template</Field.Label>
+								<TemplatePicker value={card.template} accent={ACCENTS[card.accent]} onselect={chooseTemplate} />
+								{#if customised}
+									<Field.Description>
+										Customised from {TEMPLATES[card.template].label}. Pick a template to reset the layout.
+									</Field.Description>
+								{/if}
+							</Field.Field>
+							<Field.Field>
+								<Field.Label>Blocks</Field.Label>
+								<BlockListEditor bind:blocks={card.blocks} files={fileMeta} onfile={remember} />
+							</Field.Field>
+						</div>
+					</FormSection>
+
 					<FormSection id="appearance" title="Appearance" description="How your card looks to visitors.">
 						<Field.Group class="gap-6">
 							<Field.Field>
@@ -874,7 +923,7 @@
 										Changing this breaks the old link and any QR codes or NFC cards already printed.
 									</Field.Description>
 								{:else}
-									<Field.Description>Write this link to an NFC card, or print its QR code.</Field.Description>
+									<Field.Description>The address of your card. NFC tags and QR codes use it too.</Field.Description>
 								{/if}
 							</Field.Field>
 							<Field.Field orientation="horizontal" class="bg-card rounded-xl border p-4">
@@ -886,6 +935,48 @@
 								</Field.Content>
 								<Switch id="collect" bind:checked={card.collect_leads} />
 							</Field.Field>
+							{#each [['nfc', 'NFC tap', 'Write this link to the NFC tag.'], ['qr', 'QR code scan', 'Your QR code already points here.']] as const as [via, label, hint] (via)}
+								<Field.Field>
+									<Field.Label id="tap-{via}-label">When someone uses your {label}</Field.Label>
+									<div class="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-labelledby="tap-{via}-label">
+										{#each Object.entries(TAP_ACTIONS) as [action, info] (action)}
+											{@const unavailable = action === 'lead_form' && !card.collect_leads}
+											<button
+												type="button"
+												role="radio"
+												aria-checked={card.tap[via] === action}
+												disabled={unavailable}
+												onclick={() => card && (card.tap[via] = action as TapAction)}
+												class={cn(
+													'flex flex-col gap-0.5 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+													card.tap[via] === action ? 'border-foreground ring-foreground ring-1' : 'hover:border-foreground/30'
+												)}
+											>
+												<span class="text-sm font-medium">{info.label}</span>
+												<span class="text-muted-foreground text-xs leading-snug">
+													{unavailable ? 'Turn on Collect leads to use this.' : info.description}
+												</span>
+											</button>
+										{/each}
+									</div>
+									{#if card.tap[via] === 'lead_form' && !card.collect_leads}
+										<Field.Error>Collect leads is off, so visitors will just see your card.</Field.Error>
+									{/if}
+									<div class="flex items-center gap-2">
+										<code class="bg-muted text-muted-foreground min-w-0 flex-1 truncate rounded-lg px-3 py-2 font-mono text-xs">
+											{tapUrl(profile.slug, via)}
+										</code>
+										<Button variant="outline" size="icon" onclick={() => copyTapUrl(via)} aria-label="Copy {label} link">
+											<CopyIcon />
+										</Button>
+										<Button variant="outline" href={tapUrl(profile.slug, via)} target="_blank" title="Try it (uses the saved settings)">
+											Try it
+											<ExternalLinkIcon data-icon="inline-end" />
+										</Button>
+									</div>
+									<Field.Description>{hint} Changes apply as soon as you save; nothing needs re-writing.</Field.Description>
+								</Field.Field>
+							{/each}
 						</Field.Group>
 					</FormSection>
 
@@ -950,14 +1041,14 @@
 								</div>
 							{:else}
 								<div class="my-auto flex w-full max-w-[300px] flex-col items-center gap-4">
-									<QrCode url={publicUrl(profile.slug)} bind:svg={qrMarkup} class="w-full" />
-									<p class="text-muted-foreground max-w-full truncate font-mono text-xs">{publicUrl(profile.slug)}</p>
+									<QrCode url={tapUrl(profile.slug, 'qr')} bind:svg={qrMarkup} class="w-full" />
+									<p class="text-muted-foreground max-w-full truncate font-mono text-xs">{tapUrl(profile.slug, 'qr')}</p>
 									<div class="grid w-full grid-cols-2 gap-2">
 										<Button variant="outline" onclick={() => downloadQrSvg(qrMarkup, profile!.slug)} disabled={!qrMarkup}>
 											<DownloadIcon data-icon="inline-start" />
 											SVG
 										</Button>
-										<Button onclick={() => downloadQrPng(publicUrl(profile!.slug), profile!.slug)} disabled={!qrMarkup}>
+										<Button onclick={() => downloadQrPng(tapUrl(profile!.slug, 'qr'), profile!.slug)} disabled={!qrMarkup}>
 											<DownloadIcon data-icon="inline-start" />
 											PNG
 										</Button>

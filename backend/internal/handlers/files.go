@@ -560,6 +560,10 @@ func (h *FileHandler) grantableFile(w http.ResponseWriter, r *http.Request) (*mo
 	return file, true
 }
 
+// maxCardFiles bounds how many files one card can reference: a photo, a
+// cover, 10 brochures and a few galleries.
+const maxCardFiles = 64
+
 // referencedFileIDs pulls the file ids a card's data points at. The backend
 // otherwise treats card data as opaque; these keys are the exception, so a
 // public card only ever reveals files it actually uses.
@@ -570,6 +574,11 @@ func referencedFileIDs(data []byte) []string {
 		Documents  []struct {
 			File string `json:"file"`
 		} `json:"documents"`
+		Blocks []struct {
+			Images []struct {
+				File string `json:"file"`
+			} `json:"images"`
+		} `json:"blocks"`
 	}
 	if err := json.Unmarshal(data, &card); err != nil {
 		return nil
@@ -577,7 +586,7 @@ func referencedFileIDs(data []byte) []string {
 	seen := map[string]bool{}
 	var ids []string
 	add := func(id string) {
-		if publicIDPattern.MatchString(id) && !seen[id] && len(ids) < 32 {
+		if publicIDPattern.MatchString(id) && !seen[id] && len(ids) < maxCardFiles {
 			seen[id] = true
 			ids = append(ids, id)
 		}
@@ -586,6 +595,11 @@ func referencedFileIDs(data []byte) []string {
 	add(card.CoverFile)
 	for _, d := range card.Documents {
 		add(d.File)
+	}
+	for _, b := range card.Blocks {
+		for _, img := range b.Images {
+			add(img.File)
+		}
 	}
 	return ids
 }
