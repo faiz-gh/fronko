@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/faiz-gh/fronko/backend/internal/models"
 	"github.com/faiz-gh/fronko/backend/internal/repository"
 	"github.com/faiz-gh/fronko/backend/internal/secrets"
+	"github.com/faiz-gh/fronko/backend/internal/snapshots"
 	"github.com/faiz-gh/fronko/backend/internal/storage"
 	"golang.org/x/time/rate"
 )
@@ -32,9 +34,22 @@ const (
 	// Uploads are authenticated, but each one costs bandwidth and a bucket write.
 	uploadBurst    = 10
 	uploadInterval = 6 * time.Second
+	// Feedback is authenticated too; this just keeps one user from flooding the inbox.
+	feedbackBurst    = 5
+	feedbackInterval = 12 * time.Minute
 )
 
+// snapshotInterval is how often today's usage snapshot is refreshed.
+const snapshotInterval = time.Hour
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "admin" {
+		if err := adminCommand(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
@@ -102,6 +117,8 @@ func run() error {
 	storageHandler := handlers.NewStorageHandler(storageSvc)
 	fileHandler := handlers.NewFileHandler(storageSvc, repo)
 	orgHandler := handlers.NewOrgHandler(repo, authHandler)
+	feedbackHandler := handlers.NewFeedbackHandler(repo, mailer, cfg.FeedbackNotifyEmail)
+	adminHandler := handlers.NewAdminHandler(repo, authService, mailer, cfg.FeedbackNotifyEmail, cfg.CookieSecure)
 
 	sessions := middleware.SessionCheckerFunc(func(ctx context.Context, userID int64) (models.SessionState, error) {
 		state, err := repo.GetSessionState(ctx, userID)
@@ -114,6 +131,7 @@ func run() error {
 	leadLimiter := middleware.NewRateLimiter(ctx, rate.Every(leadInterval), leadBurst, cfg.TrustProxy)
 	authLimiter := middleware.NewRateLimiter(ctx, rate.Every(authInterval), authBurst, cfg.TrustProxy)
 	uploadLimiter := middleware.NewRateLimiter(ctx, rate.Every(uploadInterval), uploadBurst, cfg.TrustProxy)
+	feedbackLimiter := middleware.NewRateLimiter(ctx, rate.Every(feedbackInterval), feedbackBurst, cfg.TrustProxy)
 
 	// 4. Setup net/http ServeMux with routes
 	mux := http.NewServeMux()
@@ -167,6 +185,7 @@ func run() error {
 	protected.HandleFunc("POST /api/me/files", uploadLimiter.Limit(fileHandler.Upload))
 	protected.HandleFunc("PATCH /api/me/files/{id}", fileHandler.Rename)
 	protected.HandleFunc("DELETE /api/me/files/{id}", fileHandler.Delete)
+	protected.HandleFunc("POST /api/me/feedback", feedbackLimiter.Limit(feedbackHandler.Create))
 
 	protected.HandleFunc("GET /api/org", admin(orgHandler.Get))
 	protected.HandleFunc("PUT /api/org", owner(orgHandler.Update))
@@ -185,6 +204,36 @@ func run() error {
 	mux.Handle("/api/me/", protectedChain)
 	mux.Handle("/api/org", protectedChain)
 	mux.Handle("/api/org/", protectedChain)
+
+	// Platform admin panel: its own sign-in and session cookie. User sessions
+	// are never accepted here, and admin sessions never work on the routes above.
+	mux.HandleFunc("POST /auth/admin/login", authLimiter.Limit(adminHandler.Login))
+	mux.HandleFunc("POST /auth/admin/logout", adminHandler.Logout)
+	adminMux := http.NewServeMux()
+	adminMux.HandleFunc("GET /api/admin/me", adminHandler.Me)
+	adminMux.HandleFunc("GET /api/admin/summary", adminHandler.Summary)
+	adminMux.HandleFunc("GET /api/admin/trends", adminHandler.PlatformTrend)
+	adminMux.HandleFunc("GET /api/admin/orgs", adminHandler.ListOrgs)
+	adminMux.HandleFunc("GET /api/admin/orgs/{id}", adminHandler.GetOrg)
+	adminMux.HandleFunc("GET /api/admin/orgs/{id}/trends", adminHandler.OrgTrend)
+	adminMux.HandleFunc("POST /api/admin/orgs/{id}/suspend", adminHandler.SuspendOrg)
+	adminMux.HandleFunc("POST /api/admin/orgs/{id}/reinstate", adminHandler.ReinstateOrg)
+	adminMux.HandleFunc("GET /api/admin/feedback", adminHandler.ListFeedback)
+	adminMux.HandleFunc("GET /api/admin/feedback/{id}", adminHandler.GetFeedback)
+	adminMux.HandleFunc("PATCH /api/admin/feedback/{id}", adminHandler.SetFeedbackStatus)
+	adminMux.HandleFunc("POST /api/admin/feedback/{id}/replies", adminHandler.ReplyFeedback)
+	adminMux.HandleFunc("GET /api/admin/audit", adminHandler.ListAudit)
+	adminLookup := func(ctx context.Context, id int64) (*models.PlatformAdmin, error) {
+		a, err := repo.GetPlatformAdmin(ctx, id)
+		if errors.Is(err, repository.ErrNotFound) {
+			err = middleware.ErrAdminNotFound
+		}
+		return a, err
+	}
+	mux.Handle("/api/admin/", middleware.AdminMiddleware(authService, adminLookup)(adminMux))
+
+	// Daily usage counts for the admin panel's trends.
+	go snapshots.Run(ctx, repo, snapshotInterval)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,

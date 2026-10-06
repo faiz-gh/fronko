@@ -14,8 +14,9 @@ import (
 func (r *Repository) GetOrganization(ctx context.Context, orgID int64) (*models.Organization, error) {
 	var o models.Organization
 	err := r.db.QueryRow(ctx,
-		`SELECT org_id, name, default_quota_bytes, created_at, updated_at FROM organizations WHERE org_id = $1`, orgID,
-	).Scan(&o.ID, &o.Name, &o.DefaultQuotaBytes, &o.CreatedAt, &o.UpdatedAt)
+		`SELECT org_id, name, default_quota_bytes, created_at, updated_at, suspended_at, suspended_reason
+		FROM organizations WHERE org_id = $1`, orgID,
+	).Scan(&o.ID, &o.Name, &o.DefaultQuotaBytes, &o.CreatedAt, &o.UpdatedAt, &o.SuspendedAt, &o.SuspendedReason)
 	if err != nil {
 		return nil, mapError(err)
 	}

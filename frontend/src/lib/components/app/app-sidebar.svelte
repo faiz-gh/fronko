@@ -6,12 +6,14 @@
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
+	import MessageSquareIcon from '@lucide/svelte/icons/message-square';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import * as Avatar from '$lib/components/ui/avatar';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import CardAvatar from './card-avatar.svelte';
+	import FeedbackDialog from './feedback-dialog.svelte';
 	import Logo from './logo.svelte';
 	import ThemeToggle from './theme-toggle.svelte';
 	import { initials, normalizeCard } from '$lib/card/card';
@@ -23,6 +25,8 @@
 
 	/** Called after a navigation so the mobile drawer can close. */
 	let { onnavigate }: { onnavigate?: () => void } = $props();
+
+	let feedbackOpen = $state(false);
 
 	const onCard = $derived(page.route.id === '/dashboard/[id]');
 	const activeId = $derived(onCard ? Number(page.params.id) || null : null);
@@ -182,6 +186,11 @@
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content side="top" align="start" class="w-(--bits-dropdown-menu-anchor-width) min-w-52">
 				<DropdownMenu.Group>
+					<DropdownMenu.Item onSelect={() => (feedbackOpen = true)}>
+						<MessageSquareIcon />
+						Send feedback
+					</DropdownMenu.Item>
+					<DropdownMenu.Separator />
 					<DropdownMenu.Item onSelect={() => session.signOut()}>
 						<LogOutIcon />
 						Sign out
@@ -191,3 +200,5 @@
 		</DropdownMenu.Root>
 	</div>
 </div>
+
+<FeedbackDialog bind:open={feedbackOpen} />

@@ -72,3 +72,50 @@ func TestMemberInviteHasSignInDetails(t *testing.T) {
 	assert.Contains(t, msg.HTML, "Acme &lt;Sales&gt;")
 	assert.NotContains(t, msg.HTML, "expires")
 }
+
+func TestBuildMessageReplyTo(t *testing.T) {
+	from, err := mail.ParseAddress("Fronko <no-reply@fronko.app>")
+	require.NoError(t, err)
+	msg := FeedbackReplyMessage("hi", "hello")
+	msg.ReplyTo = "support@fronko.app"
+	raw, err := buildMessage(from, "ana@example.com", msg, time.Now())
+	require.NoError(t, err)
+	parsed, err := mail.ReadMessage(strings.NewReader(string(raw)))
+	require.NoError(t, err)
+	assert.Equal(t, "<support@fronko.app>", parsed.Header.Get("Reply-To"))
+
+	msg.ReplyTo = "a@b.c\r\nBcc: x@y.z"
+	_, err = buildMessage(from, "ana@example.com", msg, time.Now())
+	assert.Error(t, err)
+}
+
+func TestFeedbackNotice(t *testing.T) {
+	rating := int16(4)
+	msg := FeedbackNotice(FeedbackDetails{
+		SenderEmail: "rep@example.com", OrgName: "Acme\r\nBcc: x", Category: "idea",
+		Rating: &rating, PagePath: "/dashboard/leads", Message: "Line one\n<b>line two</b>",
+	})
+	assert.Equal(t, "New Fronko feedback (idea) from Acme Bcc: x", msg.Subject, "control characters are stripped")
+	assert.Contains(t, msg.Text, "From: rep@example.com")
+	assert.Contains(t, msg.Text, "Rating: 4 / 5")
+	assert.Contains(t, msg.Text, "    Line one\n    <b>line two</b>")
+	assert.Contains(t, msg.HTML, "&lt;b&gt;line two&lt;/b&gt;")
+}
+
+func TestFeedbackReplyQuotesOriginal(t *testing.T) {
+	msg := FeedbackReplyMessage("Please add CSV export", "It's on the roadmap!")
+	assert.Contains(t, msg.Text, "It's on the roadmap!")
+	assert.Contains(t, msg.Text, "You wrote:")
+	assert.Contains(t, msg.Text, "Please add CSV export")
+	assert.NotContains(t, msg.Text, "expires")
+}
+
+func TestOrgSuspensionMessages(t *testing.T) {
+	msg := OrgSuspendedMessage("Acme", "Unpaid invoice")
+	assert.Equal(t, "Acme has been suspended on Fronko", msg.Subject)
+	assert.Contains(t, msg.Text, "Unpaid invoice")
+	assert.Contains(t, msg.HTML, "Unpaid invoice")
+
+	msg = OrgReinstatedMessage("Acme")
+	assert.Equal(t, "Acme has been reinstated on Fronko", msg.Subject)
+}

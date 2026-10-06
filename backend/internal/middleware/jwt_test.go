@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -70,4 +71,27 @@ func TestRoleGates(t *testing.T) {
 			assert.Equal(t, c.owner, serve(t, state, RequireOwner(ok)).Code)
 		})
 	}
+}
+
+func TestJWTMiddlewareRejectsSuspendedOrg(t *testing.T) {
+	rec := serve(t, models.SessionState{Verified: true, OrgSuspended: true, OrgSuspendedReason: `unpaid "invoice"`}, ok)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	var body map[string]string
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, CodeOrgSuspended, body["code"])
+	assert.Equal(t, `unpaid "invoice"`, body["reason"], "the reason is JSON-encoded")
+}
+
+func TestJWTMiddlewareRejectsAdminCookie(t *testing.T) {
+	svc := auth.NewService("test-secret-test-secret")
+	token, err := svc.GenerateAdminJWT(7, 0)
+	require.NoError(t, err)
+	sessions := SessionCheckerFunc(func(context.Context, int64) (models.SessionState, error) {
+		return models.SessionState{Verified: true}, nil
+	})
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: token})
+	rec := httptest.NewRecorder()
+	JWTMiddleware(svc, sessions)(ok).ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }

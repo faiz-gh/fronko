@@ -15,6 +15,8 @@ class Session {
 	role = $state<Role | null>(null);
 	orgName = $state('');
 	mustChangePassword = $state(false);
+	/** Set when the platform suspended the organisation; the login page shows it. */
+	suspendedReason = $state<string | null>(null);
 
 	get isAuthenticated() {
 		return this.status === 'authenticated';
@@ -109,6 +111,14 @@ class Session {
 		if (!this.emailVerified) return `/verify-email${q}`;
 		if (this.mustChangePassword) return `/set-password${q}`;
 		return next;
+	}
+
+	/** Called when the API says the organisation is suspended: sign out and explain on the login page. */
+	suspend(reason: string) {
+		this.suspendedReason = reason;
+		if (this.status === 'anonymous') return;
+		this.clear();
+		if (location.pathname !== '/login') goto('/login', { replaceState: true });
 	}
 
 	/** Called when the API rejects the cookie; returns the user to where they were after login. */

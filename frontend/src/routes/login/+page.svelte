@@ -4,6 +4,7 @@
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
 	import { login, register } from '$lib/api/auth';
+	import { ApiError } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Spinner } from '$lib/components/ui/spinner';
@@ -58,6 +59,7 @@
 		event.preventDefault();
 		if (usernameError || emailError || passwordError) return;
 		error = '';
+		session.suspendedReason = null;
 		loading = true;
 		try {
 			const user =
@@ -66,7 +68,8 @@
 					: await register(username, email.trim(), password, organization.trim());
 			session.signIn(user);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Something went wrong';
+			if (e instanceof ApiError && e.code === 'org_suspended') session.suspendedReason = e.reason ?? '';
+			else error = e instanceof Error ? e.message : 'Something went wrong';
 		} finally {
 			// The effect above navigates once loading drops.
 			loading = false;
@@ -103,7 +106,16 @@
 		</Tabs.List>
 	</Tabs.Root>
 
-	{#if error}
+	{#if session.suspendedReason !== null && !error}
+		<Alert.Root variant="destructive">
+			<CircleAlertIcon />
+			<Alert.Title>Your organisation has been suspended</Alert.Title>
+			<Alert.Description>
+				{#if session.suspendedReason}<p>Reason: {session.suspendedReason}</p>{/if}
+				<p>Nobody in it can sign in until it's reinstated. Your organisation's owner was emailed the details.</p>
+			</Alert.Description>
+		</Alert.Root>
+	{:else if error}
 		<Alert.Root variant="destructive">
 			<CircleAlertIcon />
 			<Alert.Title>{error}</Alert.Title>

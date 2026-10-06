@@ -26,6 +26,8 @@
 
 	let profile = $state<PublicProfile | null>(null);
 	let notFound = $state(false);
+	/** The card's organisation is suspended; visitors aren't told why. */
+	let unavailable = $state(false);
 	let loadError = $state('');
 
 	const card = $derived(profile ? normalizeCard(profile.data) : null);
@@ -37,6 +39,7 @@
 			profile = await getProfileBySlug(slug);
 		} catch (e) {
 			if (e instanceof ApiError && e.status === 404) notFound = true;
+			else if (e instanceof ApiError && e.status === 410) unavailable = true;
 			else loadError = e instanceof Error ? e.message : 'Failed to load';
 		}
 	}
@@ -124,7 +127,17 @@
 			: undefined}
 	>
 		<main class={cn('flex w-full flex-1 flex-col lg:flex-none', card ? 'max-w-sm lg:max-w-4xl' : 'max-w-sm')}>
-			{#if notFound || loadError}
+			{#if unavailable}
+				<Empty.Root class="flex-1">
+					<Empty.Header>
+						<Empty.Title>This card is unavailable</Empty.Title>
+						<Empty.Description>It can't be viewed right now. Please check back later.</Empty.Description>
+					</Empty.Header>
+					<Empty.Content>
+						<Button variant="outline" href="/">Go to Fronko</Button>
+					</Empty.Content>
+				</Empty.Root>
+			{:else if notFound || loadError}
 				<Empty.Root class="flex-1">
 					<Empty.Header>
 						<Empty.Title>{notFound ? 'Card not found' : "Couldn't load this card"}</Empty.Title>

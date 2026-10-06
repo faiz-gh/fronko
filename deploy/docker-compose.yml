@@ -28,6 +28,8 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      # Optional: where new product feedback is emailed, and the Reply-To on admin replies.
+      FEEDBACK_NOTIFY_EMAIL: ${FEEDBACK_NOTIFY_EMAIL:-}
     expose:
       - "8080"
     restart: unless-stopped

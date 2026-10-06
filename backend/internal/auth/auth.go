@@ -3,6 +3,7 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -12,6 +13,14 @@ import (
 
 // SessionTTL is how long a login lasts; it bounds both the JWT and its cookie.
 const SessionTTL = 24 * time.Hour
+
+// AdminSessionTTL is how long a platform admin's login lasts.
+const AdminSessionTTL = 8 * time.Hour
+
+// adminAudience marks platform-admin tokens. User tokens never carry it, and
+// each validator rejects the other kind, so an admin ID can't pass as the user
+// with the same number (or the reverse).
+const adminAudience = "platform-admin"
 
 type Service struct {
 	jwtSecret []byte
@@ -41,11 +50,21 @@ type sessionClaims struct {
 }
 
 func (s *Service) GenerateJWT(userID int64, sessionVersion int) (string, error) {
+	return s.sign(userID, sessionVersion, SessionTTL, nil)
+}
+
+// GenerateAdminJWT issues a platform admin's session token.
+func (s *Service) GenerateAdminJWT(adminID int64, sessionVersion int) (string, error) {
+	return s.sign(adminID, sessionVersion, AdminSessionTTL, jwt.ClaimStrings{adminAudience})
+}
+
+func (s *Service) sign(subject int64, sessionVersion int, ttl time.Duration, aud jwt.ClaimStrings) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, sessionClaims{
 		SessionVersion: sessionVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   fmt.Sprintf("%d", userID),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(SessionTTL)),
+			Subject:   fmt.Sprintf("%d", subject),
+			Audience:  aud,
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	})
@@ -57,17 +76,42 @@ func (s *Service) GenerateJWT(userID int64, sessionVersion int) (string, error) 
 // Tokens from before session versions existed read as version 0, which
 // matches users who have never changed their password.
 func (s *Service) ValidateJWT(tokenString string) (userID int64, sessionVersion int, err error) {
-	var claims sessionClaims
-	_, err = jwt.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
-		return s.jwtSecret, nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
+	claims, err := s.parse(tokenString)
 	if err != nil {
 		return 0, 0, err
 	}
+	if slices.Contains(claims.Audience, adminAudience) {
+		return 0, 0, errors.New("admin token used as a user session")
+	}
+	return subjectAndVersion(claims)
+}
 
-	userID, err = strconv.ParseInt(claims.Subject, 10, 64)
+// ValidateAdminJWT returns the admin ID and session version a valid
+// platform-admin token carries. User tokens are rejected.
+func (s *Service) ValidateAdminJWT(tokenString string) (adminID int64, sessionVersion int, err error) {
+	claims, err := s.parse(tokenString, jwt.WithAudience(adminAudience))
+	if err != nil {
+		return 0, 0, err
+	}
+	return subjectAndVersion(claims)
+}
+
+func (s *Service) parse(tokenString string, opts ...jwt.ParserOption) (*sessionClaims, error) {
+	var claims sessionClaims
+	opts = append(opts, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
+	_, err := jwt.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
+		return s.jwtSecret, nil
+	}, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &claims, nil
+}
+
+func subjectAndVersion(claims *sessionClaims) (int64, int, error) {
+	id, err := strconv.ParseInt(claims.Subject, 10, 64)
 	if err != nil {
 		return 0, 0, errors.New("invalid user id in token")
 	}
-	return userID, claims.SessionVersion, nil
+	return id, claims.SessionVersion, nil
 }

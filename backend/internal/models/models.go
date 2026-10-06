@@ -28,6 +28,9 @@ type Organization struct {
 	DefaultQuotaBytes *int64    `json:"default_quota_bytes"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
+	// SuspendedAt is set while a platform admin has suspended the organisation.
+	SuspendedAt     *time.Time `json:"-"`
+	SuspendedReason *string    `json:"-"`
 }
 
 type User struct {
@@ -77,6 +80,9 @@ type SessionState struct {
 	Role               string
 	Suspended          bool
 	MustChangePassword bool
+	// OrgSuspended is set when a platform admin suspended the whole organisation.
+	OrgSuspended       bool
+	OrgSuspendedReason string
 }
 
 // EmailCode is a one-time code sent by email. Only its HMAC is stored.
@@ -103,6 +109,8 @@ type Profile struct {
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 	LeadCount      int64           `json:"lead_count"` // only populated when listing a user's profiles
+	// OrgSuspended is only populated by the public slug lookup.
+	OrgSuspended bool `json:"-"`
 }
 
 // PublicProfile is the shape served to anonymous visitors; it omits owner details.
