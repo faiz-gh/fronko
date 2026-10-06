@@ -8,6 +8,7 @@
 	import AppSidebar from '$lib/components/app/app-sidebar.svelte';
 	import CreateCardDialog from '$lib/components/app/create-card-dialog.svelte';
 	import Logo from '$lib/components/app/logo.svelte';
+	import { branding } from '$lib/branding.svelte';
 	import { cards } from '$lib/cards.svelte';
 	import { orgUsers } from '$lib/org-users.svelte';
 	import { session } from '$lib/session.svelte';
@@ -37,6 +38,7 @@
 		if (ready && session.username) {
 			cards.load(session.username);
 			storage.load(session.username);
+			branding.load(session.username);
 			if (session.isAdmin) orgUsers.load(session.username);
 		}
 	});

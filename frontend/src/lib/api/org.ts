@@ -130,3 +130,46 @@ export function setFileGrants(fileId: string, userIds: number[]): Promise<{ user
 		body: JSON.stringify({ user_ids: userIds })
 	});
 }
+
+/** 'required': every card and signature shows the logo; 'optional': each card chooses. */
+export type LogoPolicy = 'required' | 'optional';
+
+export interface OrgSignatureSettings {
+	/** When set, the only signature template employees can use. */
+	locked_template?: string;
+	/** #rrggbb; when set, replaces each card's accent in signatures. */
+	brand_color?: string;
+	/** Shown in small print under every signature. */
+	disclaimer?: string;
+	/** An org image under every signature, linking to banner_url. */
+	banner_file?: string;
+	banner_url?: string;
+}
+
+/** How the organisation appears on its cards and email signatures. */
+export interface OrgBranding {
+	name: string;
+	/** Public file id of an org image; null when there's no logo. */
+	logo_file: string | null;
+	logo_policy: LogoPolicy;
+	signature: OrgSignatureSettings;
+}
+
+/** Anyone in the organisation can read it. */
+export function getBranding(): Promise<OrgBranding> {
+	return apiClient<OrgBranding>('/api/org/branding');
+}
+
+/** Owners and admins. */
+export function updateBranding(b: Omit<OrgBranding, 'name'>): Promise<OrgBranding> {
+	return apiClient<OrgBranding>('/api/org/branding', { method: 'PUT', body: JSON.stringify(b) });
+}
+
+/** Whether a card (or signature) shows the organisation's logo, given its own choice. */
+export function showsOrgLogo(
+	org: Pick<OrgBranding, 'logo_file' | 'logo_policy'> | null | undefined,
+	choice: boolean
+): boolean {
+	if (!org?.logo_file) return false;
+	return org.logo_policy === 'required' || choice;
+}

@@ -72,6 +72,7 @@ import { fileUrl } from '$lib/api/files';
 import { apiUrl } from '$lib/api/client';
 import { parseLegacyPhone } from '$lib/phone';
 import { normalizeBlocks, templateBlocks, TEMPLATES, type CardBlock, type TemplateKey } from './blocks';
+import { defaultSignature, normalizeSignature, type SignatureSettings } from '$lib/signature/templates';
 
 /** The shape stored in the profile's JSONB `data` column. */
 export interface CardData {
@@ -107,6 +108,10 @@ export interface CardData {
 	blocks: CardBlock[];
 	/** What happens when someone taps the NFC tag or scans the QR code. */
 	tap: Record<TapSource, TapAction>;
+	/** Show the organisation's logo; ignored when the organisation requires it. */
+	show_org_logo: boolean;
+	/** How this card's email signature looks. */
+	signature: SignatureSettings;
 }
 
 /** Where a visit came from, as marked on the URL written to the tag or QR code. */
@@ -173,7 +178,9 @@ export function emptyCard(name = ''): CardData {
 		collect_leads: true,
 		template: 'classic',
 		blocks: templateBlocks('classic'),
-		tap: { nfc: 'profile', qr: 'profile' }
+		tap: { nfc: 'profile', qr: 'profile' },
+		show_org_logo: true,
+		signature: defaultSignature()
 	};
 }
 
@@ -244,7 +251,9 @@ export function normalizeCard(raw: unknown): CardData {
 		tap: {
 			nfc: tapAction((d.tap as Record<string, unknown> | undefined)?.nfc),
 			qr: tapAction((d.tap as Record<string, unknown> | undefined)?.qr)
-		}
+		},
+		show_org_logo: typeof d.show_org_logo === 'boolean' ? d.show_org_logo : true,
+		signature: normalizeSignature(d.signature)
 	};
 }
 

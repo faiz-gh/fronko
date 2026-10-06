@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import type { PublicFile } from '$lib/api/files';
+	import { fileUrl, type PublicFile } from '$lib/api/files';
+	import { showsOrgLogo } from '$lib/api/org';
+	import type { PublicOrg } from '$lib/api/profile';
 	import { ACCENTS, type CardData } from '$lib/card/card';
 	import { cn } from '$lib/utils';
 	import Header from './card-blocks/header.svelte';
@@ -17,6 +19,7 @@
 		slug,
 		actions,
 		files,
+		org,
 		class: className
 	}: {
 		card: CardData;
@@ -28,6 +31,8 @@
 		files?: Record<string, PublicFile>;
 		/** Visitor buttons (save contact, exchange, …), placed where the card's "actions" block is. */
 		actions?: Snippet;
+		/** The card's organisation; its logo shows when required or when the card opts in. */
+		org?: PublicOrg | null;
 		class?: string;
 	} = $props();
 
@@ -35,6 +40,9 @@
 	const body = $derived(card.blocks.slice(header ? 1 : 0).filter((b) => !b.hidden));
 	// A compact header is left-aligned, so the content under it is too.
 	const align = $derived(header?.style === 'compact' ? 'start' : 'center');
+	const logo = $derived(
+		org?.logo_file && showsOrgLogo(org, card.show_org_logo) ? { src: fileUrl(org.logo_file), name: org.name } : null
+	);
 </script>
 
 <!--
@@ -46,7 +54,7 @@
 	style="--card-accent: {ACCENTS[card.accent]}"
 >
 	<div class="bg-card text-card-foreground ring-foreground/10 overflow-hidden rounded-3xl shadow-xl ring-1">
-		<Header {card} {slug} style={header?.style ?? 'banner'} />
+		<Header {card} {slug} {logo} style={header?.style ?? 'banner'} />
 
 		<div class="flex flex-col gap-5 px-6 pt-5 pb-6 @lg:px-8 @lg:pb-8">
 			{#each body as block (block.id)}

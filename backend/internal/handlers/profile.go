@@ -90,6 +90,11 @@ func (h *ProfileHandler) GetProfileBySlug(w http.ResponseWriter, r *http.Request
 
 	// Resolve only the files this card uses, and only ones its organisation still has.
 	public := models.PublicProfile{ID: profile.ID, Slug: profile.Slug, Data: profile.Data, Files: []models.PublicFile{}}
+	if b, err := h.repo.GetOrgBranding(r.Context(), profile.OrgID); err != nil {
+		log.Printf("profile org branding: %v", err)
+	} else {
+		public.Org = &models.PublicOrg{Name: b.Name, LogoFile: b.LogoFile, LogoPolicy: b.LogoPolicy}
+	}
 	files, err := h.repo.GetOrgFilesByPublicIDs(r.Context(), profile.OrgID, referencedFileIDs(profile.Data))
 	if err != nil {
 		log.Printf("profile files: %v", err)

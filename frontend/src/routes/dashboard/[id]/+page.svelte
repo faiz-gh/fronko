@@ -16,6 +16,7 @@
 	import ImagesIcon from '@lucide/svelte/icons/images';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import QrCodeIcon from '@lucide/svelte/icons/qr-code';
+	import SignatureIcon from '@lucide/svelte/icons/signature';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import UploadIcon from '@lucide/svelte/icons/upload';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -36,6 +37,7 @@
 	import DeleteCardDialog from '$lib/components/app/delete-card-dialog.svelte';
 	import UserPicker from '$lib/components/app/user-picker.svelte';
 	import { setCardAssignee } from '$lib/api/org';
+	import { branding } from '$lib/branding.svelte';
 	import { orgUsers } from '$lib/org-users.svelte';
 	import { session } from '$lib/session.svelte';
 	import FilePickerDialog from '$lib/components/app/file-picker-dialog.svelte';
@@ -817,7 +819,12 @@
 						<div class="flex flex-col gap-6">
 							<Field.Field>
 								<Field.Label>Template</Field.Label>
-								<TemplatePicker value={card.template} accent={ACCENTS[card.accent]} onselect={chooseTemplate} />
+								<TemplatePicker
+									value={card.template}
+									accent={ACCENTS[card.accent]}
+									logo={!!branding.value?.logo_file && (branding.value.logo_policy === 'required' || card.show_org_logo)}
+									onselect={chooseTemplate}
+								/>
 								{#if customised}
 									<Field.Description>
 										Customised from {TEMPLATES[card.template].label}. Pick a template to reset the layout.
@@ -890,6 +897,24 @@
 									{/each}
 								</div>
 							</Field.Field>
+							{#if branding.value?.logo_file}
+								{@const required = branding.value.logo_policy === 'required'}
+								<Field.Field orientation="horizontal" class="bg-card rounded-xl border p-4">
+									<Field.Content>
+										<Field.Label for="org-logo">Show {branding.value.name} logo</Field.Label>
+										<Field.Description>
+											{required
+												? `Required by ${branding.value.name} on every card.`
+												: 'Shown in the corner of your card’s header.'}
+										</Field.Description>
+									</Field.Content>
+									{#if required}
+										<Switch id="org-logo" checked disabled />
+									{:else}
+										<Switch id="org-logo" bind:checked={card.show_org_logo} />
+									{/if}
+								</Field.Field>
+							{/if}
 						</Field.Group>
 					</FormSection>
 
@@ -977,6 +1002,16 @@
 									<Field.Description>{hint} Changes apply as soon as you save; nothing needs re-writing.</Field.Description>
 								</Field.Field>
 							{/each}
+							<Field.Field orientation="horizontal" class="bg-card rounded-xl border p-4">
+								<Field.Content>
+									<Field.Label>Email signature</Field.Label>
+									<Field.Description>Turn this card into a signature for Gmail, Outlook or Apple Mail.</Field.Description>
+								</Field.Content>
+								<Button variant="outline" href="/dashboard/signatures?card={profile.id}">
+									<SignatureIcon data-icon="inline-start" />
+									Create signature
+								</Button>
+							</Field.Field>
 						</Field.Group>
 					</FormSection>
 
@@ -1037,7 +1072,7 @@
 						<div class="-mx-2 flex min-h-0 flex-1 justify-center overflow-y-auto px-2 py-2">
 							{#if previewMode === 'card'}
 								<div class="my-auto w-full max-w-[380px]">
-									<ProfileCard {card} slug={profile.slug} files={fileMeta} />
+									<ProfileCard {card} slug={profile.slug} files={fileMeta} org={branding.value} />
 								</div>
 							{:else}
 								<div class="my-auto flex w-full max-w-[300px] flex-col items-center gap-4">
@@ -1118,7 +1153,7 @@
 	<Dialog.Root bind:open={previewOpen}>
 		<Dialog.Content class="bg-muted max-h-[90svh] overflow-y-auto p-4 sm:max-w-sm">
 			<Dialog.Title class="sr-only">Preview</Dialog.Title>
-			<ProfileCard {card} slug={profile.slug} files={fileMeta} />
+			<ProfileCard {card} slug={profile.slug} files={fileMeta} org={branding.value} />
 		</Dialog.Content>
 	</Dialog.Root>
 {/if}

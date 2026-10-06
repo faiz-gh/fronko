@@ -33,6 +33,40 @@ type Organization struct {
 	SuspendedReason *string    `json:"-"`
 }
 
+// Logo policies: whether every card and signature shows the organisation's
+// logo, or each card chooses.
+const (
+	LogoRequired = "required"
+	LogoOptional = "optional"
+)
+
+// OrgSignature is the organisation's email signature settings.
+type OrgSignature struct {
+	// LockedTemplate, when set, is the only signature template employees can use.
+	LockedTemplate string `json:"locked_template,omitempty"`
+	// BrandColor (#rrggbb), when set, replaces each card's accent in signatures.
+	BrandColor string `json:"brand_color,omitempty"`
+	Disclaimer string `json:"disclaimer,omitempty"`
+	// BannerFile is an org image shown under every signature, linking to BannerURL.
+	BannerFile string `json:"banner_file,omitempty"`
+	BannerURL  string `json:"banner_url,omitempty"`
+}
+
+// OrgBranding is how an organisation appears on its cards and email signatures.
+type OrgBranding struct {
+	Name       string       `json:"name"`
+	LogoFile   *string      `json:"logo_file"`
+	LogoPolicy string       `json:"logo_policy"`
+	Signature  OrgSignature `json:"signature"`
+}
+
+// PublicOrg is the branding a public card needs.
+type PublicOrg struct {
+	Name       string  `json:"name"`
+	LogoFile   *string `json:"logo_file"`
+	LogoPolicy string  `json:"logo_policy"`
+}
+
 type User struct {
 	ID           int64  `json:"id"`
 	OrgID        int64  `json:"-"`
@@ -119,6 +153,7 @@ type PublicProfile struct {
 	Slug  string          `json:"slug"`
 	Data  json.RawMessage `json:"data"`
 	Files []PublicFile    `json:"files"` // library files the card references
+	Org   *PublicOrg      `json:"org"`
 }
 
 // StorageSettings is a user's bucket configuration. The key fields hold
