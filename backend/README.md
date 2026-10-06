@@ -63,6 +63,7 @@ backend/
 │   │   ├── files.go              # File library: upload (type sniffing), list, rename, delete, public redirect
 │   │   ├── storage.go            # StorageService (decrypt keys → bucket client) and /api/me/storage
 │   │   ├── profile.go            # Profile CRUD and public slug lookup
+│   │   ├── vcard.go              # GET /api/profiles/{slug}/vcard: the card as a vCard 3.0 file
 │   │   ├── lead.go               # Lead submission (public), paginated listing and per-profile listing (owner)
 │   │   ├── respond.go            # JSON encode/decode helpers, body size cap
 │   │   └── session.go            # Session cookie set/clear
@@ -411,7 +412,7 @@ Unit tests cover:
 - `snapshots`: the scheduler runs at start and on each tick, and stops with its context.
 - `secrets`: sealing round trip, tamper, wrong AAD and wrong key.
 - `storage`: endpoint validation, private-address dialing, the connection probe against a fake S3 server.
-- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals (avatar, cover, brochures), lead phone normalization and validation, upload areas by role, the optional quota field, organisation-name validation, and feedback validation.
+- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals (avatar, cover, brochures, gallery images), vCard building (escaping, name split, phone, unsafe websites) and the origin of the card link inside it, lead phone normalization and validation, upload areas by role, the optional quota field, organisation-name validation, and feedback validation.
 
 The integration tests (`internal/repository/repository_test.go` and `admin_test.go`) sit behind the `integration` build tag. They read **`TEST_DATABASE_URL`**, not `DATABASE_URL`, because they `TRUNCATE` every table. Point them at a disposable database that already has the migrations applied:
 

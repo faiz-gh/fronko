@@ -5,7 +5,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import QrCode from './qr-code.svelte';
-	import { publicUrl } from '$lib/card/card';
+	import { tapUrl } from '$lib/card/card';
 	import { downloadQrPng, downloadQrSvg } from '$lib/card/qr';
 	import { cn } from '$lib/utils';
 
@@ -22,7 +22,8 @@
 		dark?: boolean;
 	} = $props();
 
-	const url = $derived(slug ? publicUrl(slug) : '');
+	// Marked as a QR visit, so the card's QR tap behaviour applies.
+	const url = $derived(slug ? tapUrl(slug, 'qr') : '');
 	let svg = $state('');
 
 	async function copyLink() {

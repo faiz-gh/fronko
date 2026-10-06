@@ -11,7 +11,7 @@ The Fronko web app is a Svelte 5 + SvelteKit single-page app that compiles to st
 - **Settings** (`/dashboard/settings`): connect that bucket (R2, B2, AWS S3, MinIO).
 - **Send feedback**: a dialog in the sidebar's account menu (bug, idea or other, an optional 1–5 rating and a message).
 - **Platform admin panel** (`/admin`): for whoever runs the server, with its own sign-in. Usage totals and trends per organisation, the feedback inbox with email replies, suspending organisations, and an audit log.
-- **Public card** (`/p/{slug}`): the page an NFC tap or QR scan opens. Visitors can save the contact as a vCard, share it, book a meeting, or send their own details back as a lead.
+- **Public card** (`/p/{slug}`): the page an NFC tap or QR scan opens, laid out by the card's template and blocks. Visitors can save the contact as a vCard, share it, book a meeting, or send their own details back as a lead. A tap or scan can go straight to saving the contact or to the lead form.
 
 It talks to the [Go backend](../backend/README.md). The endpoints are listed in the [API reference](../backend/API.md).
 
@@ -94,12 +94,14 @@ frontend/
 │   │   │   ├── org.ts             # organisation, users, card assignment, file grants
 │   │   │   ├── feedback.ts        # sendFeedback(), feedback categories
 │   │   │   └── admin.ts           # platform admin: sign-in, summary, trends, orgs, suspension, feedback inbox, audit
-│   │   ├── card/card.ts           # CardData model, normalization, URL safety, vCard, brand detection
+│   │   ├── card/card.ts           # CardData model, normalization, URL safety, tap/vCard URLs, brand detection
+│   │   ├── card/blocks.ts         # Card layout blocks, templates, normalizeBlocks()
 │   │   ├── card/qr.ts             # Lazy-loaded QR generation and PNG/SVG downloads
 │   │   ├── phone.ts               # Country list, dial codes, formatting, validation, legacy phone parsing
 │   │   ├── image.ts               # Canvas crop/rotate → WebP/JPEG File, used by ImageCropDialog
 │   │   ├── components/
-│   │   │   ├── app/               # App-specific components (see below); app/admin/ holds the admin panel's
+│   │   │   ├── app/               # App-specific components (see below); app/admin/ holds the admin panel's,
+│   │   │   │                      #   app/card-blocks/ one component per ProfileCard block
 │   │   │   └── ui/                # shadcn-svelte primitives (generated, see Conventions)
 │   │   ├── session.svelte.ts      # Global reactive session store
 │   │   ├── admin-session.svelte.ts # Platform admin session (separate cookie and sign-in)
@@ -168,7 +170,7 @@ frontend/
 | `/dashboard/leads` | Signed in | Every lead across your cards. Filter by card (`?card=ID`, kept in the URL so it can be linked to), search (name, email, phone or message), page size and pages, a Refresh button that refetches leads and lead counts without reloading the page, and CSV export of everything that matches (including phone). Clicking a lead's card filters to that card |
 | `/dashboard/files` | Signed in | The shared **file library**: drag-and-drop upload with progress, Photos/PDFs tabs, thumbnails, inline rename, "Used on" (which cards use each file), delete with a usage warning, pagination. Shows a "Connect storage" state until a bucket is connected |
 | `/dashboard/settings` | Signed in | **Account**: username and email (with a Verified badge). **Change** opens `ChangeEmailForm`: new address + current password → a code sent to the new address → confirm; resend has a countdown, and the current email stays until confirmed. **Password**: current, new and confirm; changing it signs out every other session and keeps this one. **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
-| `/dashboard/{id}` | Signed in | Editor. The **Card** tab has sections for Profile (with photo and 3:1 cover, both cropped before upload), Contact (email, mobile with country picker, website, booking link), Links (add, reorder, remove), Appearance (accent, light/dark theme) and Sharing (public slug, lead collection). A sticky preview pane on the right switches between the card and its QR code; below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
+| `/dashboard/{id}` | Signed in | Editor. The **Card** tab has sections for Profile (with photo and 3:1 cover, both cropped before upload), Contact (email, mobile with country picker, website, booking link), Links (add, reorder, remove), Layout (template picker, then blocks to reorder, hide, add or remove, with inline settings for headings, text, galleries and events), Appearance (accent, light/dark theme) and Sharing (public slug, lead collection, and what an NFC tap and a QR scan each do, with their links to copy or try). A sticky preview pane on the right switches between the card and its QR code (which encodes the `?via=qr` link); below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
 | `/admin/login` | Public | Platform admin sign-in (email and password). `next=/admin/...` sets where to go afterwards; `expired=1` shows a "session expired" notice |
 | `/admin` | Platform admin | Totals (organisations, active organisations, users, cards and leads, storage used, new feedback) and trend charts (organisations, users, cards, leads, storage used, organisations with storage) over 30 days, 90 days or a year |
 | `/admin/orgs` | Platform admin | Every organisation with owner email, users, cards, leads, storage (connected, provider, used) and last activity. Debounced search, All/Active/Suspended filter, sort menu, pagination. Rows open the organisation |
@@ -176,7 +178,7 @@ frontend/
 | `/admin/feedback` | Platform admin | Feedback by status (New, Read, Resolved, All), with category, rating, sender, organisation and reply count |
 | `/admin/feedback/{id}` | Platform admin | The message and its context (sender, organisation, page, time), the status toggle, the reply thread and a reply box. Opening new feedback marks it read. Replies are emailed to the sender |
 | `/admin/audit` | Platform admin | Sign-ins, suspensions, replies and status changes, newest first |
-| `/p/{slug}` | Public | The visitor-facing card. "Save contact" downloads a `.vcf`, plus share (Web Share API, falling back to the clipboard), a "Book a meeting" button when a booking link is set, and a lead form (name, email, optional mobile number, message) when `collect_leads` is on. While the card's organisation is suspended (`410`), it shows "This card is unavailable" |
+| `/p/{slug}` | Public | The visitor-facing card, laid out by its blocks. `?via=nfc` or `?via=qr` (written to the NFC tag and encoded in the QR code) runs the card's tap action: save contact navigates to the server-built `.vcf` with the card behind it, or the lead form opens. The parameter is then removed from the address, so reloading just shows the card. "Save contact" opens the same `.vcf`, plus share (Web Share API, falling back to the clipboard), a "Book a meeting" button when a booking link is set, and a lead form (name, email, optional mobile number, message) when `collect_leads` is on. While the card's organisation is suspended (`410`), it shows "This card is unavailable" |
 
 ### Organisations and roles
 
@@ -280,10 +282,27 @@ interface CardData {
   accent: AccentKey;      // 'indigo' | 'violet' | 'rose' | 'orange' | 'emerald' | 'sky' | 'slate'
   theme: 'light' | 'dark';
   collect_leads: boolean; // show the "exchange contact" form on the public page
+  template: TemplateKey;  // 'classic' | 'event' | 'portfolio' | 'minimal': the preset last applied
+  blocks: CardBlock[];    // what the card shows, in order (see below)
+  tap: { nfc: TapAction; qr: TapAction }; // 'profile' | 'save_contact' | 'lead_form'
 }
 ```
 
-**Always read stored data through `normalizeCard(raw)`.** It turns anything (missing fields, wrong types, `null`) into a complete `CardData`, with these defaults: accent `indigo`, theme `light`, `collect_leads: true`. It also upgrades links from older profiles that were saved as plain strings, and splits an old free-text `phone` into the dial code and number. A number without a leading `+` keeps its digits, and the editor asks for the country code. If you add a field, add it to `CardData`, `emptyCard()` and `normalizeCard()` so older profiles keep loading.
+**Blocks** (`src/lib/card/blocks.ts`) lay the card out as one column. Each is `{ id, type, hidden? }` plus its own data:
+
+| Type | Data | Shows |
+| ---- | ---- | ----- |
+| `header` | `style: 'banner' \| 'badge' \| 'compact'` | Photo, name, title, location. Always first; can't be hidden or removed |
+| `bio`, `quick_actions`, `booking`, `links`, `documents` | none | The matching `CardData` fields. At most one of each |
+| `actions` | none | Where the page's visitor buttons go (the `actions` snippet of `ProfileCard`). At most one |
+| `heading`, `text` | `text` | A section title or paragraph |
+| `gallery` | `images: { id, file, caption }[]`, up to 12 | Library images in a grid |
+| `event` | `name, dates, venue, role` | An event panel, with the role as a ribbon |
+| `divider` | none | A rule |
+
+Contact details stay on `CardData` because the vCard and the editor's sections use them; blocks only decide where they appear. `TEMPLATES` are presets (`templateBlocks(key)`), and `applyTemplate()` keeps the text, gallery and event content that the new layout also has room for. `normalizeBlocks()` drops unknown blocks and duplicates and keeps the header first; cards saved before layouts existed get the Classic preset.
+
+**Always read stored data through `normalizeCard(raw)`.** It turns anything (missing fields, wrong types, `null`) into a complete `CardData`, with these defaults: accent `indigo`, theme `light`, `collect_leads: true`, template `classic` with its blocks, and both tap actions `profile`. It also upgrades links from older profiles that were saved as plain strings, and splits an old free-text `phone` into the dial code and number. A number without a leading `+` keeps its digits, and the editor asks for the country code. If you add a field, add it to `CardData`, `emptyCard()` and `normalizeCard()` so older profiles keep loading.
 
 Other helpers in `card.ts`:
 
@@ -297,9 +316,10 @@ Other helpers in `card.ts`:
 | `displayUrl(input)` | Short form for display (`github.com/faiz`) |
 | `detectBrand(url)` / `linkLabel(link)` | Recognizes about 65 sites by hostname (LinkedIn, GitHub, Indeed, Figma, Behance, YouTube, Substack, WhatsApp, PayPal and more), for icons and default labels. Icons come from `simple-icons`, plus a bundled LinkedIn path |
 | `slugify(input)` / `isValidSlug(slug)` | Client-side copies of the backend's slug rules (3–48 chars, `^[a-z0-9]+(?:-[a-z0-9]+)*$`) |
-| `buildVCard()` / `downloadVCard()` | Builds a vCard 3.0 file (escaped per the RFC) that iOS and Android both import |
+| `vcardUrl(slug)` | The server-built contact file, `GET /api/profiles/{slug}/vcard` |
 | `downloadBlob(blob, filename)` | Generic client-side download |
-| `publicUrl(slug)` | `${location.origin}/p/${slug}` |
+| `publicUrl(slug)` | `${location.origin}/p/${slug}`: the plain link, used for sharing |
+| `tapUrl(slug, via)` | `publicUrl(slug)` + `?via=nfc` or `?via=qr`: the link for the NFC tag or QR code, which runs the card's tap action |
 | `initials(name)` | Avatar fallback text |
 
 ## Components
@@ -308,7 +328,9 @@ App-specific components live in `src/lib/components/app/`:
 
 | Component | Props | Description |
 | --------- | ----- | ----------- |
-| `ProfileCard` | `card`, `slug`, `actions?` (snippet), `files?`, `class?` | Renders a card: a header in the accent colour (or the cover image with an accent stripe, and an accent ring around the avatar), avatar, quick actions (email, call, website), a "Book a meeting" button when `calendar_url` is set, bio and links. It uses a container query: stacked when narrow, two columns (identity left, links right) once its container is at least 42rem wide, as on the public page at desktop width. Shows a **Brochures** list. When `files` (metadata keyed by file id, from the public profile response) is given, it adds sizes and hides brochures whose file was deleted |
+| `ProfileCard` | `card`, `slug`, `actions?` (snippet), `files?`, `class?` | Renders a card from its visible blocks, in one column. Each block is a component in `card-blocks/`. The header has three styles: banner (the accent or the cover image with an accent stripe, and an accent ring around the avatar), badge (a name badge in the accent colour) and compact (photo beside the name, with the content under it left-aligned). The `actions` snippet goes where the `actions` block is, and is left out when not given (previews). When `files` (metadata keyed by file id, from the public profile response) is given, it adds brochure sizes and hides brochures and gallery images whose file was deleted |
+| `TemplatePicker` | `value`, `accent`, `onselect` | Radio tiles with a small wireframe of each template |
+| `BlockListEditor` | `bind:blocks`, `files`, `onfile` | The editor's block list: expand a block for its settings, move, hide, remove, and "Add block". Galleries upload several images at once or pick from the library; `onfile` gets each file so the editor can remember its metadata |
 | `FileDropzone` | `kind?`, `area?`, `onuploaded?`, `compact?`, `multiple?`, `disabled?` | Drag-and-drop or click to upload, with per-file progress and inline errors. It checks type and size on the client for quick feedback; the server re-checks by sniffing |
 | `FilePickerDialog` | `open` (bindable), `kind`, `title`, `selected?`, `onselect` | Pick a photo or PDF from any file the user can see (filterable by area, paginated), or upload a new one inline. Used by the editor's Photo and Brochures fields |
 | `FileThumb` | `id`, `kind`, `class?` | Image thumbnail (lazy, via the file redirect) or a PDF tile |
@@ -326,7 +348,7 @@ App-specific components live in `src/lib/components/app/`:
 | `FormSection` | `title`, `description?`, `id?` | Editor section. The heading sits beside the fields at 1536px and wider, above them otherwise |
 | `CardAvatar` | `card`, `fallback`, `class?` | Avatar using the card's photo or initials on its accent colour |
 | `QrCode` | `url`, `svg` (bindable), `class?` | Renders a QR code. `qrcode` is loaded the first time one is shown. Codes are always dark-on-white so they scan reliably |
-| `QrDialog` | `open` (bindable), `slug`, `name`, `dark?` | `QrCode` in a dialog, with SVG and 1024px PNG downloads and copy link |
+| `QrDialog` | `open` (bindable), `slug`, `name`, `dark?` | `QrCode` in a dialog, with SVG and 1024px PNG downloads and copy link. Encodes `tapUrl(slug, 'qr')`, so scans run the card's QR tap action |
 | `LeadsTable` | `profileId?`, `card?`, `oncardchange?`, `user?`, `onuserchange?`, `filename?` | Server-paginated leads table: card filter (unless locked with `profileId`), debounced search, a Refresh button (it also reloads the cards store so lead counts update), pagination and CSV export of every matching lead, including phone. A new filter or search goes back to page 1, and paging scrolls the table back into view. The Card column appears only when showing all cards. For admins it adds a user filter and a User column (who held the card when the lead arrived), also in the CSV |
 | `Pagination` | `page` (bindable), `pageSize` (bindable), `total`, `pageSizes?`, `disabled?` | "1–25 of 67", per-page menu, previous/next and page numbers with gaps (`1 … 4 5 6 … 12`) |
 | `CardFilter` | `value`, `onchange` | "All cards" or one card, with lead counts |

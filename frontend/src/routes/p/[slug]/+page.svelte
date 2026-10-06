@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { replaceState } from '$app/navigation';
+	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
@@ -18,7 +20,7 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import ProfileCard from '$lib/components/app/profile-card.svelte';
 	import PhoneInput from '$lib/components/app/phone-input.svelte';
-	import { ACCENTS, downloadVCard, normalizeCard, publicUrl } from '$lib/card/card';
+	import { ACCENTS, normalizeCard, publicUrl, vcardUrl, type CardData, type TapSource } from '$lib/card/card';
 	import { isValidPhone } from '$lib/phone';
 	import { cn } from '$lib/utils';
 
@@ -37,6 +39,8 @@
 		loadError = '';
 		try {
 			profile = await getProfileBySlug(slug);
+			await tick();
+			runTapAction(normalizeCard(profile.data));
 		} catch (e) {
 			if (e instanceof ApiError && e.status === 404) notFound = true;
 			else if (e instanceof ApiError && e.status === 410) unavailable = true;
@@ -44,6 +48,31 @@
 		}
 	}
 	load();
+
+	// ---- Tap behaviour ---------------------------------------------------------
+	// The NFC tag and QR code carry ?via=nfc|qr; the card decides what each does.
+	let highlightSave = $state(false);
+
+	function runTapAction(c: CardData) {
+		const via = page.url.searchParams.get('via');
+		if (via !== 'nfc' && via !== 'qr') return;
+		// Drop the marker so a reload, or a link copied from the address bar, just shows the card.
+		const url = new URL(page.url.href);
+		url.searchParams.delete('via');
+		replaceState(url, {});
+
+		const action = c.tap[via as TapSource];
+		if (action === 'save_contact') {
+			// Navigating to a text/vcard response opens the phone's "Add contact"
+			// sheet and leaves this page in place behind it.
+			location.href = vcardUrl(slug);
+			// If the browser ignored it, the button is right there.
+			highlightSave = true;
+			setTimeout(() => (highlightSave = false), 2400);
+		} else if (action === 'lead_form' && c.collect_leads) {
+			open = true;
+		}
+	}
 
 	// ---- Lead form -------------------------------------------------------------
 	let open = $state(false);
@@ -126,7 +155,7 @@
 			? 'background-image: radial-gradient(80% 60% at 50% 0%, color-mix(in oklch, var(--card-accent) 14%, transparent), transparent 70%)'
 			: undefined}
 	>
-		<main class={cn('flex w-full flex-1 flex-col lg:flex-none', card ? 'max-w-sm lg:max-w-4xl' : 'max-w-sm')}>
+		<main class={cn('flex w-full flex-1 flex-col lg:flex-none', card ? 'max-w-sm sm:max-w-md lg:max-w-lg' : 'max-w-sm')}>
 			{#if unavailable}
 				<Empty.Root class="flex-1">
 					<Empty.Header>
@@ -160,9 +189,12 @@
 					{#snippet actions()}
 						<Button
 							size="lg"
-							class="h-11 w-full text-white hover:opacity-90"
+							class={cn(
+								'h-11 w-full text-white transition-shadow hover:opacity-90',
+								highlightSave && 'ring-offset-card animate-pulse ring-2 ring-(--card-accent) ring-offset-2'
+							)}
 							style="background: var(--card-accent)"
-							onclick={() => card && downloadVCard(card, publicUrl(profile!.slug), profile!.slug)}
+							href={vcardUrl(slug)}
 						>
 							<UserPlusIcon data-icon="inline-start" />
 							Save contact

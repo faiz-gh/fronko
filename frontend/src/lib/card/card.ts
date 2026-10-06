@@ -69,7 +69,9 @@ import {
 	siZoho
 } from 'simple-icons';
 import { fileUrl } from '$lib/api/files';
-import { e164, parseLegacyPhone } from '$lib/phone';
+import { apiUrl } from '$lib/api/client';
+import { parseLegacyPhone } from '$lib/phone';
+import { normalizeBlocks, templateBlocks, TEMPLATES, type CardBlock, type TemplateKey } from './blocks';
 
 /** The shape stored in the profile's JSONB `data` column. */
 export interface CardData {
@@ -99,6 +101,26 @@ export interface CardData {
 	accent: AccentKey;
 	theme: 'light' | 'dark';
 	collect_leads: boolean;
+	/** The layout preset last applied; the blocks may have been changed since. */
+	template: TemplateKey;
+	/** What the card shows, in order. */
+	blocks: CardBlock[];
+	/** What happens when someone taps the NFC tag or scans the QR code. */
+	tap: Record<TapSource, TapAction>;
+}
+
+/** Where a visit came from, as marked on the URL written to the tag or QR code. */
+export type TapSource = 'nfc' | 'qr';
+export type TapAction = 'profile' | 'save_contact' | 'lead_form';
+
+export const TAP_ACTIONS: Record<TapAction, { label: string; description: string }> = {
+	profile: { label: 'Show profile', description: 'Open your card as usual.' },
+	save_contact: { label: 'Save contact', description: 'Open the phone’s “Add contact” sheet, with your card behind it.' },
+	lead_form: { label: 'Open contact form', description: 'Ask visitors for their details straight away.' }
+};
+
+function tapAction(v: unknown): TapAction {
+	return typeof v === 'string' && v in TAP_ACTIONS ? (v as TapAction) : 'profile';
 }
 
 export interface CardLink {
@@ -148,7 +170,10 @@ export function emptyCard(name = ''): CardData {
 		documents: [],
 		accent: 'indigo',
 		theme: 'light',
-		collect_leads: true
+		collect_leads: true,
+		template: 'classic',
+		blocks: templateBlocks('classic'),
+		tap: { nfc: 'profile', qr: 'profile' }
 	};
 }
 
@@ -213,7 +238,13 @@ export function normalizeCard(raw: unknown): CardData {
 		documents,
 		accent: typeof d.accent === 'string' && d.accent in ACCENTS ? (d.accent as AccentKey) : base.accent,
 		theme: d.theme === 'dark' ? 'dark' : 'light',
-		collect_leads: typeof d.collect_leads === 'boolean' ? d.collect_leads : true
+		collect_leads: typeof d.collect_leads === 'boolean' ? d.collect_leads : true,
+		template: typeof d.template === 'string' && d.template in TEMPLATES ? (d.template as TemplateKey) : 'classic',
+		blocks: normalizeBlocks(d.blocks),
+		tap: {
+			nfc: tapAction((d.tap as Record<string, unknown> | undefined)?.nfc),
+			qr: tapAction((d.tap as Record<string, unknown> | undefined)?.qr)
+		}
 	};
 }
 
@@ -407,35 +438,6 @@ export function linkLabel(link: CardLink): string {
 	return link.label.trim() || detectBrand(link.url)?.name || displayUrl(link.url);
 }
 
-// ----------------------------------------------------------------------------
-// vCard export
-// ----------------------------------------------------------------------------
-
-function vEscape(value: string): string {
-	return value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/[,;]/g, (m) => `\\${m}`);
-}
-
-/** Builds a vCard 3.0 file, which iOS and Android both import as a contact. */
-export function buildVCard(card: CardData, profileUrl: string): string {
-	const name = card.name.trim() || 'Contact';
-	const parts = name.split(/\s+/);
-	const last = parts.length > 1 ? parts[parts.length - 1] : '';
-	const first = parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0];
-
-	const lines = ['BEGIN:VCARD', 'VERSION:3.0', `N:${vEscape(last)};${vEscape(first)};;;`, `FN:${vEscape(name)}`];
-	if (card.company) lines.push(`ORG:${vEscape(card.company)}`);
-	if (card.title) lines.push(`TITLE:${vEscape(card.title)}`);
-	if (card.email) lines.push(`EMAIL;TYPE=INTERNET:${vEscape(card.email)}`);
-	if (card.phone_number) lines.push(`TEL;TYPE=CELL:${vEscape(e164(card.phone_country_code, card.phone_number))}`);
-	const website = safeUrl(card.website);
-	if (website) lines.push(`URL:${vEscape(website)}`);
-	lines.push(`URL:${vEscape(profileUrl)}`);
-	if (card.location) lines.push(`ADR;TYPE=WORK:;;;${vEscape(card.location)};;;`);
-	if (card.bio) lines.push(`NOTE:${vEscape(card.bio)}`);
-	lines.push('END:VCARD');
-	return lines.join('\r\n');
-}
-
 /** Triggers a browser download of in-memory data. */
 export function downloadBlob(blob: Blob, filename: string) {
 	const url = URL.createObjectURL(blob);
@@ -446,10 +448,16 @@ export function downloadBlob(blob: Blob, filename: string) {
 	URL.revokeObjectURL(url);
 }
 
-export function downloadVCard(card: CardData, profileUrl: string, slug: string) {
-	downloadBlob(new Blob([buildVCard(card, profileUrl)], { type: 'text/vcard;charset=utf-8' }), `${slug}.vcf`);
+/** The card's contact file, built by the server; opening it shows the phone's "Add contact" sheet. */
+export function vcardUrl(slug: string): string {
+	return apiUrl(`/api/profiles/${encodeURIComponent(slug)}/vcard`);
 }
 
 export function publicUrl(slug: string): string {
 	return `${location.origin}/p/${slug}`;
+}
+
+/** The link to write to an NFC tag or encode in a QR code; it runs the card's tap action. */
+export function tapUrl(slug: string, via: TapSource): string {
+	return `${publicUrl(slug)}?via=${via}`;
 }
