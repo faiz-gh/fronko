@@ -767,11 +767,24 @@ func (r *Repository) UpdateFileTitle(ctx context.Context, scope Scope, publicID,
 // DeleteFile removes the record of a file in orgID; otherwise ErrNotFound.
 // The caller checks the user may delete it (GetEditableFile).
 func (r *Repository) DeleteFile(ctx context.Context, fileID, orgID int64) error {
-	tag, err := r.db.Exec(ctx, `DELETE FROM files WHERE file_id = $1 AND org_id = $2`, fileID, orgID)
+	// The organisation's logo or signature banner may point at the file;
+	// forget it there too so no card or signature shows a broken image.
+	var n int
+	err := r.db.QueryRow(ctx, `
+		WITH d AS (DELETE FROM files WHERE file_id = $1 AND org_id = $2 RETURNING public_id),
+		o AS (
+			UPDATE organizations SET
+				logo_file = CASE WHEN logo_file IN (SELECT public_id FROM d) THEN NULL ELSE logo_file END,
+				signature = CASE WHEN signature->>'banner_file' IN (SELECT public_id FROM d)
+					THEN signature - 'banner_file' ELSE signature END
+			WHERE org_id = $2 AND (logo_file IN (SELECT public_id FROM d)
+				OR signature->>'banner_file' IN (SELECT public_id FROM d))
+		)
+		SELECT COUNT(*) FROM d`, fileID, orgID).Scan(&n)
 	if err != nil {
 		return mapError(err)
 	}
-	if tag.RowsAffected() == 0 {
+	if n == 0 {
 		return ErrNotFound
 	}
 	return nil

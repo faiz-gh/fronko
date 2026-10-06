@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/faiz-gh/fronko/backend/internal/models"
 	"github.com/jackc/pgx/v5"
@@ -152,4 +153,33 @@ func (r *Repository) execOne(ctx context.Context, sql string, args ...any) error
 		return ErrNotFound
 	}
 	return nil
+}
+
+// GetOrgBranding returns the organisation's logo and signature settings.
+func (r *Repository) GetOrgBranding(ctx context.Context, orgID int64) (*models.OrgBranding, error) {
+	var b models.OrgBranding
+	var sig []byte
+	err := r.db.QueryRow(ctx,
+		`SELECT name, logo_file, logo_policy, signature FROM organizations WHERE org_id = $1`, orgID,
+	).Scan(&b.Name, &b.LogoFile, &b.LogoPolicy, &sig)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	if err := json.Unmarshal(sig, &b.Signature); err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
+// UpdateOrgBranding saves the logo, logo policy and signature settings. The name is left alone.
+func (r *Repository) UpdateOrgBranding(ctx context.Context, orgID int64, b *models.OrgBranding) error {
+	sig, err := json.Marshal(b.Signature)
+	if err != nil {
+		return err
+	}
+	err = r.db.QueryRow(ctx, `
+		UPDATE organizations SET logo_file = $2, logo_policy = $3, signature = $4, updated_at = now()
+		WHERE org_id = $1 RETURNING name`, orgID, b.LogoFile, b.LogoPolicy, sig,
+	).Scan(&b.Name)
+	return mapError(err)
 }

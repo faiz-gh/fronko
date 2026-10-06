@@ -190,6 +190,8 @@ func run() error {
 
 	protected.HandleFunc("GET /api/org", admin(orgHandler.Get))
 	protected.HandleFunc("PUT /api/org", owner(orgHandler.Update))
+	protected.HandleFunc("GET /api/org/branding", orgHandler.GetBranding)
+	protected.HandleFunc("PUT /api/org/branding", admin(orgHandler.UpdateBranding))
 	protected.HandleFunc("GET /api/org/users", admin(orgHandler.ListUsers))
 	protected.HandleFunc("POST /api/org/users", admin(authLimiter.Limit(orgHandler.CreateUser)))
 	protected.HandleFunc("GET /api/org/users/{id}", admin(orgHandler.GetUser))

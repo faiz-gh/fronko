@@ -672,4 +672,49 @@ func TestRepositoryIntegration(t *testing.T) {
 		require.NoError(t, err)
 		assert.EqualValues(t, 2, total, "since is inclusive")
 	})
+	t.Run("Org Branding", func(t *testing.T) {
+		owner := newOwner(t, "brander")
+		b, err := repo.GetOrgBranding(ctx, owner.OrgID)
+		require.NoError(t, err)
+		assert.Equal(t, models.LogoOptional, b.LogoPolicy)
+		assert.Nil(t, b.LogoFile)
+
+		newImage := func(id string) *models.File {
+			f := &models.File{PublicID: id, OrgID: owner.OrgID, UserID: owner.ID, Area: models.AreaOrg, Bucket: "b",
+				ObjectKey: "fronko/" + id, Kind: "image", ContentType: "image/png", SizeBytes: 5, OriginalName: id + ".png"}
+			require.NoError(t, repo.CreateFile(ctx, f))
+			return f
+		}
+		logo, banner, other := newImage("brand-logo"), newImage("brand-banner"), newImage("brand-other")
+
+		logoID := logo.PublicID
+		b = &models.OrgBranding{LogoFile: &logoID, LogoPolicy: models.LogoRequired, Signature: models.OrgSignature{
+			LockedTemplate: "classic", Disclaimer: "Confidential", BannerFile: banner.PublicID, BannerURL: "https://acme.test",
+		}}
+		require.NoError(t, repo.UpdateOrgBranding(ctx, owner.OrgID, b))
+		assert.Equal(t, "brander org", b.Name)
+
+		got, err := repo.GetOrgBranding(ctx, owner.OrgID)
+		require.NoError(t, err)
+		require.NotNil(t, got.LogoFile)
+		assert.Equal(t, logoID, *got.LogoFile)
+		assert.Equal(t, models.LogoRequired, got.LogoPolicy)
+		assert.Equal(t, b.Signature, got.Signature)
+
+		// Deleting an unrelated file leaves the branding alone.
+		require.NoError(t, repo.DeleteFile(ctx, other.ID, owner.OrgID))
+		got, _ = repo.GetOrgBranding(ctx, owner.OrgID)
+		assert.NotNil(t, got.LogoFile)
+		assert.Equal(t, banner.PublicID, got.Signature.BannerFile)
+
+		// Deleting the logo or banner clears the reference.
+		require.NoError(t, repo.DeleteFile(ctx, logo.ID, owner.OrgID))
+		require.NoError(t, repo.DeleteFile(ctx, banner.ID, owner.OrgID))
+		got, err = repo.GetOrgBranding(ctx, owner.OrgID)
+		require.NoError(t, err)
+		assert.Nil(t, got.LogoFile)
+		assert.Empty(t, got.Signature.BannerFile)
+		assert.Equal(t, "Confidential", got.Signature.Disclaimer, "other settings are kept")
+		assert.ErrorIs(t, repo.DeleteFile(ctx, logo.ID, owner.OrgID), repository.ErrNotFound)
+	})
 }

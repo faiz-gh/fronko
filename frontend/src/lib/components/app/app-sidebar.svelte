@@ -8,6 +8,7 @@
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import MessageSquareIcon from '@lucide/svelte/icons/message-square';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
+	import SignatureIcon from '@lucide/svelte/icons/signature';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import * as Avatar from '$lib/components/ui/avatar';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -57,7 +58,13 @@
 					}
 				]
 			: []),
-		{ href: '/dashboard/files', label: 'Files', icon: FolderIcon, active: path === '/dashboard/files' }
+		{ href: '/dashboard/files', label: 'Files', icon: FolderIcon, active: path === '/dashboard/files' },
+		{
+			href: '/dashboard/signatures',
+			label: 'Signatures',
+			icon: SignatureIcon,
+			active: path === '/dashboard/signatures'
+		}
 	]);
 
 	const navItem = (active: boolean) =>

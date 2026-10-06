@@ -185,7 +185,7 @@
 			{:else if !card || !profile}
 				<Skeleton class="h-[520px] w-full rounded-3xl" />
 			{:else}
-				<ProfileCard {card} slug={profile.slug} {files}>
+				<ProfileCard {card} slug={profile.slug} {files} org={profile.org}>
 					{#snippet actions()}
 						<Button
 							size="lg"

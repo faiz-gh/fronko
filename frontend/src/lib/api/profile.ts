@@ -21,6 +21,14 @@ export interface PublicProfile {
 	data: Partial<CardData> | null;
 	/** Library files the card references (photo, brochures), resolved by the server. */
 	files: PublicFile[];
+	/** The card's organisation and its logo. */
+	org: PublicOrg | null;
+}
+
+export interface PublicOrg {
+	name: string;
+	logo_file: string | null;
+	logo_policy: 'required' | 'optional';
 }
 
 export function getProfileBySlug(slug: string): Promise<PublicProfile> {

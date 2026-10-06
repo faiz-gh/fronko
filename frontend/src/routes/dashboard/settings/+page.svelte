@@ -21,6 +21,7 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { Switch } from '$lib/components/ui/switch';
+	import BrandingSettings from '$lib/components/app/branding-settings.svelte';
 	import ChangeEmailForm from '$lib/components/app/change-email-form.svelte';
 	import FormSection from '$lib/components/app/form-section.svelte';
 	import QuotaInput from '$lib/components/app/quota-input.svelte';
@@ -408,6 +409,14 @@
 					{/if}
 				</form>
 			{/if}
+		</FormSection>
+
+		<FormSection
+			id="branding"
+			title="Branding"
+			description="Your logo on cards and email signatures, and what every signature includes."
+		>
+			<BrandingSettings />
 		</FormSection>
 	{/if}
 

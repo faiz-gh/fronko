@@ -5,7 +5,18 @@
 	import type { HeaderStyle } from '$lib/card/blocks';
 	import { cn } from '$lib/utils';
 
-	let { card, slug, style }: { card: CardData; slug: string; style: HeaderStyle } = $props();
+	let {
+		card,
+		slug,
+		style,
+		logo = null
+	}: {
+		card: CardData;
+		slug: string;
+		style: HeaderStyle;
+		/** The organisation's logo, when the card shows it. */
+		logo?: { src: string; name: string } | null;
+	} = $props();
 
 	const name = $derived(card.name.trim() || slug);
 	const subtitle = $derived([card.title, card.company].map((s) => s.trim()).filter(Boolean).join(' · '));
@@ -25,6 +36,15 @@
 	</Avatar.Root>
 {/snippet}
 
+<!-- Logos come in any colour, so they sit on a light chip that reads on any background. -->
+{#snippet orgLogo(cls: string)}
+	{#if logo}
+		<span class={cn('inline-flex items-center rounded-lg bg-white/95 px-2 py-1 shadow-sm ring-1 ring-black/5', cls)}>
+			<img src={logo.src} alt={logo.name} class="h-6 w-auto max-w-28 object-contain @lg:h-7" />
+		</span>
+	{/if}
+{/snippet}
+
 {#snippet place()}
 	{#if location}
 		<p class="text-muted-foreground flex items-center gap-1 text-xs @lg:text-sm">
@@ -40,6 +60,7 @@
 		class="relative flex flex-col items-center gap-4 bg-(--card-accent) px-6 pt-6 pb-8 text-center text-white"
 		style="background-image: radial-gradient(120% 140% at 100% 0%, oklch(1 0 0 / 0.22), transparent 55%)"
 	>
+		{@render orgLogo('absolute top-4 left-4')}
 		<span class="h-2.5 w-16 rounded-full bg-black/25 ring-1 ring-white/20" aria-hidden="true"></span>
 		<Avatar.Root class="size-28 text-3xl ring-4 ring-white/90 @lg:size-32">
 			{#if avatar}
@@ -70,19 +91,23 @@
 			{/if}
 			{@render place()}
 		</div>
+		{@render orgLogo('ml-auto self-start shrink-0')}
 	</div>
 {:else}
-	{#if cover}
-		<!-- With a cover photo, the accent becomes a frame: a stripe under the banner and a ring around the avatar. -->
-		<div class="bg-muted aspect-3/1 border-b-4 border-(--card-accent)">
-			<img src={cover} alt="" class="size-full object-cover" />
-		</div>
-	{:else}
-		<div
-			class="h-28 bg-(--card-accent) @lg:h-36"
-			style="background-image: radial-gradient(120% 140% at 100% 0%, oklch(1 0 0 / 0.28), transparent 55%), radial-gradient(90% 120% at 0% 100%, oklch(0 0 0 / 0.22), transparent 60%)"
-		></div>
-	{/if}
+	<div class="relative">
+		{@render orgLogo('absolute top-3 left-3 z-10')}
+		{#if cover}
+			<!-- With a cover photo, the accent becomes a frame: a stripe under the banner and a ring around the avatar. -->
+			<div class="bg-muted aspect-3/1 border-b-4 border-(--card-accent)">
+				<img src={cover} alt="" class="size-full object-cover" />
+			</div>
+		{:else}
+			<div
+				class="h-28 bg-(--card-accent) @lg:h-36"
+				style="background-image: radial-gradient(120% 140% at 100% 0%, oklch(1 0 0 / 0.28), transparent 55%), radial-gradient(90% 120% at 0% 100%, oklch(0 0 0 / 0.22), transparent 60%)"
+			></div>
+		{/if}
+	</div>
 	<div class="-mt-12 flex flex-col items-center gap-3 px-6 text-center @lg:-mt-14">
 		{@render photo('size-24 text-2xl @lg:size-28')}
 		<div class="flex flex-col items-center gap-1">

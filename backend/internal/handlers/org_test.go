@@ -65,3 +65,33 @@ func TestValidOrgName(t *testing.T) {
 	assert.False(t, validOrgName("Acme\r\nBcc: x@example.com"))
 	assert.False(t, validOrgName(strings.Repeat("a", 81)))
 }
+
+func TestValidateBranding(t *testing.T) {
+	ok := func(b models.OrgBranding) models.OrgBranding {
+		t.Helper()
+		assert.Empty(t, validateBranding(&b))
+		return b
+	}
+	bad := func(b models.OrgBranding) {
+		t.Helper()
+		assert.NotEmpty(t, validateBranding(&b))
+	}
+
+	b := ok(models.OrgBranding{})
+	assert.Equal(t, models.LogoOptional, b.LogoPolicy, "defaults to optional")
+	blank := " "
+	b = ok(models.OrgBranding{LogoFile: &blank, LogoPolicy: models.LogoRequired})
+	assert.Nil(t, b.LogoFile, "a blank logo is no logo")
+	b = ok(models.OrgBranding{Signature: models.OrgSignature{
+		LockedTemplate: "corporate", BrandColor: "#1A2b3C", Disclaimer: "  Confidential.  ", BannerURL: "https://acme.test/x",
+	}})
+	assert.Equal(t, "Confidential.", b.Signature.Disclaimer)
+
+	bad(models.OrgBranding{LogoPolicy: "sometimes"})
+	bad(models.OrgBranding{Signature: models.OrgSignature{LockedTemplate: "fancy"}})
+	bad(models.OrgBranding{Signature: models.OrgSignature{BrandColor: "red"}})
+	bad(models.OrgBranding{Signature: models.OrgSignature{BrandColor: "#fff"}})
+	bad(models.OrgBranding{Signature: models.OrgSignature{Disclaimer: strings.Repeat("a", 1001)}})
+	bad(models.OrgBranding{Signature: models.OrgSignature{BannerURL: "javascript:alert(1)"}})
+	bad(models.OrgBranding{Signature: models.OrgSignature{BannerURL: "acme.test"}})
+}

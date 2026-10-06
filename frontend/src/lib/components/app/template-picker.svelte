@@ -5,18 +5,29 @@
 	let {
 		value,
 		accent,
+		logo = false,
 		onselect
 	}: {
 		/** The template the card's layout currently matches, if any. */
 		value: TemplateKey | null;
 		accent: string;
+		/** Show where the organisation's logo goes. */
+		logo?: boolean;
 		onselect: (key: TemplateKey) => void;
 	} = $props();
 </script>
 
 <!-- A tiny wireframe of each template: enough to tell them apart at a glance. -->
 {#snippet wireframe(key: TemplateKey)}
-	<span class="flex h-24 flex-col overflow-hidden rounded-lg bg-white ring-1 ring-black/5 dark:bg-neutral-900" aria-hidden="true">
+	<span class="relative flex h-24 flex-col overflow-hidden rounded-lg bg-white ring-1 ring-black/5 dark:bg-neutral-900" aria-hidden="true">
+		{#if logo}
+			<span
+				class={cn(
+					'absolute top-1 h-2 w-4 rounded-[2px] bg-white ring-1 ring-black/10',
+					key === 'minimal' ? 'right-1' : 'left-1'
+				)}
+			></span>
+		{/if}
 		{#if key === 'event'}
 			<span class="flex flex-col items-center gap-1 py-2" style="background: {accent}">
 				<span class="h-0.5 w-3 rounded-full bg-black/30"></span>
