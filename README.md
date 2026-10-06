@@ -63,6 +63,12 @@ Fronko is an open-source alternative to hosted platforms such as Popl and Mobilo
 - **User management.** Admins can suspend users, reset their passwords, or delete them without losing their cards, files or leads.
 - **Files with access control.** Files are kept in three areas: each person's own files (with an optional per-person storage limit), the organisation's private files, and a shared area for company-wide brochures. Admins can give individual people access to extra files.
 
+### For the people running the server
+
+- **Platform admin panel.** A separate admin area at `/admin`, with its own accounts and sign-in, shows how each organisation uses Fronko: users, cards, leads, files, whether storage is connected and how much is used, plus trends over 30 days to a year. It shows totals only. Card contents, leads, files and team members stay private to each organisation.
+- **Product feedback.** Signed-in users send a bug report, idea or other note, with an optional 1–5 rating, from the account menu. It lands in the admin inbox and can be emailed to you. Replies are emailed back to the sender.
+- **Suspend organisations.** Suspending an organisation signs everyone in it out, blocks sign-in and takes its public cards offline. Nothing is deleted. The owner is emailed the reason, and again when it's reinstated. Every admin action is kept in an audit log.
+
 ### Accounts and security
 
 - **Verified sign-up.** Users sign up with a username and an email address, which they confirm with a 6-digit emailed code. They can sign in with either.
@@ -157,6 +163,16 @@ The session cookie is sent over HTTPS only by default (`COOKIE_SECURE=true`), so
 
 Open your domain, create an account, and you become the owner of a new organisation.
 
+### 5. Create a platform admin (optional)
+
+The admin panel at `/admin` uses its own accounts, which can only be created from the command line. Run this once, then type a password of 12–72 characters when prompted:
+
+```bash
+docker compose exec backend ./fronko admin create --email you@example.com
+```
+
+Sign in at `https://cards.example.com/admin/login`. To change a forgotten admin password later, run the same command with `set-password` in place of `create`. This also signs that admin out everywhere.
+
 ### Deployment topologies
 
 | Topology | Setup |
@@ -182,6 +198,7 @@ All settings are environment variables, set in `deploy/.env`.
 | `SMTP_PORT` | | Defaults to `587`. Port `465` uses implicit TLS; other ports upgrade with STARTTLS. |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | | SMTP credentials. |
 | `SMTP_FROM` | With `SMTP_HOST` | Sender address, such as `Fronko <no-reply@example.com>`. Must be an address your provider lets you send from. |
+| `FEEDBACK_NOTIFY_EMAIL` | | Gets an email for each piece of product feedback, and is the Reply-To on admins' replies and on suspension emails. Without it, feedback only appears in the admin panel. |
 
 The [backend configuration reference](backend/README.md#configuration) covers every option, including `PORT`, `TRUST_PROXY` and `STORAGE_ALLOW_PRIVATE_ENDPOINTS`, plus the fixed server and connection-pool settings.
 
@@ -236,6 +253,9 @@ This setup:
 - serves the app on `http://localhost:3000`, always same-origin (it ignores `FRONTEND_URL` and `BACKEND_URL` from `.env`)
 - sets a development `SECRETS_KEY` and `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`, so storage can point at a local S3 server such as MinIO on `http://host.docker.internal:9000`
 - starts [Mailpit](https://mailpit.axllent.org/), which catches every email the backend sends; its inbox is at `http://localhost:8025`
+- sends feedback notices to `admin@fronko.local`, which also land in Mailpit
+
+To use the admin panel locally, create an admin with `docker exec -it backend-local ./fronko admin create --email admin@fronko.local` and sign in at `http://localhost:3000/admin/login`.
 
 ## Documentation
 

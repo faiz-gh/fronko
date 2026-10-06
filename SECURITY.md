@@ -55,5 +55,6 @@ Fronko's built-in protections are described in the backend's [security measures]
 - **Never enable `STORAGE_ALLOW_PRIVATE_ENDPOINTS` in production.** It is for local development only and would let users make the server connect to internal hosts.
 - **Keep storage buckets private.** Fronko serves files through short-lived signed links and doesn't need public bucket access.
 - **Use TLS for PostgreSQL** (`sslmode=require` or stricter) when the database is reached over a network.
+- **Protect platform admin accounts.** They see every organisation's owner email and usage, read feedback, and can suspend organisations. Create only the admins you need (`./fronko admin create`), give each a long unique password, and review the panel's audit log. Admin sign-in has no second factor yet. Remove an admin with SQL (`DELETE FROM platform_admins WHERE email = …`) when they no longer need access.
 - **Configure SMTP.** Without it, verification and password-reset codes are written to the backend log.
 - **Keep up to date** with the latest `master`, and rebuild the images regularly to pick up base-image updates.
