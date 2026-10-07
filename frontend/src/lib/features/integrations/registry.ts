@@ -19,14 +19,21 @@ import type { Category, CatalogEntry, ConnectionStatus, Scope } from './types';
 
 /**
  * How a provider looks in the catalog. `path` is a simple-icons glyph on a
- * 24×24 viewBox; `icon` a Lucide icon; otherwise its initials on its colour.
- * Providers without an entry get initials on a neutral tile.
+ * 24×24 viewBox; `icon` a Lucide icon; `mark` a multi-colour mark drawn by
+ * ProviderLogo; otherwise `initials` (or ones taken from its name) on its
+ * colour. Providers without an entry get initials on a neutral tile.
  */
 export interface ProviderLogo {
 	color: string;
 	path?: string;
 	icon?: Component<{ class?: string }>;
+	/** simple-icons has no Microsoft glyphs, so its four squares are drawn instead. */
+	mark?: 'microsoft';
+	/** Set where the name's own initials would be unclear or clash (both Salesforce products). */
+	initials?: string;
 }
+
+const microsoft: ProviderLogo = { mark: 'microsoft', color: '#0078d4' };
 
 const glyph = (si: { path: string; hex: string }): ProviderLogo => ({ path: si.path, color: `#${si.hex}` });
 
@@ -37,22 +44,22 @@ export const LOGOS: Record<string, ProviderLogo> = {
 	n8n: glyph(siN8n),
 	hubspot: glyph(siHubspot),
 	'hubspot-meetings': glyph(siHubspot),
-	salesforce: { color: '#00a1e0' },
-	pardot: { color: '#00a1e0' },
+	salesforce: { color: '#00a1e0', initials: 'SF' },
+	pardot: { color: '#00a1e0', initials: 'AE' },
 	'zoho-crm': glyph(siZoho),
-	'dynamics-365': { color: '#0b53ce' },
-	pipedrive: { color: '#25a85a' },
+	'dynamics-365': microsoft,
+	pipedrive: { color: '#25a85a', initials: 'PD' },
 	monday: { color: '#ff3d57' },
-	marketo: { color: '#5c4c9f' },
+	marketo: { color: '#5c4c9f', initials: 'MK' },
 	slack: { color: '#4a154b' },
-	outlook: { color: '#0078d4' },
+	outlook: microsoft,
 	calendly: glyph(siCalendly),
 	'chili-piper': { color: '#e8483f' },
-	'microsoft-bookings': { color: '#0078d4' },
+	'microsoft-bookings': microsoft,
 	'google-calendar': glyph(siGooglecalendar),
 	'booking-link': { icon: CalendarClockIcon, color: '#0ea5e9' },
-	'entra-scim': { color: '#0078d4' },
-	'entra-saml': { color: '#0078d4' },
+	'entra-scim': microsoft,
+	'entra-saml': microsoft,
 	'okta-scim': glyph(siOkta),
 	'okta-saml': glyph(siOkta),
 	'google-workspace': glyph(siGoogle),

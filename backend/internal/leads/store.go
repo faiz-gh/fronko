@@ -144,6 +144,22 @@ func (r *Store) ListLeads(ctx context.Context, scope auth.Scope, f LeadFilter) (
 	return leads, total, nil
 }
 
+// DeleteLead removes a lead from one of the organisation's cards. It returns
+// database.ErrNotFound if there is no such lead in the organisation. Pending
+// lead sync for it finds nothing and stops.
+func (r *Store) DeleteLead(ctx context.Context, leadID, orgID int64) error {
+	tag, err := r.db.Exec(ctx, `
+		DELETE FROM leads l USING profiles p
+		WHERE l.lead_id = $1 AND p.profile_id = l.profile_id AND p.org_id = $2`, leadID, orgID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return database.ErrNotFound
+	}
+	return nil
+}
+
 // SyncDetails is a lead with what lead sync sends alongside it.
 type SyncDetails struct {
 	Lead

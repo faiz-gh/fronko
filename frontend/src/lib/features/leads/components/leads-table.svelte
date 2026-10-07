@@ -14,6 +14,7 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import * as Table from '$lib/components/ui/table';
 	import CardFilter from '$lib/features/cards/components/card-filter.svelte';
+	import LeadSheet from './lead-sheet.svelte';
 	import Pagination from '$lib/components/shared/pagination.svelte';
 	import UserAvatar from '$lib/components/shared/user-avatar.svelte';
 	import TeamPicker from '$lib/features/teams/components/team-picker.svelte';
@@ -72,6 +73,8 @@
 	let error = $state('');
 	let exporting = $state(false);
 	let reloadToken = $state(0);
+	/** The lead whose details are open. */
+	let openLead = $state<Lead | null>(null);
 
 	// Debounce typing so each keystroke doesn't hit the server.
 	$effect(() => {
@@ -289,16 +292,27 @@
 				<Table.Body>
 					{#each leads as lead (lead.id)}
 						{@const info = showCardColumn ? cardInfo(lead.profile_id) : null}
-						<Table.Row>
+						<Table.Row class="cursor-pointer" onclick={() => (openLead = lead)}>
 							<Table.Cell class="py-3 pl-5">
 								<div class="flex items-center gap-3">
 									<Avatar.Root class="size-8 text-xs">
 										<Avatar.Fallback class="bg-muted font-semibold">{initials(lead.name)}</Avatar.Fallback>
 									</Avatar.Root>
 									<div class="flex min-w-0 flex-col">
-										<span class="truncate font-medium">{lead.name}</span>
+										<button
+											type="button"
+											class="truncate text-left font-medium hover:underline"
+											onclick={(e) => {
+												e.stopPropagation();
+												openLead = lead;
+											}}
+											aria-label="View {lead.name}'s details"
+										>
+											{lead.name}
+										</button>
 										<a
 											href="mailto:{lead.email}"
+											onclick={(e) => e.stopPropagation()}
 											class="text-muted-foreground hover:text-foreground truncate text-xs hover:underline"
 										>
 											{lead.email}
@@ -306,6 +320,7 @@
 										{#if lead.phone_number}
 											<a
 												href="tel:{e164(lead.phone_country_code ?? '', lead.phone_number)}"
+												onclick={(e) => e.stopPropagation()}
 												class="text-muted-foreground hover:text-foreground truncate text-xs tabular-nums hover:underline"
 											>
 												{formatPhone(lead.phone_country_code ?? '', lead.phone_number)}
@@ -331,7 +346,10 @@
 										<button
 											type="button"
 											class="hover:bg-muted -ml-1.5 flex max-w-52 items-start gap-2 rounded-md px-1.5 py-1 text-left"
-											onclick={() => oncardchange?.(lead.profile_id)}
+											onclick={(e) => {
+												e.stopPropagation();
+												oncardchange?.(lead.profile_id);
+											}}
 											title="Show only this card's leads"
 										>
 											<span class="mt-1.5 size-2 shrink-0 rounded-full" style="background: {info.color}"></span>
@@ -352,7 +370,10 @@
 										<button
 											type="button"
 											class="hover:bg-muted -ml-1.5 flex max-w-40 items-center gap-2 rounded-md px-1.5 py-1 text-left"
-											onclick={() => onuserchange?.(held.id)}
+											onclick={(e) => {
+												e.stopPropagation();
+												onuserchange?.(held.id);
+											}}
 											title="Show only {held.username}’s leads"
 										>
 											<UserAvatar username={held.username} class="size-5 text-[9px]" />
@@ -398,5 +419,7 @@
 		<Pagination bind:page bind:pageSize {total} disabled={loading} />
 	{/if}
 </div>
+
+<LeadSheet bind:lead={openLead} card={openLead ? cardInfo(openLead.profile_id) : null} ondeleted={refresh} />
 
 <span class="sr-only" aria-live="polite">{leads ? plural(total, 'lead') : ''}</span>

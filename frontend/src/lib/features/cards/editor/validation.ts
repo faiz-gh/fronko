@@ -9,6 +9,8 @@ export interface CardErrors {
 	website: boolean;
 	email: boolean;
 	phone: boolean;
+	/** Ids of links whose URL isn't a valid web address. */
+	links: string[];
 	qr: boolean;
 }
 
@@ -20,11 +22,12 @@ export function cardErrors(card: CardData, slug: string): CardErrors {
 		website: !!card.website.trim() && !safeUrl(card.website),
 		email: !!card.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(card.email.trim()),
 		phone: !!card.phone_number && !isValidPhone(card.phone_country_code, card.phone_number),
+		links: card.links.filter((l) => l.url.trim() && !safeUrl(l.url)).map((l) => l.id),
 		// Colours too close to scan can't be saved.
 		qr: !!qrContrastIssue(card.qr)?.blocking
 	};
 }
 
 export function hasErrors(e: CardErrors): boolean {
-	return Object.values(e).some(Boolean);
+	return Object.values(e).some((v) => (Array.isArray(v) ? v.length > 0 : v));
 }

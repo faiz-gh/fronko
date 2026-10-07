@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeCard, type CardData } from '$lib/features/cards/card';
 import type { OrgBranding } from '$lib/features/orgs/api';
-import { ACCENT_HEX, renderSignature, signatureDocument, signatureTemplate } from './render';
+import { ACCENT_HEX, darkModeHtml, renderSignature, signatureDocument, signatureTemplate } from './render';
 import { SIGNATURE_TEMPLATE_KEYS } from './templates';
 
 const CARD_URL = 'https://cards.example.com/p/acme/ada';
@@ -142,5 +142,22 @@ describe('signatureDocument', () => {
 		expect(signatureDocument('<p>x</p>', '#000')).toMatch(
 			/^<!doctype html>.*background:#000;"><p>x<\/p><\/body><\/html>$/
 		);
+	});
+});
+
+describe('darkModeHtml', () => {
+	it('lightens dark text in every template', () => {
+		for (const template of SIGNATURE_TEMPLATE_KEYS) {
+			const { html } = renderSignature(card({ accent: 'slate' }), CARD_URL, null, { template });
+			const dark = darkModeHtml(html);
+			for (const hex of ['#1f2937', '#6b7280', `color:${ACCENT_HEX.slate}`]) {
+				expect(dark).not.toContain(hex);
+			}
+		}
+	});
+
+	it('leaves backgrounds alone', () => {
+		const html = '<td bgcolor="#334155" style="background:#334155;"><a style="color:#ffffff;">x</a></td>';
+		expect(darkModeHtml(html)).toBe(html);
 	});
 });

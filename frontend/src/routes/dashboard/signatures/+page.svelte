@@ -25,7 +25,13 @@
 	import { downloadBlob, normalizeCard, publicUrl, type CardData } from '$lib/features/cards/card';
 	import { session } from '$lib/core/session.svelte';
 	import { cards } from '$lib/features/cards/store.svelte';
-	import { measureImage, renderSignature, signatureDocument, type ImageSize } from '$lib/features/signatures/render';
+	import {
+		darkModeHtml,
+		measureImage,
+		renderSignature,
+		signatureDocument,
+		type ImageSize
+	} from '$lib/features/signatures/render';
 	import {
 		SIGNATURE_TEMPLATES,
 		SIGNATURE_TEMPLATE_KEYS,
@@ -284,13 +290,15 @@
 								sandbox="allow-popups allow-same-origin"
 								class="block min-h-32 w-full"
 								onload={(e) => fitFrame(e.currentTarget as HTMLIFrameElement)}
-								srcdoc={signatureDocument(rendered.html, darkPreview ? '#171717' : '#ffffff')}
+								srcdoc={darkPreview
+									? signatureDocument(darkModeHtml(rendered.html), '#171717')
+									: signatureDocument(rendered.html)}
 							></iframe>
 						</div>
 						{#if darkPreview}
 							<p class="text-muted-foreground text-xs">
-								Mail apps in dark mode usually lighten dark text automatically; logos with a transparent background are
-								shown as-is.
+								Dark text is lightened here, as mail apps in dark mode usually do; logos with a transparent background
+								are shown as-is.
 							</p>
 						{/if}
 						<div class="flex flex-wrap gap-2">
@@ -312,7 +320,15 @@
 							</Button>
 						</div>
 						{#if dirty}
-							<p class="text-muted-foreground text-xs">Save your changes to copy the signature.</p>
+							<p class="text-muted-foreground text-xs">
+								Save your changes to copy the signature.
+								<button
+									type="button"
+									class="text-foreground font-medium underline underline-offset-4"
+									onclick={save}
+									disabled={saving}>Save now</button
+								>
+							</p>
 						{/if}
 					</section>
 
@@ -334,6 +350,8 @@
 									type="button"
 									role="radio"
 									aria-checked={active}
+									aria-labelledby="template-{key}-label"
+									aria-describedby="template-{key}-description"
 									disabled={locked}
 									onclick={() => settings && (settings.template = key)}
 									class={cn(
@@ -352,11 +370,11 @@
 										</span>
 									</span>
 									<span class="flex flex-col gap-0.5 px-1 pb-1">
-										<span class="flex items-center gap-1.5 text-sm font-medium">
+										<span id="template-{key}-label" class="flex items-center gap-1.5 text-sm font-medium">
 											{SIGNATURE_TEMPLATES[key].label}
 											{#if active}<CheckIcon class="size-3.5" />{/if}
 										</span>
-										<span class="text-muted-foreground text-xs leading-snug"
+										<span id="template-{key}-description" class="text-muted-foreground text-xs leading-snug"
 											>{SIGNATURE_TEMPLATES[key].description}</span
 										>
 									</span>
@@ -404,16 +422,6 @@
 									.join(' and ')} to every signature.
 							</p>
 						{/if}
-						{#if dirty}
-							<div class="flex gap-2">
-								<Button onclick={save} disabled={saving}>
-									{#if saving}<Spinner data-icon="inline-start" />{/if}
-									Save signature
-								</Button>
-								<Button variant="ghost" onclick={() => (settings = JSON.parse(saved))} disabled={saving}>Discard</Button
-								>
-							</div>
-						{/if}
 					</section>
 
 					<!-- Install -->
@@ -434,6 +442,24 @@
 							{/each}
 						</Tabs.Root>
 					</section>
+
+					{#if dirty}
+						<!-- Stays in view while choosing a template or what to include, like the card editor's. -->
+						<div
+							class="bg-card/95 sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 shadow-lg backdrop-blur"
+							role="status"
+						>
+							<p class="text-sm font-medium">Unsaved changes</p>
+							<div class="flex items-center gap-2">
+								<Button variant="ghost" onclick={() => (settings = JSON.parse(saved))} disabled={saving}>Discard</Button
+								>
+								<Button onclick={save} disabled={saving}>
+									{#if saving}<Spinner data-icon="inline-start" />{/if}
+									Save signature
+								</Button>
+							</div>
+						</div>
+					{/if}
 				</div>
 			{/if}
 		</div>

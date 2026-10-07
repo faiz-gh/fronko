@@ -18,4 +18,5 @@ func (h *LeadHandler) Routes(r *app.Routes) {
 
 	r.User("GET /api/me/profiles/{id}/leads", h.GetLeads)
 	r.User("GET /api/me/leads", h.ListLeads)
+	r.Admin("DELETE /api/me/leads/{id}", h.DeleteLead)
 }

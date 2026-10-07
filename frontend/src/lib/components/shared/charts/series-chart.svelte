@@ -55,14 +55,21 @@
 	const linePath = (values: number[]) =>
 		values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
 
-	// A few evenly spaced date labels, always including both ends.
+	// Date labels a whole number of days apart and at least LABEL_GAP px apart,
+	// always including both ends. Rounding an uneven spacing could put two
+	// neighbouring days side by side, so the step is fixed and the label just
+	// before the last one is dropped when it would crowd it.
+	const LABEL_GAP = 70;
 	const labelIdx = $derived.by(() => {
 		const n = dates.length;
-		if (n === 0) return [];
-		const slots = Math.max(2, Math.min(n, Math.floor(innerW / 70)));
-		const idx = new Set<number>();
-		for (let k = 0; k < slots; k++) idx.add(Math.round((k * (n - 1)) / Math.max(1, slots - 1)));
-		return [...idx];
+		if (n <= 1) return n ? [0] : [];
+		const perDay = innerW / (n - 1);
+		const step = Math.max(1, Math.ceil(LABEL_GAP / Math.max(perDay, 1)));
+		const idx: number[] = [];
+		for (let i = 0; i < n - 1; i += step) idx.push(i);
+		while (idx.length > 1 && n - 1 - idx[idx.length - 1] < step) idx.pop();
+		idx.push(n - 1);
+		return idx;
 	});
 
 	function onmove(e: PointerEvent) {

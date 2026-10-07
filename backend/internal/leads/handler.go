@@ -262,6 +262,25 @@ func (h *LeadHandler) ListLeads(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, LeadPage{Leads: leads, Total: total, Page: page, PageSize: pageSize})
 }
 
+// Admin: DELETE /api/me/leads/{id}
+func (h *LeadHandler) DeleteLead(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id < 1 {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid lead ID")
+		return
+	}
+	if err := h.store.DeleteLead(r.Context(), id, auth.PrincipalFrom(r.Context()).OrgID); err != nil {
+		if errors.Is(err, database.ErrNotFound) {
+			httpx.WriteError(w, http.StatusNotFound, "lead not found")
+			return
+		}
+		log.Printf("delete lead: %v", err)
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to delete lead")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func profileIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {

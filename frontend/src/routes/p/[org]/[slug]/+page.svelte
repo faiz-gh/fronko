@@ -4,9 +4,6 @@
 	import { onDestroy, tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
-	import Share2Icon from '@lucide/svelte/icons/share-2';
-	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
-	import SendIcon from '@lucide/svelte/icons/send';
 	import { getPublicProfile, type PublicProfile } from '$lib/features/cards/api';
 	import { submitLead } from '$lib/features/leads/api';
 	import { ApiError } from '$lib/core/api';
@@ -19,6 +16,7 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import ProfileCard from '$lib/features/cards/components/profile-card.svelte';
+	import VisitorActions from '$lib/features/cards/components/visitor-actions.svelte';
 	import PhoneInput from '$lib/components/shared/phone-input.svelte';
 	import { ACCENTS, normalizeCard, publicUrl, vcardUrl, type CardData, type TapSource } from '$lib/features/cards/card';
 	import { createTracker, visitSource } from '$lib/features/analytics/track';
@@ -46,6 +44,9 @@
 		loadError = '';
 		try {
 			profile = await getPublicProfile(org, slug);
+			// Visitors are usually in the card holder's country, so the lead form's
+			// phone starts there; without one it falls back to the browser's region.
+			leadCountry ||= normalizeCard(profile.data).phone_country;
 			await tick();
 			tracker.start();
 			runTapAction(normalizeCard(profile.data));
@@ -142,13 +143,15 @@
 	async function share() {
 		tracker.track({ type: 'share' });
 		const url = publicUrl(org, slug);
-		if (navigator.share) {
+		const data = { title: card?.name || slug, url };
+		if (navigator.share && (!navigator.canShare || navigator.canShare(data))) {
 			try {
-				await navigator.share({ title: card?.name || slug, url });
-			} catch {
-				// User dismissed the share sheet.
+				await navigator.share(data);
+				return;
+			} catch (e) {
+				// Dismissing the share sheet is fine; any other failure copies the link instead.
+				if (e instanceof DOMException && e.name === 'AbortError') return;
 			}
-			return;
 		}
 		try {
 			await navigator.clipboard.writeText(url);
@@ -208,36 +211,13 @@
 			{:else}
 				<ProfileCard {card} slug={profile.slug} {files} org={profile.org} booking={profile.booking} {visitor}>
 					{#snippet actions()}
-						<Button
-							size="lg"
-							class={cn(
-								'h-11 w-full text-white transition-shadow hover:opacity-90',
-								highlightSave && 'ring-offset-card animate-pulse ring-2 ring-(--card-accent) ring-offset-2'
-							)}
-							style="background: var(--card-accent)"
-							href={vcardUrl(org, slug, visit)}
-						>
-							<UserPlusIcon data-icon="inline-start" />
-							Save contact
-						</Button>
-						<div class="flex gap-2">
-							{#if card.collect_leads}
-								<Button size="lg" variant="outline" class="h-11 flex-1" onclick={openForm}>
-									<SendIcon data-icon="inline-start" />
-									Share your contact
-								</Button>
-							{/if}
-							<Button
-								size="lg"
-								variant="outline"
-								class={cn('h-11', card.collect_leads ? 'px-3.5' : 'flex-1')}
-								onclick={share}
-								aria-label="Share this card"
-							>
-								<Share2Icon data-icon={card.collect_leads ? undefined : 'inline-start'} />
-								{#if !card.collect_leads}Share{/if}
-							</Button>
-						</div>
+						<VisitorActions
+							card={card!}
+							saveHref={vcardUrl(org, slug, visit)}
+							{highlightSave}
+							onOpenForm={openForm}
+							onShare={share}
+						/>
 					{/snippet}
 				</ProfileCard>
 			{/if}

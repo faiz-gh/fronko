@@ -46,7 +46,7 @@
 	// People grouped by team. Someone in several teams shows under each; people
 	// in no team come last. Without teams it's one plain list.
 	const groups = $derived.by(() => {
-		const people = orgUsers.assignable;
+		const people = orgUsers.people;
 		const list = teams.list ?? [];
 		if (list.length === 0)
 			return [{ key: 'all', label: '', color: '', people: people.map((u) => ({ user: u, lead: false })) }];

@@ -86,9 +86,9 @@
 			</Field.Content>
 			<Switch id="collect" bind:checked={card.collect_leads} />
 		</Field.Field>
-		{#each [['nfc', 'NFC tap', 'This is the link on your NFC card.'], ['qr', 'QR code scan', 'Your QR code already points here.']] as const as [via, label, hint] (via)}
+		{#each [['nfc', 'When someone taps your NFC card', 'NFC tap', 'This is the link on your NFC card.'], ['qr', 'When someone scans your QR code', 'QR code scan', 'Your QR code already points here.']] as const as [via, label, name, hint] (via)}
 			<Field.Field>
-				<Field.Label id="tap-{via}-label">When someone uses your {label}</Field.Label>
+				<Field.Label id="tap-{via}-label">{label}</Field.Label>
 				<div class="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-labelledby="tap-{via}-label">
 					{#each Object.entries(TAP_ACTIONS) as [action, info] (action)}
 						{@const unavailable = action === 'lead_form' && !card.collect_leads}
@@ -117,7 +117,7 @@
 					<code class="bg-muted text-muted-foreground min-w-0 flex-1 truncate rounded-lg px-3 py-2 font-mono text-xs">
 						{tapUrl(session.orgHandle, savedSlug, via)}
 					</code>
-					<Button variant="outline" size="icon" onclick={() => copyTapUrl(via)} aria-label="Copy {label} link">
+					<Button variant="outline" size="icon" onclick={() => copyTapUrl(via)} aria-label="Copy {name} link">
 						<CopyIcon />
 					</Button>
 					<Button

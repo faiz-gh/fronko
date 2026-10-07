@@ -271,13 +271,23 @@
 			<Field.Field data-invalid={colorInvalid || undefined} class="sm:max-w-sm">
 				<Field.Label for="brand-color">Brand colour</Field.Label>
 				<div class="flex items-center gap-2">
-					<input
-						type="color"
-						aria-label="Pick brand colour"
-						class="size-9 shrink-0 cursor-pointer rounded-lg border bg-transparent p-1"
-						value={colorInvalid || !draft.signature.brand_color ? '#4f46e5' : draft.signature.brand_color}
-						oninput={(e) => draft && (draft.signature.brand_color = e.currentTarget.value)}
-					/>
+					<span class="relative size-9 shrink-0">
+						<input
+							type="color"
+							aria-label="Pick brand colour"
+							class="size-9 cursor-pointer rounded-lg border bg-transparent p-1"
+							value={colorInvalid || !draft.signature.brand_color ? '#4f46e5' : draft.signature.brand_color}
+							oninput={(e) => draft && (draft.signature.brand_color = e.currentTarget.value)}
+						/>
+						{#if colorInvalid || !draft.signature.brand_color}
+							<!-- No colour set: an empty, struck-through swatch instead of the picker's starting colour. -->
+							<span
+								class="bg-background pointer-events-none absolute inset-1 rounded-md border border-dashed"
+								style="background-image: linear-gradient(to top right, transparent calc(50% - 0.75px), var(--muted-foreground) calc(50% - 0.75px), var(--muted-foreground) calc(50% + 0.75px), transparent calc(50% + 0.75px))"
+								aria-hidden="true"
+							></span>
+						{/if}
+					</span>
 					<Input
 						id="brand-color"
 						class="font-mono"
