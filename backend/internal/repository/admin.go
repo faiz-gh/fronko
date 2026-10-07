@@ -65,7 +65,7 @@ func (r *Repository) TouchAdminLogin(ctx context.Context, adminID int64) error {
 // It deliberately never selects card data, leads, file names or member details:
 // the owner's email is the only personal data in it.
 const orgUsageQuery = `
-	SELECT o.org_id, o.name, o.created_at, ow.email AS owner_email, o.suspended_at, o.suspended_reason,
+	SELECT o.org_id, o.name, o.handle, o.created_at, ow.email AS owner_email, o.suspended_at, o.suspended_reason,
 	       u.user_count, u.admin_count, u.member_count, u.suspended_user_count,
 	       c.card_count, l.lead_count, f.file_count, f.storage_used_bytes,
 	       s.user_id IS NOT NULL AS storage_connected,
@@ -97,7 +97,7 @@ const orgUsageQuery = `
 		SELECT COALESCE(jsonb_object_agg(purpose, n), '{}') AS files_by_purpose
 		FROM (SELECT purpose, COUNT(*) AS n FROM files WHERE org_id = o.org_id GROUP BY purpose) p) fp`
 
-const orgUsageColumns = `org_id, name, created_at, owner_email, suspended_at, suspended_reason,
+const orgUsageColumns = `org_id, name, handle, created_at, owner_email, suspended_at, suspended_reason,
 	user_count, admin_count, member_count, suspended_user_count,
 	card_count, lead_count, file_count, storage_used_bytes,
 	storage_connected, storage_verified, storage_provider, default_quota_bytes, last_active_at, team_count,
@@ -106,7 +106,7 @@ const orgUsageColumns = `org_id, name, created_at, owner_email, suspended_at, su
 func scanOrgUsage(row pgx.Row) (*models.OrgUsage, error) {
 	var o models.OrgUsage
 	var byPurpose []byte
-	err := row.Scan(&o.ID, &o.Name, &o.CreatedAt, &o.OwnerEmail, &o.SuspendedAt, &o.SuspendedReason,
+	err := row.Scan(&o.ID, &o.Name, &o.Handle, &o.CreatedAt, &o.OwnerEmail, &o.SuspendedAt, &o.SuspendedReason,
 		&o.UserCount, &o.AdminCount, &o.MemberCount, &o.SuspendedUserCount,
 		&o.CardCount, &o.LeadCount, &o.FileCount, &o.StorageUsedBytes,
 		&o.StorageConnected, &o.StorageVerified, &o.StorageProvider, &o.DefaultQuotaBytes, &o.LastActiveAt,

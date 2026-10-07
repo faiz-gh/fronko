@@ -7,7 +7,7 @@
 	import Share2Icon from '@lucide/svelte/icons/share-2';
 	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
 	import SendIcon from '@lucide/svelte/icons/send';
-	import { getProfileBySlug, type PublicProfile } from '$lib/api/profile';
+	import { getPublicProfile, type PublicProfile } from '$lib/api/profile';
 	import { submitLead } from '$lib/api/lead';
 	import { ApiError } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
@@ -25,10 +25,11 @@
 	import { isValidPhone } from '$lib/phone';
 	import { cn } from '$lib/utils';
 
+	const org = page.params.org ?? '';
 	const slug = page.params.slug ?? '';
 	// Read before runTapAction strips it from the address bar.
 	const via = page.url.searchParams.get('via');
-	const tracker = createTracker(slug, visitSource(via));
+	const tracker = createTracker(org, slug, visitSource(via));
 	const visit = { via: tracker.source, session: tracker.session };
 	onDestroy(() => tracker.stop());
 
@@ -44,7 +45,7 @@
 	async function load() {
 		loadError = '';
 		try {
-			profile = await getProfileBySlug(slug);
+			profile = await getPublicProfile(org, slug);
 			await tick();
 			tracker.start();
 			runTapAction(normalizeCard(profile.data));
@@ -72,7 +73,7 @@
 		if (action === 'save_contact') {
 			// Navigating to a text/vcard response opens the phone's "Add contact"
 			// sheet and leaves this page in place behind it.
-			location.href = vcardUrl(slug, visit);
+			location.href = vcardUrl(org, slug, visit);
 			// If the browser ignored it, the button is right there.
 			highlightSave = true;
 			setTimeout(() => (highlightSave = false), 2400);
@@ -137,7 +138,7 @@
 
 	async function share() {
 		tracker.track({ type: 'share' });
-		const url = publicUrl(slug);
+		const url = publicUrl(org, slug);
 		if (navigator.share) {
 			try {
 				await navigator.share({ title: card?.name || slug, url });
@@ -186,7 +187,7 @@
 					<Empty.Header>
 						<Empty.Title>{notFound ? 'Card not found' : "Couldn't load this card"}</Empty.Title>
 						<Empty.Description>
-							{notFound ? `There's no card at /p/${slug}. Check the link and try again.` : loadError}
+							{notFound ? `There's no card at /p/${org}/${slug}. Check the link and try again.` : loadError}
 						</Empty.Description>
 					</Empty.Header>
 					<Empty.Content>
@@ -209,7 +210,7 @@
 								highlightSave && 'ring-offset-card animate-pulse ring-2 ring-(--card-accent) ring-offset-2'
 							)}
 							style="background: var(--card-accent)"
-							href={vcardUrl(slug, visit)}
+							href={vcardUrl(org, slug, visit)}
 						>
 							<UserPlusIcon data-icon="inline-start" />
 							Save contact

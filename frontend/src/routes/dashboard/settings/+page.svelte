@@ -30,7 +30,8 @@
 	import QuotaInput from '$lib/components/app/quota-input.svelte';
 	import StorageMeter from '$lib/components/app/storage-meter.svelte';
 	import StorageProviderIcon from '$lib/components/app/storage-provider-icon.svelte';
-	import { getOrganization, ROLE_LABEL, updateOrganization, type Organization } from '$lib/api/org';
+	import { getOrganization, ROLE_LABEL, updateOrganization, updateOrgHandle, type Organization } from '$lib/api/org';
+	import { SLUG_PATTERN } from '$lib/card/card';
 	import { plural, timeAgo } from '$lib/format';
 	import { session } from '$lib/session.svelte';
 	import { storage } from '$lib/storage.svelte';
@@ -118,6 +119,7 @@
 			.then((o) => {
 				org = o;
 				orgName = o.name;
+				handle = o.handle;
 				defaultQuota = o.default_quota_bytes;
 			})
 			.catch(() => {});
@@ -138,6 +140,29 @@
 			toast.error(e instanceof Error ? e.message : 'Failed to save');
 		} finally {
 			savingOrg = false;
+		}
+	}
+
+	// Card link handle: every card's link is /p/{handle}/{slug}. It's printed on
+	// QR codes and written to NFC cards, so changing it takes a confirmation.
+	let handle = $state('');
+	let savingHandle = $state(false);
+	let confirmHandle = $state(false);
+	const handleInvalid = $derived(handle.length < 3 || handle.length > 32 || !SLUG_PATTERN.test(handle));
+	const handleChanged = $derived(!!org && handle !== org.handle);
+	async function saveHandle() {
+		if (!handleChanged || handleInvalid) return;
+		savingHandle = true;
+		try {
+			org = await updateOrgHandle(handle);
+			handle = org.handle;
+			session.orgHandle = org.handle;
+			confirmHandle = false;
+			toast.success('Card link handle changed');
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Failed to save');
+		} finally {
+			savingHandle = false;
 		}
 	}
 
@@ -440,6 +465,62 @@
 						</form>
 					{/if}
 				</FormSection>
+				<FormSection
+					id="card-links"
+					title="Card links"
+					description="Every card's link starts with this handle, so card names only have to be unique inside {session.orgName}."
+				>
+					{#if !org}
+						<Skeleton class="h-16 rounded-xl" />
+					{:else}
+						<form
+							onsubmit={(e) => {
+								e.preventDefault();
+								if (handleChanged && !handleInvalid) confirmHandle = true;
+							}}
+							class="flex flex-col gap-6"
+						>
+							<Field.Field data-invalid={(handleChanged && handleInvalid) || undefined} class="sm:max-w-md">
+								<Field.Label for="org-handle">Handle</Field.Label>
+								<div class="flex items-stretch">
+									<span
+										class="text-muted-foreground bg-muted flex items-center rounded-l-lg border border-r-0 px-3 font-mono text-xs"
+									>
+										<span class="max-sm:hidden">{location.host}</span>/p/
+									</span>
+									<Input
+										id="org-handle"
+										class="rounded-l-none font-mono"
+										value={handle}
+										oninput={(e) => (handle = e.currentTarget.value.toLowerCase())}
+										maxlength={32}
+										aria-invalid={(handleChanged && handleInvalid) || undefined}
+										disabled={savingHandle}
+										required
+									/>
+								</div>
+								{#if handleChanged && handleInvalid}
+									<Field.Error>3–32 characters: lowercase letters, numbers and hyphens.</Field.Error>
+								{:else if handleChanged}
+									<Field.Description class="text-amber-700 dark:text-amber-400">
+										Changing this breaks every card link already shared, on QR codes, NFC cards and email signatures.
+										The old handle is released, so another organisation could take it.
+									</Field.Description>
+								{:else}
+									<Field.Description>
+										Cards look like <span class="font-mono">/p/{org.handle}/jane-doe</span>. Treat it as permanent once
+										cards are printed or NFC cards are written.
+									</Field.Description>
+								{/if}
+							</Field.Field>
+							<div>
+								<Button type="submit" variant="outline" disabled={!handleChanged || handleInvalid || savingHandle}>
+									Change handle
+								</Button>
+							</div>
+						</form>
+					{/if}
+				</FormSection>
 			</Tabs.Content>
 			<Tabs.Content value="branding">
 				<FormSection
@@ -634,6 +715,26 @@
 		</Tabs.Content>
 	</Tabs.Root>
 </div>
+
+<AlertDialog.Root bind:open={confirmHandle}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>Change every card link?</AlertDialog.Title>
+			<AlertDialog.Description>
+				Links move from <span class="font-mono">/p/{org?.handle}/…</span> to <span class="font-mono">/p/{handle}/…</span>. QR
+				codes, NFC cards and email signatures that use the old links stop working until they're replaced, and
+				<span class="font-mono">{org?.handle}</span> becomes free for anyone to take.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel disabled={savingHandle}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action variant="destructive" onclick={saveHandle} disabled={savingHandle}>
+				{#if savingHandle}<Spinner data-icon="inline-start" />{/if}
+				Change handle
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
 
 <AlertDialog.Root bind:open={confirmDisconnect}>
 	<AlertDialog.Content>

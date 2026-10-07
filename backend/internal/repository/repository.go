@@ -111,15 +111,96 @@ func createUser(ctx context.Context, q querier, user *models.User) error {
 }
 
 // CreateOrgWithOwner registers a new organisation named orgName with user as
-// its owner, in one transaction. It fills in user.OrgID and user.Role.
+// its owner, in one transaction. It fills in user.OrgID and user.Role. The
+// organisation's link handle is made from its name (or the username), with a
+// number added when that one is taken.
 func (r *Repository) CreateOrgWithOwner(ctx context.Context, orgName string, user *models.User) error {
-	return pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `INSERT INTO organizations (name) VALUES ($1) RETURNING org_id`, orgName).Scan(&user.OrgID); err != nil {
-			return mapError(err)
+	base := HandleFromName(orgName)
+	if base == "" {
+		base = HandleFromName(user.Username)
+	}
+	if base == "" {
+		base = "org"
+	}
+	var err error
+	// The free-handle check and the insert can race another registration; the
+	// unique index catches that, and the next attempt picks another number.
+	for attempt := 0; attempt < 5; attempt++ {
+		err = pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+			handle, err := freeHandle(ctx, tx, base)
+			if err != nil {
+				return err
+			}
+			if err := tx.QueryRow(ctx, `INSERT INTO organizations (name, handle) VALUES ($1, $2) RETURNING org_id`,
+				orgName, handle).Scan(&user.OrgID); err != nil {
+				return mapError(err)
+			}
+			user.Role = models.RoleOwner
+			return createUser(ctx, tx, user)
+		})
+		if !isConstraint(err, "organizations_handle_lower_idx") {
+			return err
 		}
-		user.Role = models.RoleOwner
-		return createUser(ctx, tx, user)
-	})
+	}
+	return err
+}
+
+const (
+	MinHandleLen = 3
+	MaxHandleLen = 32
+)
+
+// HandleFromName turns a name into a link handle: lowercase letters and
+// digits, with single hyphens between words. It returns "" when too little
+// of the name is usable.
+func HandleFromName(name string) string {
+	var b strings.Builder
+	hyphen := false
+	for _, c := range strings.ToLower(name) {
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') {
+			if hyphen && b.Len() > 0 {
+				b.WriteByte('-')
+			}
+			hyphen = false
+			b.WriteRune(c)
+		} else {
+			hyphen = true
+		}
+	}
+	h := b.String()
+	if len(h) > MaxHandleLen {
+		h = strings.TrimRight(h[:MaxHandleLen], "-")
+	}
+	if len(h) < MinHandleLen {
+		return ""
+	}
+	return h
+}
+
+// freeHandle returns base, or base-2, base-3… for the first one no
+// organisation uses.
+func freeHandle(ctx context.Context, q querier, base string) (string, error) {
+	for n := 1; ; n++ {
+		handle := base
+		if n > 1 {
+			suffix := fmt.Sprintf("-%d", n)
+			handle = strings.TrimRight(base[:min(len(base), MaxHandleLen-len(suffix))], "-") + suffix
+		}
+		var taken bool
+		if err := q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM organizations WHERE LOWER(handle) = LOWER($1))`,
+			handle).Scan(&taken); err != nil {
+			return "", err
+		}
+		if !taken {
+			return handle, nil
+		}
+	}
+}
+
+// isConstraint reports whether err is a unique violation of the named index.
+func isConstraint(err error, name string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.ConstraintName == name
 }
 
 // IsEmailConflict reports whether a CreateUser/SetUserEmail error came from
@@ -389,14 +470,16 @@ func scanProfile(row pgx.Row) (*models.Profile, error) {
 	return &p, nil
 }
 
-func (r *Repository) GetProfileBySlug(ctx context.Context, slug string) (*models.Profile, error) {
+// GetProfileByPath finds a card by its link, /p/{handle}/{slug}: the
+// organisation's handle and the card's slug, both case-insensitive.
+func (r *Repository) GetProfileByPath(ctx context.Context, handle, slug string) (*models.Profile, error) {
 	query := `SELECT p.profile_id, p.org_id, p.user_id, p.assigned_user_id, p.slug, p.data, p.created_at, p.updated_at,
-		       o.suspended_at IS NOT NULL
+		       o.handle, o.suspended_at IS NOT NULL
 		FROM profiles p JOIN organizations o ON o.org_id = p.org_id
-		WHERE LOWER(p.slug) = LOWER($1)`
+		WHERE LOWER(o.handle) = LOWER($1) AND LOWER(p.slug) = LOWER($2)`
 	var p models.Profile
-	err := r.db.QueryRow(ctx, query, slug).Scan(
-		&p.ID, &p.OrgID, &p.UserID, &p.AssignedUserID, &p.Slug, &p.Data, &p.CreatedAt, &p.UpdatedAt, &p.OrgSuspended,
+	err := r.db.QueryRow(ctx, query, handle, slug).Scan(
+		&p.ID, &p.OrgID, &p.UserID, &p.AssignedUserID, &p.Slug, &p.Data, &p.CreatedAt, &p.UpdatedAt, &p.OrgHandle, &p.OrgSuspended,
 	)
 	if err != nil {
 		return nil, mapError(err)

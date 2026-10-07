@@ -154,10 +154,10 @@ func run() error {
 	mux.HandleFunc("POST /auth/password/forgot", authLimiter.Limit(authHandler.ForgotPassword))
 	mux.HandleFunc("POST /auth/password/reset", authLimiter.Limit(authHandler.ResetPassword))
 	mux.HandleFunc("POST /auth/logout", authHandler.Logout)
-	mux.HandleFunc("GET /api/profiles/{slug}", profileHandler.GetProfileBySlug)
-	mux.HandleFunc("GET /api/profiles/{slug}/vcard", profileHandler.VCard)
+	mux.HandleFunc("GET /api/profiles/{org}/{slug}", profileHandler.GetPublicProfile)
+	mux.HandleFunc("GET /api/profiles/{org}/{slug}/vcard", profileHandler.VCard)
 	mux.HandleFunc("POST /api/profiles/{id}/leads", leadLimiter.Limit(leadHandler.SubmitLead))
-	mux.HandleFunc("POST /api/profiles/{slug}/events", eventLimiter.Limit(analyticsHandler.Collect))
+	mux.HandleFunc("POST /api/profiles/{org}/{slug}/events", eventLimiter.Limit(analyticsHandler.Collect))
 	mux.HandleFunc("GET /api/files/{id}", fileHandler.Serve)
 
 	// Signed-in routes that still work before the email is verified, so the
@@ -211,6 +211,7 @@ func run() error {
 
 	protected.HandleFunc("GET /api/org", admin(orgHandler.Get))
 	protected.HandleFunc("PUT /api/org", owner(orgHandler.Update))
+	protected.HandleFunc("PUT /api/org/handle", admin(orgHandler.UpdateHandle))
 	protected.HandleFunc("GET /api/org/branding", orgHandler.GetBranding)
 	protected.HandleFunc("PUT /api/org/branding", admin(orgHandler.UpdateBranding))
 	protected.HandleFunc("GET /api/org/users", admin(orgHandler.ListUsers))

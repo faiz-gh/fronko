@@ -55,7 +55,8 @@ Fronko is an open-source alternative to hosted platforms such as Popl and Mobilo
 
 - **Live-preview card editor.** A section rail lists every part of the card with a one-line summary, so you see the whole card at a glance and edit one section at a time. Edit profile details, contact information (with a country-code phone picker), a booking link (Calendly, Cal.com, Google Calendar and others), social links with brand icons, a cropped photo and cover banner, PDF brochures, an accent colour and a light or dark theme.
 - **Templates and blocks.** Start from a template (Classic, Event tag, Portfolio, Minimal), then reorder, hide or add blocks: headings, text, an image gallery, an event panel with a role ribbon, and dividers. Three header styles: banner, name badge or compact.
-- **Multiple cards.** Each card has its own link, an NFC link and a QR code you can download as SVG or PNG.
+- **Multiple cards.** Each card has its own link, an NFC link and a QR code you can download as SVG or PNG. Links include the organisation's handle (`/p/acme/jane`), so a card name only has to be unique inside your organisation.
+- **Write NFC cards from the dashboard.** On Android, Chrome writes the card's link straight onto the NFC chip. On iPhone and desktop, copy the link for the free NFC Tools app, or scan a QR code to open the writer on an Android phone.
 - **Branded QR codes.** Put the organisation's logo or any image from Files in the middle of a card's QR code, and pick its colours, dot style (square, rounded, dots) and corner style. Error correction goes up automatically when there's an image, and colours that might not scan are flagged (too little contrast can't be saved).
 - **Card analytics.** See how each card is found and used: views split by NFC tap, QR scan or link, unique visitors, which links and quick actions get clicked, how far people scroll, how long they stay, how often each brochure is opened (and by how many people), contact saves, contact forms opened and sent, devices, and the busiest days and hours. Every number is compared with the previous period.
 - **Email signatures.** Turn any card into an email signature from one of five templates (Classic, Corporate, Compact, Bold, Minimal), choose what it includes, then copy it straight into Gmail, Outlook or Apple Mail, or download it as HTML. The HTML is built for mail clients: tables, inline styles and PNG/JPEG images only.
@@ -65,7 +66,7 @@ Fronko is an open-source alternative to hosted platforms such as Popl and Mobilo
 ### For organisations
 
 - **Organisation accounts.** Every sign-up creates an organisation. The owner, and any admins they promote, create accounts for the team. Each new user is emailed their username and a temporary password, then confirms their email and chooses their own password on first sign-in.
-- **Role-based access.** Admins assign cards to people. Each person can edit everything on their cards except the link, and sees only their own cards and the leads those cards collected while assigned to them. Admins see everything and can filter cards and leads by person or team.
+- **Role-based access.** Admins assign cards to people. Each person can edit everything on their cards except the link (and only admins can change the organisation's link handle), and sees only their own cards and the leads those cards collected while assigned to them. Admins see everything and can filter cards and leads by person or team.
 - **Teams.** Group people into teams such as Sales or Finance; one person can be in several. Each team has its own files that everyone in it can use. Team leads look after those files and can see and edit their teammates' cards and leads; creating, deleting and reassigning cards stays with admins.
 - **Team analytics.** Admins compare every team, and team leads their own: people, active cards, views (and per person), engaged visits, saves, leads and visit-to-lead conversion, each with the change from the previous period. A leaderboard ranks people by views, saves or leads, and cards nobody has viewed in 30 days are flagged.
 - **Private by design.** Visitors are never identified: no cookies, no stored IP addresses, only a visitor hash salted with a random value that's replaced and deleted every day. Bots and people signed in to the card's own organisation aren't counted, and events are deleted after 13 months (configurable).
@@ -93,13 +94,13 @@ A tap or scan opens a static public page that loads the card in a single API cal
 
 ```mermaid
 graph TD
-    A[NFC tap / QR scan] -->|opens /p/slug?via=nfc or qr| C{Public card page}
+    A[NFC tap / QR scan] -->|opens /p/org/slug?via=nfc or qr| C{Public card page}
     C -->|card's tap action| T[Show card / save contact / contact form]
     E[Dashboard: card editor] -->|saves card data| D[(PostgreSQL)]
     E -->|uploads photos and PDFs| S[(Organisation's S3 bucket)]
     D -->|card and file metadata| C
     S -->|short-lived signed links| C
-    C -->|Save contact| F[vCard from /api/profiles/slug/vcard]
+    C -->|Save contact| F[vCard from /api/profiles/org/slug/vcard]
     E -->|card + org branding| SIG[Email signature HTML, copied into the mail app]
     C -->|Share your details| G[Lead form]
     C -->|views, clicks, scrolls, beacons| AN[(Card analytics events)]
@@ -240,9 +241,15 @@ Objects are stored as `fronko/<org_id>/<user_id>/<file_id>.<ext>`. Keep the buck
 
 Fronko works with any NFC hardware that can store a URL. Blank NTAG215 or NTAG216 cards are inexpensive and widely available.
 
-1. In the card editor, under **Sharing**, copy the **NFC tap** link, for example `https://cards.example.com/p/jane?via=nfc`. The `?via=nfc` tells the card it was tapped, so it runs the NFC tap action you chose there; you can change that action later without rewriting the tag.
-2. Install an NFC writer app on iOS or Android, such as NFC Tools.
-3. Choose **Write → URL/URI**, paste the link, and hold the phone to the blank card.
+Card links look like `https://cards.example.com/p/acme/jane`: the organisation's handle (set under **Settings → Organisation → Card links**), then the card's slug, which only has to be unique inside the organisation. Both end up on QR codes and NFC chips, so treat them as permanent once cards go out.
+
+The chip holds the card's **NFC link**, `…/p/acme/jane?via=nfc`. The `?via=nfc` marks the visit as an NFC tap for analytics and runs the NFC tap action chosen under **Sharing**; that action can change later without rewriting the chip. Tags are never locked, so they can be rewritten.
+
+- **Android (Chrome):** open **Write to NFC card** (card editor → Sharing, the card's ⋯ menu, or `/dashboard/{id}/nfc`), tap the button and hold the card to the back of the phone. This uses Web NFC, which needs HTTPS.
+- **iPhone, other Android browsers:** the same dialog offers **Copy NFC link** and the steps for the free NFC Tools app (**Write → Add a record → URL/URI**, paste, **Write**, hold the card to the phone).
+- **Desktop:** the dialog also shows a QR code that opens the writer page on a phone.
+
+On metal cards the chip only reads through a small window; slide the card slowly over the back of the phone and hold it still once it's found.
 
 ## Local development
 

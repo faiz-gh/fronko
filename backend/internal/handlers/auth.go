@@ -64,13 +64,15 @@ type AuthRequest struct {
 
 // AuthResponse deliberately omits the token: it's only ever sent as an HttpOnly cookie.
 type AuthResponse struct {
-	ID                 int64   `json:"id"`
-	Username           string  `json:"username"`
-	Email              *string `json:"email"`
-	EmailVerified      bool    `json:"email_verified"`
-	Role               string  `json:"role"`
-	OrgName            string  `json:"org_name"`
-	MustChangePassword bool    `json:"must_change_password"`
+	ID            int64   `json:"id"`
+	Username      string  `json:"username"`
+	Email         *string `json:"email"`
+	EmailVerified bool    `json:"email_verified"`
+	Role          string  `json:"role"`
+	OrgName       string  `json:"org_name"`
+	// OrgHandle is the organisation's part of every card link, /p/{org_handle}/{slug}.
+	OrgHandle          string `json:"org_handle"`
+	MustChangePassword bool   `json:"must_change_password"`
 	// Teams the user is in, with their role in each.
 	Teams []models.TeamRef `json:"teams"`
 }
@@ -83,6 +85,7 @@ func (h *AuthHandler) authResponse(ctx context.Context, u *models.User) AuthResp
 	}
 	if org, err := h.repo.GetOrganization(ctx, u.OrgID); err == nil {
 		res.OrgName = org.Name
+		res.OrgHandle = org.Handle
 	} else {
 		log.Printf("get organization %d: %v", u.OrgID, err)
 	}

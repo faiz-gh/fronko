@@ -22,13 +22,14 @@
 	import ImagesIcon from '@lucide/svelte/icons/images';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import QrCodeIcon from '@lucide/svelte/icons/qr-code';
+	import SmartphoneNfcIcon from '@lucide/svelte/icons/smartphone-nfc';
 	import ArrowUpRightIcon from '@lucide/svelte/icons/arrow-up-right';
 	import SignatureIcon from '@lucide/svelte/icons/signature';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import UploadIcon from '@lucide/svelte/icons/upload';
 	import XIcon from '@lucide/svelte/icons/x';
 	import { ACCEPT, checkUpload, formatBytes, PURPOSES, uploadFile, type LibraryFile, type PublicFile } from '$lib/api/files';
-	import { getMyProfile, getProfileBySlug, updateProfile, type Profile } from '$lib/api/profile';
+	import { getMyProfile, getPublicProfile, updateProfile, type Profile } from '$lib/api/profile';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -57,6 +58,7 @@
 	import QrStyleEditor from '$lib/components/app/qr-style-editor.svelte';
 	import { getAnalyticsSummary, lastDays, type AnalyticsTotals } from '$lib/api/analytics';
 	import QrDialog from '$lib/components/app/qr-dialog.svelte';
+	import NfcDialog from '$lib/components/app/nfc-dialog.svelte';
 	import SectionRail, { type RailItem } from '$lib/components/app/section-rail.svelte';
 	import TemplatePicker from '$lib/components/app/template-picker.svelte';
 	import BlockListEditor from '$lib/components/app/block-list-editor.svelte';
@@ -96,6 +98,7 @@
 	let saving = $state(false);
 	let saveError = $state('');
 	let qrOpen = $state(false);
+	let nfcOpen = $state(false);
 	let previewOpen = $state(false);
 	let previewMode = $state<'card' | 'qr'>('card');
 	let qrMarkup = $state('');
@@ -173,7 +176,7 @@
 			slug = p.slug;
 			snapshot = JSON.stringify({ slug, card });
 			// The public endpoint already resolves the files a card references.
-			getProfileBySlug(p.slug)
+			getPublicProfile(session.orgHandle, p.slug)
 				.then((pub) => {
 					if (id === profileId) for (const f of pub.files) fileMeta[f.id] = f;
 				})
@@ -313,7 +316,7 @@
 				summary:
 					card.qr.image === 'org_logo' ? 'With logo' : card.qr.image === 'custom' ? 'With image' : card.qr.dots === 'square' && card.qr.fg === '#0a0a0a' ? 'Plain' : 'Styled'
 			},
-			{ id: 'sharing', label: 'Sharing', icon: Share2Icon, summary: `/p/${slug}` }
+			{ id: 'sharing', label: 'Sharing', icon: Share2Icon, summary: `/p/${session.orgHandle}/${slug}` }
 		];
 		return items.map((i) => ({ ...i, error: sectionErrors[i.id] }));
 	});
@@ -331,7 +334,7 @@
 	async function copyTapUrl(via: TapSource) {
 		if (!profile) return;
 		try {
-			await navigator.clipboard.writeText(tapUrl(profile.slug, via));
+			await navigator.clipboard.writeText(tapUrl(session.orgHandle, profile.slug, via));
 			toast.success(via === 'nfc' ? 'NFC link copied' : 'QR link copied');
 		} catch {
 			toast.error('Could not copy to clipboard');
@@ -341,7 +344,7 @@
 	async function copyLink() {
 		if (!profile) return;
 		try {
-			await navigator.clipboard.writeText(publicUrl(profile.slug));
+			await navigator.clipboard.writeText(publicUrl(session.orgHandle, profile.slug));
 			toast.success('Link copied');
 		} catch {
 			toast.error('Could not copy to clipboard');
@@ -493,11 +496,11 @@
 						<h1 class="truncate text-lg font-semibold tracking-tight sm:text-xl">{card.name || profile.slug}</h1>
 						<div class="text-muted-foreground flex min-w-0 items-center gap-2 text-xs">
 							<a
-								href="/p/{profile.slug}"
+								href="/p/{session.orgHandle}/{profile.slug}"
 								target="_blank"
 								class="hover:text-foreground flex min-w-0 items-center gap-1 font-mono"
 							>
-								<span class="truncate">/p/{profile.slug}</span>
+								<span class="truncate">/p/{session.orgHandle}/{profile.slug}</span>
 								<ExternalLinkIcon class="size-3 shrink-0" />
 							</a>
 							<span aria-hidden="true">·</span>
@@ -539,7 +542,7 @@
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end" class="w-52">
 							<DropdownMenu.Group>
-								<DropdownMenu.Item onSelect={() => window.open(`/p/${profile!.slug}`, '_blank')}>
+								<DropdownMenu.Item onSelect={() => window.open(`/p/${session.orgHandle}/${profile!.slug}`, '_blank')}>
 									<ExternalLinkIcon />
 									View public page
 								</DropdownMenu.Item>
@@ -550,6 +553,10 @@
 								<DropdownMenu.Item onSelect={() => (qrOpen = true)}>
 									<QrCodeIcon />
 									QR code
+								</DropdownMenu.Item>
+								<DropdownMenu.Item onSelect={() => (nfcOpen = true)}>
+									<SmartphoneNfcIcon />
+									Write to NFC card
 								</DropdownMenu.Item>
 							</DropdownMenu.Group>
 							{#if session.isAdmin}
@@ -1071,7 +1078,7 @@
 								>
 									<QrStyleEditor
 										bind:style={card.qr}
-										url={tapUrl(profile.slug, 'qr')}
+										url={tapUrl(session.orgHandle, profile.slug, 'qr')}
 										orgLogo={branding.value?.logo_file}
 										orgName={branding.value?.name}
 										brandColor={branding.value?.signature?.brand_color}
@@ -1086,13 +1093,14 @@
 											<Field.Label for="slug">Public link</Field.Label>
 											<div class="flex items-stretch">
 												<span
-													class="text-muted-foreground bg-muted flex max-w-[45%] items-center truncate rounded-l-lg border border-r-0 px-3 font-mono text-xs"
+													class="text-muted-foreground bg-muted flex max-w-[70%] shrink-0 items-center rounded-l-lg border border-r-0 px-3 font-mono text-xs"
 												>
-													<span class="max-sm:hidden">{location.host}</span>/p/
+													<span class="hidden min-w-0 truncate 2xl:block">{location.host}</span>
+													<span class="truncate">/p/{session.orgHandle}/</span>
 												</span>
 												<Input
 													id="slug"
-													class="rounded-l-none font-mono read-only:bg-muted/40 read-only:text-muted-foreground"
+													class="min-w-0 rounded-l-none font-mono read-only:bg-muted/40 read-only:text-muted-foreground"
 													value={slug}
 													oninput={(e) => (slug = e.currentTarget.value.toLowerCase())}
 													aria-invalid={slugInvalid || undefined}
@@ -1122,7 +1130,7 @@
 											</Field.Content>
 											<Switch id="collect" bind:checked={card.collect_leads} />
 										</Field.Field>
-										{#each [['nfc', 'NFC tap', 'Write this link to the NFC tag.'], ['qr', 'QR code scan', 'Your QR code already points here.']] as const as [via, label, hint] (via)}
+										{#each [['nfc', 'NFC tap', 'This is the link on your NFC card.'], ['qr', 'QR code scan', 'Your QR code already points here.']] as const as [via, label, hint] (via)}
 											<Field.Field>
 												<Field.Label id="tap-{via}-label">When someone uses your {label}</Field.Label>
 												<div class="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-labelledby="tap-{via}-label">
@@ -1151,12 +1159,12 @@
 												{/if}
 												<div class="flex items-center gap-2">
 													<code class="bg-muted text-muted-foreground min-w-0 flex-1 truncate rounded-lg px-3 py-2 font-mono text-xs">
-														{tapUrl(profile.slug, via)}
+														{tapUrl(session.orgHandle, profile.slug, via)}
 													</code>
 													<Button variant="outline" size="icon" onclick={() => copyTapUrl(via)} aria-label="Copy {label} link">
 														<CopyIcon />
 													</Button>
-													<Button variant="outline" href={tapUrl(profile.slug, via)} target="_blank" title="Try it (uses the saved settings)">
+													<Button variant="outline" href={tapUrl(session.orgHandle, profile.slug, via)} target="_blank" title="Try it (uses the saved settings)">
 														Try it
 														<ExternalLinkIcon data-icon="inline-end" />
 													</Button>
@@ -1164,6 +1172,16 @@
 												<Field.Description>{hint} Changes apply as soon as you save; nothing needs re-writing.</Field.Description>
 											</Field.Field>
 										{/each}
+										<Field.Field orientation="horizontal" class="bg-card rounded-xl border p-4">
+											<Field.Content>
+												<Field.Label>NFC card</Field.Label>
+												<Field.Description>Put this card's NFC link on the chip inside your metal or plastic card.</Field.Description>
+											</Field.Content>
+											<Button variant="outline" onclick={() => (nfcOpen = true)}>
+												<SmartphoneNfcIcon data-icon="inline-start" />
+												Write to NFC card
+											</Button>
+										</Field.Field>
 										<Field.Field orientation="horizontal" class="bg-card rounded-xl border p-4">
 											<Field.Content>
 												<Field.Label>Email signature</Field.Label>
@@ -1237,7 +1255,7 @@
 									</button>
 								{/each}
 							</div>
-							<Button variant="ghost" size="sm" href="/p/{profile.slug}" target="_blank">
+							<Button variant="ghost" size="sm" href="/p/{session.orgHandle}/{profile.slug}" target="_blank">
 								Open
 								<ExternalLinkIcon data-icon="inline-end" />
 							</Button>
@@ -1250,8 +1268,8 @@
 								</div>
 							{:else}
 								<div class="my-auto flex w-full max-w-[300px] flex-col items-center gap-4">
-									<QrCode url={tapUrl(profile.slug, 'qr')} style={card.qr} bind:svg={qrMarkup} class="w-full" />
-									<p class="text-muted-foreground max-w-full truncate font-mono text-xs">{tapUrl(profile.slug, 'qr')}</p>
+									<QrCode url={tapUrl(session.orgHandle, profile.slug, 'qr')} style={card.qr} bind:svg={qrMarkup} class="w-full" />
+									<p class="text-muted-foreground max-w-full truncate font-mono text-xs">{tapUrl(session.orgHandle, profile.slug, 'qr')}</p>
 									<div class="grid w-full grid-cols-2 gap-2">
 										<Button variant="outline" onclick={() => downloadQrSvg(qrMarkup, profile!.slug)} disabled={!qrMarkup}>
 											<DownloadIcon data-icon="inline-start" />
@@ -1284,6 +1302,7 @@
 
 	<!-- Uses the saved slug: an unsaved edit isn't live yet, so its QR wouldn't resolve. -->
 	<QrDialog bind:open={qrOpen} slug={profile.slug} name={card.name} style={card.qr} />
+	<NfcDialog bind:open={nfcOpen} profileId={profile.id} slug={profile.slug} name={card.name} />
 	<DeleteCardDialog bind:target={deleteTarget} ondeleted={onDeleted} />
 	<FilePickerDialog
 		bind:open={photoPickerOpen}

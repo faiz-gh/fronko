@@ -96,6 +96,34 @@ func (h *OrgHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, org)
 }
 
+// Protected (admins): PUT /api/org/handle {"handle"}. Changes the
+// organisation's part of every card link. Links already printed on QR codes
+// or written to NFC cards stop working, so the dashboard warns first.
+func (h *OrgHandler) UpdateHandle(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Handle string `json:"handle"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	handle := strings.ToLower(strings.TrimSpace(req.Handle))
+	if !validHandle(handle) {
+		writeError(w, http.StatusBadRequest, "handle must be 3-32 characters: lowercase letters, numbers and hyphens")
+		return
+	}
+	orgID := middleware.PrincipalFrom(r.Context()).OrgID
+	if err := h.repo.SetOrgHandle(r.Context(), orgID, handle); err != nil {
+		if errors.Is(err, repository.ErrConflict) {
+			writeError(w, http.StatusConflict, "another organisation already uses that handle")
+			return
+		}
+		log.Printf("set org handle: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.Get(w, r)
+}
+
 // Protected (admins): GET /api/org/users
 func (h *OrgHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := h.repo.ListOrgUsers(r.Context(), middleware.PrincipalFrom(r.Context()).OrgID)

@@ -56,6 +56,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `GET`    | [`/api/me/analytics/activity`](#get-apimeanalyticsactivity) | ✅ | | Latest visits, saves, sent forms and brochure opens |
 | `GET`    | [`/api/org`](#get-apiorg) | 🛡️ | | The organisation |
 | `PUT`    | [`/api/org`](#put-apiorg) | 👑 | | Rename it, set the default storage limit |
+| `PUT`    | [`/api/org/handle`](#put-apiorghandle) | 🛡️ | | Change the handle in every card link |
 | `GET`    | [`/api/org/branding`](#get-apiorgbranding) | ✅ | | Logo, logo policy and email signature settings |
 | `PUT`    | [`/api/org/branding`](#put-apiorgbranding) | 🛡️ | | Set the logo, logo policy and signature settings |
 | `GET`    | [`/api/org/users`](#get-apiorgusers) | 🛡️ | | Everyone in the organisation, with totals |
@@ -90,11 +91,11 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `PATCH`  | [`/api/admin/feedback/{id}`](#patch-apiadminfeedbackid) | 🖥️ | | Set the status |
 | `POST`   | [`/api/admin/feedback/{id}/replies`](#post-apiadminfeedbackidreplies) | 🖥️ | | Email a reply to the sender |
 | `GET`    | [`/api/admin/audit`](#get-apiadminaudit) | 🖥️ | | What platform admins did, newest first |
-| `GET`    | [`/api/profiles/{slug}`](#get-apiprofilesslug) | | | Public profile by slug |
-| `GET`    | [`/api/profiles/{slug}/vcard`](#get-apiprofilesslugvcard) | | | The card as a contact file (`.vcf`) |
+| `GET`    | [`/api/profiles/{org}/{slug}`](#get-apiprofilesorgslug) | | | Public profile by its link (organisation handle + slug) |
+| `GET`    | [`/api/profiles/{org}/{slug}/vcard`](#get-apiprofilesorgslugvcard) | | | The card as a contact file (`.vcf`) |
 | `GET`    | [`/api/files/{id}`](#get-apifilesid) | | | Redirect to a file (short-lived signed URL) |
 | `POST`   | [`/api/profiles/{id}/leads`](#post-apiprofilesidleads) | | ✅ lead | Submit a lead to a profile |
-| `POST`   | [`/api/profiles/{slug}/events`](#post-apiprofilesslugevents) | | ✅ events | Record what a visitor did on a public card |
+| `POST`   | [`/api/profiles/{org}/{slug}/events`](#post-apiprofilesorgslugevents) | | ✅ events | Record what a visitor did on a public card |
 
 ✉️ = works before the email is verified. 🔑 = works while the user still has a temporary password. Every other signed-in route needs a verified email and a password the user chose. 🛡️ = owner and admins only. 👑 = owner only. Others get `403`. 🖥️ = platform admins only (`fronko_admin` cookie); anything else gets `401`.
 
@@ -132,6 +133,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
   "email_verified": true,
   "role": "owner",
   "org_name": "Acme",
+  "org_handle": "acme",
   "must_change_password": false,
   "teams": [{ "id": 3, "name": "Sales", "color": "#e11d48", "role": "lead" }]
 }
@@ -166,13 +168,14 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 {
   "id": 42,
   "slug": "faiz",
+  "org_handle": "acme",
   "data": { "name": "Faiz", "avatar_file": "90meIH31WrEH0xe9ymyzDA", "documents": [] },
   "files": [{ "id": "90meIH31WrEH0xe9ymyzDA", "kind": "image", "name": "me.png", "size_bytes": 48211 }],
   "org": { "name": "Acme", "logo_file": "tt24UJovNZgYmyTuoygXhg", "logo_policy": "optional" }
 }
 ```
 
-`org` is the card's organisation: its name, its logo (a public file id, served by [`GET /api/files/{id}`](#get-apifilesid), or `null`) and `logo_policy`. The card shows the logo when the policy is `"required"`, or when it's `"optional"` and `data.show_org_logo` isn't `false`. The organisation's signature settings are not exposed here.
+`org_handle` and `slug` make up the card's link, `/p/{org_handle}/{slug}`. `org` is the card's organisation: its name, its logo (a public file id, served by [`GET /api/files/{id}`](#get-apifilesid), or `null`) and `logo_policy`. The card shows the logo when the policy is `"required"`, or when it's `"optional"` and `data.show_org_logo` isn't `false`. The organisation's signature settings are not exposed here.
 
 The owner's ID and the timestamps are left out on purpose. `files` lists only the library files the card itself references (`data.avatar_file`, `data.cover_file`, `data.documents[].file` and gallery images in `data.blocks[].images[].file`, up to 64) that the card's organisation still has. Nothing else from the organisation's files is revealed.
 
@@ -239,7 +242,7 @@ The owner's ID and the timestamps are left out on purpose. `files` lists only th
 
 ### `data`
 
-`data` is a free-form JSON **object** that the frontend owns. The backend only checks that it is an object, and stores `{}` when it's missing or `null`. It does read a few keys: `avatar_file`, `cover_file`, `documents[].file` and `blocks[].images[].file` name library files, which must be visible to the editor when newly added, and which `GET /api/profiles/{slug}` resolves (up to 64 per card). The vCard endpoint reads the contact fields. `show_org_logo` (boolean), `signature` (the card's email signature choices) and `qr` (the QR code's colours, dot and corner style and centre image) are frontend-only keys the backend just stores. For the shape the web app uses, see [`CardData` in the frontend docs](../frontend/README.md#card-data-model).
+`data` is a free-form JSON **object** that the frontend owns. The backend only checks that it is an object, and stores `{}` when it's missing or `null`. It does read a few keys: `avatar_file`, `cover_file`, `documents[].file` and `blocks[].images[].file` name library files, which must be visible to the editor when newly added, and which `GET /api/profiles/{org}/{slug}` resolves (up to 64 per card). The vCard endpoint reads the contact fields. `show_org_logo` (boolean), `signature` (the card's email signature choices) and `qr` (the QR code's colours, dot and corner style and centre image) are frontend-only keys the backend just stores. For the shape the web app uses, see [`CardData` in the frontend docs](../frontend/README.md#card-data-model).
 
 ---
 
@@ -426,7 +429,7 @@ Cards belong to the organisation. Owners and admins can act on every card in it;
 
 ### Slug rules
 
-These rules apply to both create and update. The slug is trimmed and lowercased, must be **3–48 characters**, and must match `^[a-z0-9]+(?:-[a-z0-9]+)*$`: lowercase letters and digits separated by single hyphens, with no leading or trailing hyphen. Slugs are globally unique, case-insensitively.
+These rules apply to both create and update. The slug is trimmed and lowercased, must be **3–48 characters**, and must match `^[a-z0-9]+(?:-[a-z0-9]+)*$`: lowercase letters and digits separated by single hyphens, with no leading or trailing hyphen. Slugs are unique within the organisation, case-insensitively; other organisations can use the same slug, because links include the organisation's handle (`/p/{handle}/{slug}`).
 
 Breaking either rule returns `400` with `"slug must be 3-48 characters: lowercase letters, numbers and hyphens"`. If `data` is present but isn't a JSON object, the response is `400` with `"data must be a JSON object"`.
 
@@ -450,7 +453,7 @@ Owner and admins only. `data` is optional and defaults to `{}`. `assigned_user_i
 | ------ | ---- |
 | `201` | The created [`Profile`](#profile-owner-view) |
 | `400` | Slug or data validation failed, `"that user isn't in your organisation"`, or `"this card uses a file you don't have access to"` |
-| `409` | `"that slug is already taken"` |
+| `409` | `"another card in your organisation already uses that link"` |
 
 ### `GET /api/me/profiles/{id}`
 
@@ -471,7 +474,7 @@ Replaces both `slug` and `data`. This is a full update, not a patch: send the co
 | `400` | Validation failed, or `"this card uses a file you don't have access to"` (only checked for files the card didn't already use) |
 | `403` | A member sent a different slug: `"your organisation manages this card's link"` |
 | `404` | `"profile not found"` |
-| `409` | `"that slug is already taken"` |
+| `409` | `"another card in your organisation already uses that link"` |
 
 Changing a slug breaks every NFC card or QR code that points at the old URL, so only owners and admins can.
 
@@ -717,7 +720,7 @@ The bytes of **any image in the caller's organisation**, served inline from this
 
 ## Analytics 🔒
 
-What visitors do on public cards. The public card page reports events to [`POST /api/profiles/{slug}/events`](#post-apiprofilesslugevents), and the server records contact saves and sent forms itself. These endpoints only return aggregates; no response includes a visitor hash or visit id.
+What visitors do on public cards. The public card page reports events to [`POST /api/profiles/{org}/{slug}/events`](#post-apiprofilesorgslugevents), and the server records contact saves and sent forms itself. These endpoints only return aggregates; no response includes a visitor hash or visit id.
 
 **Who sees what.** The same rules as leads apply: an event belongs to whoever held the card when it happened. Members see their own cards' activity, team leads also see their teammates', and owners and admins see the whole organisation.
 
@@ -816,14 +819,25 @@ Owner and admins only (`403` for members). Admins manage members; only the owner
 ### `GET /api/org`
 
 ```json
-{ "id": 9, "name": "Acme", "default_quota_bytes": 524288000, "created_at": "…", "updated_at": "…" }
+{ "id": 9, "name": "Acme", "handle": "acme", "default_quota_bytes": 524288000, "created_at": "…", "updated_at": "…" }
 ```
 
-`default_quota_bytes` is the storage limit new users start with (`null`: unlimited).
+`default_quota_bytes` is the storage limit new users start with (`null`: unlimited). `handle` is the organisation's part of every card link, `/p/{handle}/{slug}`. Registration makes it from the organisation's name (falling back to the username), adding `-2`, `-3`… when it's taken.
 
 ### `PUT /api/org`
 
 👑 Owner only. `{"name": "Acme", "default_quota_bytes": null}`. Both fields are sent; the name is 1–80 chars without control characters (it appears in emails) and the limit 0 to 1 TB or `null`. Returns the organisation.
+
+### `PUT /api/org/handle`
+
+🛡️ Owners and admins. `{"handle": "acme"}`. The handle is trimmed and lowercased, must be **3–32 characters** and match the slug pattern, and is unique across organisations, case-insensitively. Returns the organisation.
+
+Every card link changes with it, and links already on QR codes, NFC cards and email signatures stop working; the old handle is released at once, so another organisation can take it. The dashboard warns and asks for confirmation first.
+
+| Status | Body |
+| ------ | ---- |
+| `400` | `"handle must be 3-32 characters: lowercase letters, numbers and hyphens"` |
+| `409` | `"another organisation already uses that handle"` |
 
 ### `GET /api/org/branding`
 
@@ -997,9 +1011,9 @@ Deletes the team (`204`). Its files move to the `org` area so cards using them k
 
 ## Public
 
-### `GET /api/profiles/{slug}`
+### `GET /api/profiles/{org}/{slug}`
 
-Looks up a profile for the public card page (`/p/{slug}`). The slug match is case-insensitive.
+Looks up a profile for the public card page (`/p/{org}/{slug}`): `org` is the organisation's handle and `slug` the card's. Both match case-insensitively.
 
 | Status | Body |
 | ------ | ---- |
@@ -1007,7 +1021,7 @@ Looks up a profile for the public card page (`/p/{slug}`). The slug match is cas
 | `404` | `"profile not found"` |
 | `410` | `{"error":"this card is unavailable","code":"org_suspended"}` while its organisation is suspended. Visitors aren't told why |
 
-### `GET /api/profiles/{slug}/vcard`
+### `GET /api/profiles/{org}/{slug}/vcard`
 
 Optional query: `via` (`nfc`, `qr` or `link`) and `s` (the visit's id from the public page's tracker). Each download counts as a contact save in [analytics](#analytics-), tied to that visit. Bots, and people signed in to the card's own organisation, aren't counted.
 
@@ -1034,7 +1048,7 @@ Unknown IDs, deleted files, files whose owner disconnected storage, and files of
 
 ### `POST /api/profiles/{id}/leads`
 
-A visitor shares their details with the profile owner. The path takes the numeric profile **ID**, which the frontend gets from `GET /api/profiles/{slug}`.
+A visitor shares their details with the profile owner. The path takes the numeric profile **ID**, which the frontend gets from `GET /api/profiles/{org}/{slug}`.
 
 **Request**
 
@@ -1067,7 +1081,7 @@ A visitor shares their details with the profile owner. The path takes the numeri
 
 The server accepts leads even when the card's `data.collect_leads` is `false`. That flag only hides the form in the UI.
 
-### `POST /api/profiles/{slug}/events`
+### `POST /api/profiles/{org}/{slug}/events`
 
 The public card's tracker reports what a visitor does. It sends batches with `navigator.sendBeacon`, so the body is JSON sent as `text/plain` (any content type is accepted). The session cookie, if any, comes along because the request is same-origin.
 
@@ -1094,7 +1108,7 @@ The public card's tracker reports what a visitor does. It sends batches with `na
 | `value` | `scroll`: must be 25, 50, 75 or 100. `leave`: time on card in ms, clamped to 0–3,600,000. Ignored for other types |
 
 It always answers **`204`** with no body, whether or not anything was stored, so it reveals nothing about the card. The only exception is `400` for a body that isn't JSON. Nothing is stored when:
-- the slug is unknown or the organisation is suspended;
+- no card has that link, or its organisation is suspended;
 - the user agent is empty or looks like a bot, crawler, link previewer or script;
 - the request carries a valid session for a user in the card's own organisation, so previews don't count;
 - no events are valid.
@@ -1293,8 +1307,8 @@ curl -s -b $JAR -X POST $BASE/api/me/profiles \
   -H 'Content-Type: application/json' \
   -d '{"slug":"demo-card","data":{"name":"Demo User","collect_leads":true}}'
 
-# Public lookup
-curl -s $BASE/api/profiles/demo-card
+# Public lookup: the organisation's handle ("demo", from /api/me/user's org_handle), then the slug
+curl -s $BASE/api/profiles/demo/demo-card
 
 # Submit a lead (use the id from the previous response)
 curl -s -X POST $BASE/api/profiles/1/leads \

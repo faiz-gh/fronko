@@ -1,4 +1,5 @@
 import { apiUrl } from '$lib/api/client';
+import { cardPath } from '$lib/card/card';
 
 /** How the visitor reached the card: the NFC tag, the QR code, or any other link. */
 export type VisitSource = 'nfc' | 'qr' | 'link';
@@ -41,9 +42,9 @@ export type Tracker = ReturnType<typeof createTracker>;
  * server never sees more than an anonymous, daily-rotating hash.
  * Events are batched and sent with sendBeacon, so leaving the page loses nothing.
  */
-export function createTracker(slug: string, source: VisitSource) {
+export function createTracker(org: string, slug: string, source: VisitSource) {
 	const session = randomId();
-	const endpoint = apiUrl(`/api/profiles/${encodeURIComponent(slug)}/events`);
+	const endpoint = apiUrl(`/api/profiles/${cardPath(org, slug)}/events`);
 	let queue: TrackEvent[] = [];
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let started = false;

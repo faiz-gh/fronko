@@ -229,7 +229,7 @@ func TestAdminIntegration(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, repState.OrgSuspended, "every member is affected")
 
-		card, err := repo.GetProfileBySlug(ctx, "acme-1")
+		card, err := repo.GetProfileByPath(ctx, "acme", "acme-1")
 		require.NoError(t, err)
 		assert.True(t, card.OrgSuspended)
 		err = repo.CreateLead(ctx, &models.Lead{ProfileID: card1.ID, Name: "x", Email: "x@example.com"})
@@ -250,7 +250,7 @@ func TestAdminIntegration(t *testing.T) {
 		state, err = repo.GetSessionState(ctx, acme.ID)
 		require.NoError(t, err)
 		assert.False(t, state.OrgSuspended)
-		card, err = repo.GetProfileBySlug(ctx, "acme-1")
+		card, err = repo.GetProfileByPath(ctx, "acme", "acme-1")
 		require.NoError(t, err)
 		assert.False(t, card.OrgSuspended)
 		newLead(t, card1)

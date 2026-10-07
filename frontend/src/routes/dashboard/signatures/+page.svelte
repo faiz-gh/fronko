@@ -22,7 +22,8 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import CardAvatar from '$lib/components/app/card-avatar.svelte';
 	import { branding } from '$lib/branding.svelte';
-	import { downloadBlob, normalizeCard, type CardData } from '$lib/card/card';
+	import { downloadBlob, normalizeCard, publicUrl, type CardData } from '$lib/card/card';
+	import { session } from '$lib/session.svelte';
 	import { cards } from '$lib/cards.svelte';
 	import {
 		measureImage,
@@ -74,7 +75,7 @@
 		if (id) measureImage(fileUrl(id)).then((s) => (bannerSize = s));
 	});
 
-	const rendered = $derived(card && profile ? renderSignature(card, profile.slug, org, { logoSize, bannerSize }) : null);
+	const rendered = $derived(card && profile ? renderSignature(card, publicUrl(session.orgHandle, profile.slug), org, { logoSize, bannerSize }) : null);
 	const template = $derived(rendered?.template ?? 'classic');
 	const templates = $derived<SignatureTemplateKey[]>(locked && rendered ? [rendered.template] : SIGNATURE_TEMPLATE_KEYS);
 
@@ -188,7 +189,7 @@
 	/** Gallery thumbnails: the real signature, drawn with each template. */
 	function preview(key: SignatureTemplateKey): string {
 		if (!card || !profile) return '';
-		return renderSignature(card, profile.slug, org, { template: key, logoSize, bannerSize }).html;
+		return renderSignature(card, publicUrl(session.orgHandle, profile.slug), org, { template: key, logoSize, bannerSize }).html;
 	}
 </script>
 
@@ -233,7 +234,7 @@
 						<CardAvatar card={data} fallback={p.slug} />
 						<span class="flex min-w-0 flex-col">
 							<span class="truncate text-sm font-medium">{data.name || p.slug}</span>
-							<span class="text-muted-foreground truncate text-xs">/p/{p.slug}</span>
+							<span class="text-muted-foreground truncate text-xs">/p/{session.orgHandle}/{p.slug}</span>
 						</span>
 					</button>
 				{/each}

@@ -8,6 +8,7 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import UserPicker from './user-picker.svelte';
 	import { emptyCard, isValidSlug, slugify } from '$lib/card/card';
+	import { session } from '$lib/session.svelte';
 	import { cards } from '$lib/cards.svelte';
 	import { orgUsers } from '$lib/org-users.svelte';
 
@@ -65,9 +66,9 @@
 					<Field.Label for="new-slug">Link</Field.Label>
 					<div class="flex items-stretch">
 						<span
-							class="text-muted-foreground bg-muted flex items-center rounded-l-lg border border-r-0 px-3 font-mono text-xs"
+							class="text-muted-foreground bg-muted flex max-w-[55%] items-center rounded-l-lg border border-r-0 px-3 font-mono text-xs"
 						>
-							/p/
+							<span class="truncate">/p/{session.orgHandle}/</span>
 						</span>
 						<Input
 							id="new-slug"
@@ -87,7 +88,7 @@
 					{:else if slugInvalid}
 						<Field.Error>3–48 characters: lowercase letters, numbers and hyphens.</Field.Error>
 					{:else}
-						<Field.Description>This is the address you'll share and write to NFC cards.</Field.Description>
+						<Field.Description>Only needs to be unique in {session.orgName || 'your organisation'}. This is the address you'll share and write to NFC cards.</Field.Description>
 					{/if}
 				</Field.Field>
 				<Field.Field>

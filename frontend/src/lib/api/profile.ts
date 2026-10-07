@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { CardData } from '$lib/card/card';
+import { cardPath, type CardData } from '$lib/card/card';
 import type { PublicFile } from './files';
 
 export interface Profile {
@@ -18,6 +18,8 @@ export interface Profile {
 export interface PublicProfile {
 	id: number;
 	slug: string;
+	/** The organisation's part of the card's link, /p/{org_handle}/{slug}. */
+	org_handle: string;
 	data: Partial<CardData> | null;
 	/** Library files the card references (photo, brochures), resolved by the server. */
 	files: PublicFile[];
@@ -31,8 +33,9 @@ export interface PublicOrg {
 	logo_policy: 'required' | 'optional';
 }
 
-export function getProfileBySlug(slug: string): Promise<PublicProfile> {
-	return apiClient<PublicProfile>(`/api/profiles/${encodeURIComponent(slug)}`);
+/** The card behind /p/{org}/{slug}. */
+export function getPublicProfile(org: string, slug: string): Promise<PublicProfile> {
+	return apiClient<PublicProfile>(`/api/profiles/${cardPath(org, slug)}`);
 }
 
 export function getMyProfiles(): Promise<Profile[]> {

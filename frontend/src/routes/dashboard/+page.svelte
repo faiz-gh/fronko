@@ -42,6 +42,7 @@
 	import CreateUserDialog from '$lib/components/app/create-user-dialog.svelte';
 	import ProfileCard from '$lib/components/app/profile-card.svelte';
 	import QrDialog from '$lib/components/app/qr-dialog.svelte';
+	import NfcDialog from '$lib/components/app/nfc-dialog.svelte';
 	import RecentLeads from '$lib/components/app/recent-leads.svelte';
 	import UserAvatar from '$lib/components/app/user-avatar.svelte';
 	import { emptyCard, normalizeCard } from '$lib/card/card';
@@ -213,6 +214,8 @@
 
 	let qrTarget = $state<Profile | null>(null);
 	let qrOpen = $state(false);
+	let nfcTarget = $state<Profile | null>(null);
+	let nfcOpen = $state(false);
 
 	const sample = {
 		...emptyCard('Your name'),
@@ -440,6 +443,10 @@
 												qrTarget = p;
 												qrOpen = true;
 											}}
+											onnfc={(p) => {
+												nfcTarget = p;
+												nfcOpen = true;
+											}}
 										/>
 										{#if st}
 											<a
@@ -593,5 +600,11 @@
 	slug={qrTarget?.slug ?? ''}
 	name={qrTarget ? normalizeCard(qrTarget.data).name : ''}
 	style={qrTarget ? normalizeCard(qrTarget.data).qr : undefined}
+/>
+<NfcDialog
+	bind:open={nfcOpen}
+	profileId={nfcTarget?.id ?? 0}
+	slug={nfcTarget?.slug ?? ''}
+	name={nfcTarget ? normalizeCard(nfcTarget.data).name : ''}
 />
 <CreateUserDialog bind:open={createUserOpen} />

@@ -13,6 +13,8 @@ export interface AuthUser {
 	email_verified: boolean;
 	role: Role;
 	org_name: string;
+	/** The organisation's part of every card link, /p/{org_handle}/{slug}. */
+	org_handle: string;
 	/** Still using the temporary password the organisation set. */
 	must_change_password: boolean;
 	/** Teams they're in, with their role in each. */

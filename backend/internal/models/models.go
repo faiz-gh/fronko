@@ -96,6 +96,8 @@ type TeamMembership struct {
 type Organization struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
+	// Handle is the organisation's part of every card link, /p/{handle}/{slug}.
+	Handle string `json:"handle"`
 	// DefaultQuotaBytes is the storage limit given to new users; nil is unlimited.
 	DefaultQuotaBytes *int64    `json:"default_quota_bytes"`
 	CreatedAt         time.Time `json:"created_at"`
@@ -218,17 +220,20 @@ type Profile struct {
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 	LeadCount      int64           `json:"lead_count"` // only populated when listing a user's profiles
-	// OrgSuspended is only populated by the public slug lookup.
-	OrgSuspended bool `json:"-"`
+	// OrgHandle and OrgSuspended are only populated by the public link lookup.
+	OrgHandle    string `json:"-"`
+	OrgSuspended bool   `json:"-"`
 }
 
 // PublicProfile is the shape served to anonymous visitors; it omits owner details.
 type PublicProfile struct {
-	ID    int64           `json:"id"`
-	Slug  string          `json:"slug"`
-	Data  json.RawMessage `json:"data"`
-	Files []PublicFile    `json:"files"` // library files the card references
-	Org   *PublicOrg      `json:"org"`
+	ID   int64  `json:"id"`
+	Slug string `json:"slug"`
+	// OrgHandle is the organisation's part of the card's link, /p/{org_handle}/{slug}.
+	OrgHandle string          `json:"org_handle"`
+	Data      json.RawMessage `json:"data"`
+	Files     []PublicFile    `json:"files"` // library files the card references
+	Org       *PublicOrg      `json:"org"`
 }
 
 // StorageSettings is a user's bucket configuration. The key fields hold

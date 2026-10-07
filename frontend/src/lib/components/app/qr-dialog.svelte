@@ -7,6 +7,7 @@
 	import QrCode from './qr-code.svelte';
 	import { tapUrl, type QrStyle } from '$lib/card/card';
 	import { downloadQrPng, downloadQrSvg } from '$lib/card/qr';
+	import { session } from '$lib/session.svelte';
 	import { cn } from '$lib/utils';
 
 	let {
@@ -26,7 +27,7 @@
 	} = $props();
 
 	// Marked as a QR visit, so the card's QR tap behaviour applies.
-	const url = $derived(slug ? tapUrl(slug, 'qr') : '');
+	const url = $derived(slug ? tapUrl(session.orgHandle, slug, 'qr') : '');
 	let svg = $state('');
 
 	async function copyLink() {

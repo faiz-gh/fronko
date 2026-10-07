@@ -5,7 +5,7 @@ The Fronko API server. It's a single Go binary built on the standard library's `
 It handles:
 
 - **Accounts.** Username/password registration and login. Sessions are JWTs carried in an HttpOnly cookie.
-- **Profiles ("cards").** Each user can own several public profiles. Each one has a unique slug and a free-form JSONB `data` document.
+- **Profiles ("cards").** Each user can own several public profiles. Each one has a slug, unique within its organisation, and a free-form JSONB `data` document. A card's public link is `/p/{org handle}/{slug}`.
 - **Leads.** Anonymous visitors can submit their name, email, an optional mobile number (dial code and number stored separately, digits only) and a message to a profile. The owner can list and search those leads.
 - **Platform admin.** Separate admin accounts (created with `./fronko admin create`) get usage totals per organisation, daily usage trends, a product-feedback inbox with email replies, organisation suspension and an audit log. See [Platform admin](#platform-admin).
 
@@ -37,7 +37,7 @@ For the full endpoint reference, see [API.md](./API.md).
 | Concern         | Choice                                                                 |
 | --------------- | ---------------------------------------------------------------------- |
 | Language        | Go 1.27                                                                |
-| HTTP            | `net/http` with Go 1.22+ method/path patterns (`GET /api/profiles/{slug}`) |
+| HTTP            | `net/http` with Go 1.22+ method/path patterns (`GET /api/profiles/{org}/{slug}`) |
 | Database driver | [`jackc/pgx/v5`](https://github.com/jackc/pgx) (`pgxpool`)             |
 | Migrations      | [`golang-migrate`](https://github.com/golang-migrate/migrate) (run by the container entrypoint) |
 | Auth            | [`golang-jwt/jwt/v5`](https://github.com/golang-jwt/jwt) (HS256) and `bcrypt` |
@@ -65,10 +65,10 @@ backend/
 │   │   ├── files.go              # File library: upload (type sniffing, previews), list/search/counts, update/move, bulk, usage, content, same-origin image, public redirect, grants
 │   │   ├── teams.go              # /api/org/teams: team CRUD, members, a user's teams
 │   │   ├── storage.go            # StorageService (decrypt keys → bucket client) and /api/me/storage
-│   │   ├── profile.go            # Profile CRUD and public slug lookup
-│   │   ├── vcard.go              # GET /api/profiles/{slug}/vcard: the card as a vCard 3.0 file
+│   │   ├── profile.go            # Profile CRUD and public lookup by link (org handle + slug)
+│   │   ├── vcard.go              # GET /api/profiles/{org}/{slug}/vcard: the card as a vCard 3.0 file
 │   │   ├── lead.go               # Lead submission (public), paginated listing and per-profile listing (owner)
-│   │   ├── analytics.go          # EventRecorder (visitor hash, bot and same-org filtering), POST /api/profiles/{slug}/events, /api/me/analytics/*
+│   │   ├── analytics.go          # EventRecorder (visitor hash, bot and same-org filtering), POST /api/profiles/{org}/{slug}/events, /api/me/analytics/*
 │   │   ├── respond.go            # JSON encode/decode helpers, body size cap
 │   │   └── session.go            # Session cookie set/clear
 │   ├── middleware/
@@ -185,6 +185,7 @@ These are hard-coded:
 
 The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`, 006 changing a verified email, 007 organisations and users, 008 platform admin, 009 organisation branding, 010 teams and file purposes, 011 team and branding usage snapshots, 012 card analytics).
 - **Card analytics (012).** `card_events`: one row per thing a visitor did on a public card. Columns: `org_id`, `profile_id` (both cascade), `assigned_user_id` (who held the card then; `SET NULL`), `session_id` (the visit), `visitor_hash`, `type` (`view`, `click`, `scroll`, `doc_open`, `gallery_open`, `vcard`, `form_open`, `form_submit`, `share`, `leave`), `source` (`nfc`, `qr`, `link`), `target`, `label`, `value` (scroll % or time on card in ms), `device`, `referrer_host`, `created_at`. It is indexed on `(profile_id, created_at)`, `(org_id, created_at)` and `(org_id, assigned_user_id, created_at)`. `analytics_salts` holds one random salt per UTC day. `leads.source` records how the visitor arrived (`NULL` for older leads).
+- **Organisation handles (013).** `organizations.handle` (unique, case-insensitive) is the organisation's part of every card link, `/p/{handle}/{slug}`. Existing organisations got one made from their name (`org-{id}` when too little of it was usable, `-{id}` added on a clash). Card slugs became unique per organisation (`profiles_org_slug_lower_idx`) instead of globally. Old `/p/{slug}` links were dropped: none had been printed.
 - **Usage snapshots (011).** `org_usage_snapshots.team_count`, and `platform_usage_snapshots.team_count`, `orgs_with_teams` and `orgs_with_logo` (all default 0, so days before 011 read as zero).
 - **Teams and file purposes (010).** `teams` (per org; names unique ignoring case) and `team_members` (`role` `lead` or `member`; a user can be in many teams; both FKs cascade). `files` gains a fourth `area`, `team` (with `team_id`, enforced by `files_team_area_check`), a `purpose` (`logo`, `banner`, `avatar`, `cover`, `gallery`, `brochure`, `other`), the `width`/`height`/`pages` the browser reported, an optional `thumb_key` (a small preview next to the original) and `updated_at`. `file_team_grants` gives an org or shared file to a whole team. `file_refs` (`file_id`, `profile_id`, `slot`) records which card slot uses which file; `CreateProfile`/`UpdateProfile` rewrite a card's rows in the same transaction (`syncFileRefs`), and it drives `use_count` and `GET /api/me/files/{id}/usage`. The migration backfilled `file_refs` from `profiles.data` and guessed each file's purpose (PDFs → brochure, the org logo and banner, then card slots). `DeleteTeam` moves the team's files to `org` before deleting it.
 - **Branding (009).** `organizations.logo_file` (public id of an org or shared image, `NULL`: no logo), `logo_policy` (`required` or `optional`, checked by `organizations_logo_policy_check`), and `signature` JSONB (`locked_template`, `brand_color`, `disclaimer`, `banner_file`, `banner_url`; see `models.OrgSignature`). `DeleteFile` clears `logo_file` or `signature.banner_file` in the same statement when they name the deleted file. Email signatures themselves are built in the browser; per-card signature choices live in `profiles.data`.
@@ -219,7 +220,7 @@ erDiagram
     profiles {
         bigint profile_id PK
         bigint user_id FK "ON DELETE CASCADE"
-        text slug "UNIQUE, case-insensitive unique index"
+        text slug "unique per organisation, case-insensitive"
         jsonb data "default {}"
         timestamptz created_at
         timestamptz updated_at
@@ -242,7 +243,8 @@ erDiagram
 | ----- | ------- |
 | `users_username_lower_idx` (unique, `LOWER(username)`) | Case-insensitive login, and stops `Alice` and `alice` from coexisting |
 | `users_email_lower_idx` (unique, `LOWER(email)`) | Sign-in and password reset by email; one account per address. The handler tells it apart from the username index by constraint name (`repository.IsEmailConflict`) |
-| `profiles_slug_lower_idx` (unique, `LOWER(slug)`) | Case-insensitive slug routing (`/p/Faiz` = `/p/faiz`) |
+| `profiles_org_slug_lower_idx` (unique, `org_id, LOWER(slug)`) | Slugs are unique inside an organisation and route case-insensitively (`/p/acme/Faiz` = `/p/acme/faiz`); migration 013 replaced the global `profiles_slug_lower_idx` |
+| `organizations_handle_lower_idx` (unique, `LOWER(handle)`) | Each organisation's link handle (`/p/{handle}/…`), unique case-insensitively (migration 013). `CreateOrgWithOwner` makes it from the name and retries with `-2`, `-3`… on a clash |
 | `profiles_user_id_idx` | Listing a user's profiles (Postgres does not auto-index FKs) |
 | `profiles_data_gin_idx` (GIN on `data`) | Room for future JSONB queries |
 | `leads_profile_id_idx` | Listing a profile's leads |
@@ -256,7 +258,7 @@ erDiagram
 
 ### Adding a migration
 
-Add a numbered pair next to the existing files (the next number is 012):
+Add a numbered pair next to the existing files (the next number is 014):
 
 ```
 migrations/012_<description>.up.sql
@@ -290,7 +292,7 @@ Request
                ├─ /auth/login, /auth/register,
                │  /auth/password/forgot, /auth/password/reset → authLimiter → handler
                ├─ /auth/logout                → handler
-               ├─ GET  /api/profiles/{slug}   → handler
+               ├─ GET  /api/profiles/{org}/{slug}   → handler
                ├─ GET  /api/files/{id}        → handler
                ├─ POST /api/profiles/{id}/leads → leadLimiter → handler
                ├─ GET  /api/me/user,
@@ -355,7 +357,7 @@ There's no sign-up page. Accounts are made from the command line, which reads `D
 
 **Suspending an organisation** (`SuspendOrg`) sets `suspended_at` and the reason and bumps every member's `session_version` in one transaction. Then:
 - `JWTMiddleware` and `POST /auth/login` answer `org_suspended` with the reason.
-- `GET /api/profiles/{slug}` answers `410 {"code":"org_suspended"}` (visitors aren't told why), `POST /api/profiles/{id}/leads` answers 404, and `GET /api/files/{id}` answers 404.
+- `GET /api/profiles/{org}/{slug}` answers `410 {"code":"org_suspended"}` (visitors aren't told why), `POST /api/profiles/{id}/leads` answers 404, and `GET /api/files/{id}` answers 404.
 - The owner is emailed the reason (`mail.OrgSuspendedMessage`), and again on reinstatement. A failed email doesn't undo the action; it's recorded in the audit entry.
 
 **Feedback.** `POST /api/me/feedback` (any signed-in, verified user; `feedbackLimiter`) stores the message and emails `FEEDBACK_NOTIFY_EMAIL` in the background. An admin reply (`POST /api/admin/feedback/{id}/replies`) is emailed to the sender with their message quoted, then stored with `email_sent`, and moves `new` feedback to `read`.
@@ -364,7 +366,7 @@ There's no sign-up page. Accounts are made from the command line, which reads `D
 
 ## Card analytics
 
-**Recording.** The public card page batches events and sends them with `navigator.sendBeacon` to `POST /api/profiles/{slug}/events` (`eventLimiter`). `AnalyticsHandler.Collect` keeps only the types a browser may report: contact saves (`vcard`) and sent forms (`form_submit`) are recorded by the server in `VCard` and `SubmitLead`, so they can't be faked or double-counted. It cleans each event (`cleanEvent`) and hands the batch to `EventRecorder.Record`, which:
+**Recording.** The public card page batches events and sends them with `navigator.sendBeacon` to `POST /api/profiles/{org}/{slug}/events` (`eventLimiter`). `AnalyticsHandler.Collect` keeps only the types a browser may report: contact saves (`vcard`) and sent forms (`form_submit`) are recorded by the server in `VCard` and `SubmitLead`, so they can't be faked or double-counted. It cleans each event (`cleanEvent`) and hands the batch to `EventRecorder.Record`, which:
 
 1. Drops the request if it comes from a bot (empty or bot-like user agent).
 2. Drops it if it carries a valid session for someone in the card's own organisation (`viewerOrg`), so owners previewing cards don't count.
@@ -409,7 +411,7 @@ Raw IP addresses are never stored. Because each salt is deleted after a day, a h
 | Untrusted file previews | Previews are made in the browser, so the server treats them like any upload: sniffed, JPEG/PNG/WebP only, at most 300 KB, and dropped (not failed) if they don't pass | `handlers/files.go` |
 | Provider errors leaking internals | `storage.Describe` turns SDK errors into short messages; the raw error is only logged | `storage/storage.go` |
 | IDOR on profiles and leads | Ownership enforced in the SQL `WHERE` clause; foreign profiles return 404 | `repository/repository.go` |
-| Leaking owner info publicly | Public lookups return `PublicProfile` (id, slug, data), with no `user_id` or timestamps | `models/models.go` |
+| Leaking owner info publicly | Public lookups return `PublicProfile` (id, slug, org handle, data), with no `user_id` or timestamps | `models/models.go` |
 | SQL injection | All queries are parameterized | `repository/repository.go` |
 | Tracking card visitors | No cookies and no stored IPs. The visitor hash uses a daily random salt that is deleted after a day. Analytics endpoints return aggregates only, scoped like leads. Events expire after `ANALYTICS_RETENTION_DAYS` | `handlers/analytics.go`, `repository/analytics.go` |
 | Inflated or faked analytics | Bots and the card's own organisation are skipped. Contact saves and sent forms are only recorded server-side. Event types, lengths and values are validated, batches are capped at 20 and per-IP rate limited | `handlers/analytics.go` |
@@ -422,7 +424,7 @@ Defined as constants in `cmd/fronko/main.go`:
 | ------- | ---------- | ----- | ------ |
 | `authLimiter` | `POST /auth/login`, `/auth/register`, `/auth/password/forgot`, `/auth/password/reset`, `PUT /api/me/email`, `POST /api/me/email/verify`, `POST /api/me/email/resend`, `POST /api/me/email/change`, `POST /api/me/email/change/confirm` and `PUT /api/me/password` (one shared bucket per IP) | 10 | 1 per 10s |
 | `leadLimiter` | `POST /api/profiles/{id}/leads` | 5 | 1 per 15s |
-| `eventLimiter` | `POST /api/profiles/{slug}/events` | 30 | 1 per 2s |
+| `eventLimiter` | `POST /api/profiles/{org}/{slug}/events` | 30 | 1 per 2s |
 | `uploadLimiter` | `POST /api/me/files` | 10 | 1 per 6s |
 | `feedbackLimiter` | `POST /api/me/feedback` | 5 | 1 per 12 min |
 
