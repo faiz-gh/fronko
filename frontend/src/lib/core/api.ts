@@ -10,7 +10,9 @@ export class ApiError extends Error {
 		/** Seconds from a 429's Retry-After header. */
 		readonly retryAfter?: number,
 		/** Why the organisation was suspended, on an "org_suspended" error. */
-		readonly reason?: string
+		readonly reason?: string,
+		/** The form field at fault, when the backend names one. */
+		readonly field?: string
 	) {
 		super(message);
 	}
@@ -81,7 +83,8 @@ export async function apiClient<T>(
 			response.status,
 			body.code,
 			retryAfter,
-			body.reason
+			body.reason,
+			body.field
 		);
 	}
 

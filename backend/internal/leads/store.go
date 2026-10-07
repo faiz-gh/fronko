@@ -143,3 +143,46 @@ func (r *Store) ListLeads(ctx context.Context, scope auth.Scope, f LeadFilter) (
 
 	return leads, total, nil
 }
+
+// SyncDetails is a lead with what lead sync sends alongside it.
+type SyncDetails struct {
+	Lead
+	OrgID     int64
+	OrgName   string
+	OrgHandle string
+	CardSlug  string
+	// CardName is the name on the card.
+	CardName string
+	// OwnerEmail is the card holder's email, when there is a holder.
+	OwnerEmail string
+}
+
+// SyncDetails loads a lead for lead sync. It returns database.ErrNotFound if
+// the lead was deleted.
+func (r *Store) SyncDetails(ctx context.Context, leadID int64) (*SyncDetails, error) {
+	var d SyncDetails
+	var assigneeID *int64
+	var assignee, ownerEmail *string
+	err := r.db.QueryRow(ctx, `
+		SELECT l.lead_id, l.profile_id, l.name, l.email,
+			COALESCE(l.phone_country_code, ''), COALESCE(l.phone_number, ''),
+			COALESCE(l.notes, ''), COALESCE(l.source, ''), l.created_at, l.assigned_user_id, u.username, u.email,
+			o.org_id, o.name, o.handle, p.slug, COALESCE(p.data->>'name', '')
+		FROM leads l
+		JOIN profiles p ON p.profile_id = l.profile_id
+		JOIN organizations o ON o.org_id = p.org_id
+		LEFT JOIN users u ON u.user_id = l.assigned_user_id
+		WHERE l.lead_id = $1`, leadID,
+	).Scan(&d.ID, &d.ProfileID, &d.Name, &d.Email, &d.PhoneCountryCode, &d.PhoneNumber, &d.Notes, &d.Source, &d.CreatedAt,
+		&assigneeID, &assignee, &ownerEmail, &d.OrgID, &d.OrgName, &d.OrgHandle, &d.CardSlug, &d.CardName)
+	if err != nil {
+		return nil, database.MapError(err)
+	}
+	if assigneeID != nil && assignee != nil {
+		d.AssignedUser = &auth.UserRef{ID: *assigneeID, Username: *assignee}
+	}
+	if ownerEmail != nil {
+		d.OwnerEmail = *ownerEmail
+	}
+	return &d, nil
+}

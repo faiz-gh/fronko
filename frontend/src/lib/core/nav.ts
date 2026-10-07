@@ -4,6 +4,7 @@ import FolderIcon from '@lucide/svelte/icons/folder';
 import IdCardIcon from '@lucide/svelte/icons/id-card';
 import InboxIcon from '@lucide/svelte/icons/inbox';
 import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
+import PlugIcon from '@lucide/svelte/icons/plug';
 import SignatureIcon from '@lucide/svelte/icons/signature';
 import UsersIcon from '@lucide/svelte/icons/users';
 import UsersRoundIcon from '@lucide/svelte/icons/users-round';
@@ -65,5 +66,11 @@ export const DASHBOARD_NAV: NavItem[] = [
 		count: () => teams.list?.length ?? 0
 	},
 	{ href: '/dashboard/files', label: 'Files', icon: FolderIcon },
-	{ href: '/dashboard/signatures', label: 'Signatures', icon: SignatureIcon }
+	{ href: '/dashboard/signatures', label: 'Signatures', icon: SignatureIcon },
+	{
+		href: '/dashboard/integrations',
+		label: 'Integrations',
+		icon: PlugIcon,
+		active: (path) => path.startsWith('/dashboard/integrations')
+	}
 ];

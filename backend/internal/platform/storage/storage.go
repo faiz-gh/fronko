@@ -10,10 +10,8 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -21,6 +19,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+
+	"github.com/faiz-gh/fronko/backend/internal/platform/netguard"
 )
 
 // Store is the subset of S3 the app needs; handlers depend on this so tests can fake it.
@@ -50,7 +50,8 @@ type Factory func(cfg Config) (Store, error)
 
 var (
 	ErrInvalidEndpoint = errors.New("storage: invalid endpoint")
-	ErrPrivateEndpoint = errors.New("storage: endpoint resolves to a private or local address")
+	// ErrPrivateEndpoint is netguard's error, so a refused dial matches it too.
+	ErrPrivateEndpoint = netguard.ErrPrivate
 )
 
 // probeKey is written and deleted by Probe to prove write access.
@@ -78,70 +79,19 @@ func ValidateEndpoint(raw string, allowPrivate bool) (string, error) {
 		return "", fmt.Errorf("%w: the endpoint must use https", ErrInvalidEndpoint)
 	}
 	if !allowPrivate {
-		host := strings.ToLower(u.Hostname())
-		if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".internal") {
-			return "", ErrPrivateEndpoint
-		}
-		if addr, err := netip.ParseAddr(host); err == nil && !isPublic(addr) {
+		if err := netguard.CheckHost(u.Hostname()); err != nil {
 			return "", ErrPrivateEndpoint
 		}
 	}
 	return u.Scheme + "://" + u.Host, nil
 }
 
-var nonPublicPrefixes = []netip.Prefix{
-	netip.MustParsePrefix("0.0.0.0/8"),
-	netip.MustParsePrefix("100.64.0.0/10"), // carrier-grade NAT
-	netip.MustParsePrefix("192.0.0.0/24"),
-	netip.MustParsePrefix("198.18.0.0/15"), // benchmarking
-	netip.MustParsePrefix("240.0.0.0/4"),
-	netip.MustParsePrefix("64:ff9b::/96"), // NAT64 can reach private IPv4
-}
-
-func isPublic(addr netip.Addr) bool {
-	addr = addr.Unmap()
-	if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() ||
-		addr.IsInterfaceLocalMulticast() || addr.IsMulticast() || addr.IsUnspecified() {
-		return false
-	}
-	for _, p := range nonPublicPrefixes {
-		if p.Contains(addr) {
-			return false
-		}
-	}
-	return true
-}
-
-// guardedClient is the HTTP client used for every bucket request. Checking the
-// address in the dialer's Control hook (after DNS) defeats DNS-rebinding tricks
-// that a URL check alone would miss.
+// guardedClient is the HTTP client used for every bucket request; see netguard.
 func guardedClient(allowPrivate bool) *http.Client {
-	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
-	if !allowPrivate {
-		dialer.Control = func(network, address string, _ syscall.RawConn) error {
-			host, _, err := net.SplitHostPort(address)
-			if err != nil {
-				return ErrPrivateEndpoint
-			}
-			addr, err := netip.ParseAddr(host)
-			if err != nil || !isPublic(addr) {
-				return ErrPrivateEndpoint
-			}
-			return nil
-		}
-	}
-	return &http.Client{
-		Transport: &http.Transport{
-			Proxy:                 nil, // never route user traffic through an environment proxy
-			DialContext:           dialer.DialContext,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ResponseHeaderTimeout: 30 * time.Second,
-			MaxIdleConnsPerHost:   4,
-			IdleConnTimeout:       60 * time.Second,
-		},
-		// The SDK doesn't need redirects, and following them could leave the checked host.
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
+	c := netguard.Client(netguard.Options{AllowPrivate: allowPrivate})
+	// Uploads can be large and slow; the SDK's context bounds each call instead.
+	c.Timeout = 0
+	return c
 }
 
 type s3Store struct {

@@ -52,7 +52,7 @@ const (
 // tables lists every table, for --reset.
 const tables = `organizations, users, email_codes, teams, team_members, profiles, leads, user_storage,
 	files, file_grants, file_team_grants, file_refs, card_events, analytics_salts, platform_admins,
-	admin_audit_log, feedback, feedback_replies, org_usage_snapshots, platform_usage_snapshots, jobs`
+	admin_audit_log, feedback, feedback_replies, org_usage_snapshots, platform_usage_snapshots, jobs, integration_connections, integration_activity`
 
 // RunCLI is `fronko seed`.
 func RunCLI(args []string) error {

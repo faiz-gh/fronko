@@ -6,6 +6,8 @@ package server
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log"
@@ -23,6 +25,8 @@ import (
 	"github.com/faiz-gh/fronko/backend/internal/cards"
 	"github.com/faiz-gh/fronko/backend/internal/feedback"
 	"github.com/faiz-gh/fronko/backend/internal/files"
+	"github.com/faiz-gh/fronko/backend/internal/integrations"
+	"github.com/faiz-gh/fronko/backend/internal/integrations/providers"
 	"github.com/faiz-gh/fronko/backend/internal/leads"
 	"github.com/faiz-gh/fronko/backend/internal/orgs"
 	"github.com/faiz-gh/fronko/backend/internal/platform/config"
@@ -197,6 +201,17 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 	codes := users.NewCodes(userStore, authService, mailer)
 	events := analytics.NewEventRecorder(analyticsStore, authService, sessions, cfg.TrustProxy)
 	storageSvc := files.NewStorageService(fileStore, userStore, box, storage.NewS3(cfg.StorageAllowPrivate), cfg.StorageAllowPrivate)
+	// In development, integrations may call private addresses (a webhook
+	// receiver on localhost); in production they never can.
+	devOutbound := cfg.Env == config.EnvDevelopment
+	if devOutbound {
+		log.Println("FRONKO_ENV=development: integrations may call private and local addresses")
+	}
+	registry := integrations.NewRegistry()
+	providers.All(registry)
+	integrationSvc := integrations.NewService(integrations.NewStore(pool), registry, leadStore, orgStore,
+		deriveKey(cfg.JWTSecret, "integrations oauth state"),
+		integrations.Options{PublicURL: cfg.PublicURL, Box: box, AllowPrivate: devOutbound})
 	admin := platformadmin.NewAdminHandler(adminStore, feedbackStore, authService, mailer, cfg.FeedbackNotifyEmail, cfg.CookieSecure)
 
 	modules := []app.Module{
@@ -216,6 +231,7 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 			Retention: cfg.AnalyticsRetention,
 		},
 		feedback.NewFeedbackHandler(feedbackStore, userStore, orgStore, mailer, cfg.FeedbackNotifyEmail),
+		integrations.Module{Service: integrationSvc, Handler: integrations.NewHandler(integrationSvc, cfg.CookieSecure)},
 		admin,
 	}
 
@@ -248,4 +264,12 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 
 	a.Handler = web.CORS(cfg.CORSAllowedOrigins, web.SameOrigin(cfg.CORSAllowedOrigins, routes.Handler(admin.Guard())))
 	return a, nil
+}
+
+// deriveKey derives a purpose-specific key from a server secret, so one
+// secret never signs two kinds of thing.
+func deriveKey(secret, purpose string) []byte {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte("fronko:" + purpose))
+	return mac.Sum(nil)
 }
