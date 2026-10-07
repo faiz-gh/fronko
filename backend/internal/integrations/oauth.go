@@ -101,8 +101,8 @@ func (s *Service) StartOAuth(ctx context.Context, p auth.Principal, id int64) (a
 	if !ok || prov.Manifest().Auth != AuthOAuth2 {
 		return "", "", userErr("this integration doesn't use OAuth")
 	}
-	if s.opts.PublicURL == "" {
-		return "", "", userErr("PUBLIC_URL isn't set on the server, so there's no address to return to")
+	if s.apiURL() == "" || s.opts.PublicURL == "" {
+		return "", "", userErr("the server doesn't know its address (FRONTEND_URL or PUBLIC_URL), so there's nowhere to return to")
 	}
 	v, err := s.open(c)
 	if err != nil {

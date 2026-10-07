@@ -3,6 +3,8 @@ package sso
 import (
 	"context"
 	"encoding/pem"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -94,15 +96,38 @@ func TestKeyPairAndEndpoints(t *testing.T) {
 	assert.True(t, cert.NotAfter.After(time.Now().AddDate(9, 0, 0)))
 	assert.Equal(t, 2048, key.N.BitLen())
 
-	eps := p.Endpoints(&integrations.Connection{ID: 12}, integrations.Env{PublicURL: "https://cards.example.com", OrgHandle: "acme"})
-	values := map[string]string{}
-	for _, e := range eps {
-		values[e.Key] = e.Value
+	endpoints := func(env integrations.Env) map[string]string {
+		values := map[string]string{}
+		for _, e := range p.Endpoints(&integrations.Connection{ID: 12}, env) {
+			values[e.Key] = e.Value
+		}
+		return values
 	}
-	assert.Equal(t, "https://cards.example.com/auth/saml/12/acs", values["acs_url"])
-	assert.Equal(t, "https://cards.example.com/auth/saml/12/metadata", values["entity_id"])
-	assert.Equal(t, "https://cards.example.com/auth/sso/acme", values["sign_in_url"])
+	same := endpoints(integrations.Env{PublicURL: "https://cards.example.com", APIURL: "https://cards.example.com", OrgHandle: "acme"})
+	assert.Equal(t, "https://cards.example.com/auth/saml/12/acs", same["acs_url"])
+	assert.Equal(t, "https://cards.example.com/auth/saml/12/metadata", same["entity_id"])
+	assert.Equal(t, "https://cards.example.com/login/sso/acme", same["sign_in_url"])
+
+	// With the API on its own domain, the identity provider talks to the API
+	// and people are sent to the site.
+	split := endpoints(integrations.Env{PublicURL: "https://example.com", APIURL: "https://api.example.com", OrgHandle: "acme"})
+	assert.Equal(t, "https://api.example.com/auth/saml/12/acs", split["acs_url"])
+	assert.Equal(t, "https://api.example.com/auth/saml/12/metadata", split["metadata_url"])
+	assert.Equal(t, "https://example.com/login/sso/acme", split["sign_in_url"])
+
 	assert.Empty(t, p.Endpoints(&integrations.Connection{ID: 12}, integrations.Env{}), "no PUBLIC_URL, no URLs")
+}
+
+func TestRedirectsGoToTheSite(t *testing.T) {
+	h := &Handler{publicURL: "https://example.com", apiURL: "https://api.example.com"}
+	w := httptest.NewRecorder()
+	h.fail(w, httptest.NewRequest(http.MethodPost, "https://api.example.com/auth/saml/1/acs", nil), "Nope.")
+	assert.Equal(t, "https://example.com/login?sso_error=Nope.", w.Header().Get("Location"))
+
+	h = &Handler{}
+	w = httptest.NewRecorder()
+	h.fail(w, httptest.NewRequest(http.MethodGet, "/auth/sso/acme", nil), "Nope.")
+	assert.Equal(t, "/login?sso_error=Nope.", w.Header().Get("Location"), "relative without PUBLIC_URL")
 }
 
 const idpMetadata = `<?xml version="1.0"?>

@@ -143,7 +143,10 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 
 	log.Printf("Environment: %s", cfg.Env)
 	if cfg.PublicURL == "" {
-		log.Println("PUBLIC_URL not set: integrations that need a callback URL (OAuth, SAML, SCIM) are unavailable")
+		log.Println("PUBLIC_URL not set (nor FRONTEND_URL): integrations that need a callback URL (OAuth, SAML, SCIM) are unavailable")
+	}
+	if cfg.PublicAPIURL != cfg.PublicURL {
+		log.Printf("API reached at %s (PUBLIC_API_URL); OAuth callbacks, SAML and SCIM use it", cfg.PublicAPIURL)
 	}
 	if cfg.JobWorkers == 0 {
 		log.Println("JOB_WORKERS is 0: this instance queues background jobs but doesn't run them")
@@ -215,19 +218,20 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 	providers.All(registry)
 	integrationSvc := integrations.NewService(integrations.NewStore(pool), registry, leadStore, orgStore,
 		deriveKey(cfg.JWTSecret, "integrations oauth state"),
-		integrations.Options{PublicURL: cfg.PublicURL, Box: box, AllowPrivate: devOutbound})
+		integrations.Options{PublicURL: cfg.PublicURL, APIURL: cfg.PublicAPIURL, Box: box, AllowPrivate: devOutbound})
 	// Single sign-on and SCIM build on the integrations core.
 	ssoStore := sso.NewStore(pool)
 	ssoPolicy := sso.NewPolicy(integrationSvc, ssoStore, cfg.PublicURL)
 	ssoHandler := sso.NewHandler(integrationSvc, ssoStore, userStore, orgStore, authService, codes, sso.Options{
 		PublicURL:    cfg.PublicURL,
+		APIURL:       cfg.PublicAPIURL,
 		CookieSecure: cfg.CookieSecure,
 		StateKey:     deriveKey(cfg.JWTSecret, "sso sign-in state"),
 		HTTP:         netguard.Client(netguard.Options{AllowPrivate: devOutbound, Timeout: 20 * time.Second}),
 		Resolver:     net.DefaultResolver,
 	})
 	scim := directory.NewHandler(integrationSvc, directory.NewStore(pool), userStore, orgStore, teamStore,
-		authService, codes, ssoPolicy, cfg.PublicURL)
+		authService, codes, ssoPolicy, cfg.PublicAPIURL)
 	bookings := func(ctx context.Context, orgID int64) (func(int64) *cards.Booking, error) {
 		set, err := integrationSvc.Bookings(ctx, orgID)
 		if err != nil {

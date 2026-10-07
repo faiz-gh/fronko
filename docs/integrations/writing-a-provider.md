@@ -116,7 +116,7 @@ What you get in `Call`:
 - `call.Settings.Values` and `call.Settings.Secrets`: the connection's settings, secrets decrypted. Use `Settings.String(key)` and `Settings.Bool(key)`.
 - `call.HTTP`: the client to use for every request. It refuses private and local addresses (outside development), doesn't follow redirects, ignores proxy variables and times out after 20 seconds. **For OAuth providers it also adds the access token and refreshes it**, saving the new token. Never use `http.DefaultClient`.
 - `call.Connection`: the connection (its id, scope, name).
-- `call.PublicURL`: `PUBLIC_URL`, or `""`.
+- `call.PublicURL`: the site's address (`PUBLIC_URL`, else the first `FRONTEND_URL`), or `""`.
 
 What you get in `Lead`: version 1 of the lead payload (id, time, name, email, E.164 phone, notes, source, the card with its link, the card holder, the organisation). It's the same shape the webhook sends; add fields there rather than in a provider, and never rename or remove one. A test lead has `ID == 0`.
 
@@ -205,7 +205,7 @@ func (p *Provider) OAuth(integrations.Settings) integrations.OAuthSpec {
 The core does the rest:
 
 1. **Authorise** opens `/api/integrations/connections/{id}/oauth/start`, which redirects to `AuthURL` with an HMAC-signed `state` naming the connection and user, plus a short-lived cookie holding a nonce (and the PKCE verifier).
-2. The provider returns to `<PUBLIC_URL>/api/integrations/oauth/callback`. Fronko checks the state, the user and the nonce, exchanges the code with the connection's own client ID and secret, and seals the token with the connection's secrets.
+2. The provider returns to `/api/integrations/oauth/callback` on the API's address (`PUBLIC_API_URL`, which defaults to `PUBLIC_URL`), where the session and OAuth cookies are. Fronko checks the state, the user and the nonce, exchanges the code with the connection's own client ID and secret, and seals the token with the connection's secrets.
 3. `call.HTTP` signs every request with the token, and refreshes and re-saves it when it expires. A refresh that fails with `invalid_grant` becomes a permanent error asking people to authorise again.
 
 The connection stays **Setup incomplete** until it has a token. Changing the client ID or secret drops the token. The page shows the redirect URL to register in the provider's app. See [`hubspot.go`](../../backend/internal/integrations/providers/hubspot/hubspot.go) for a complete example.
@@ -215,7 +215,7 @@ The connection stays **Setup incomplete** until it has a token. Changing the cli
 - **`Tester`** for providers that don't push leads. Calendar providers open the booking page; SAML fetches the metadata. Return a `Result` on success or an error explaining what's wrong.
 - **`BookingLinker`** returns the button a card shows. The core picks the card holder's connection, or the organisation's ([`calendar.go`](../../backend/internal/integrations/providers/calendar/calendar.go)).
 - **`Initializer`** runs once before a connection is first saved. It may add internal secrets that aren't manifest fields; they're sealed with the rest and never shown.
-- **`Describer`** returns values people copy into the provider (ACS URL, tenant URL), built from `Env.PublicURL` and `Env.OrgHandle`. They're shown on the connection's page.
+- **`Describer`** returns values people copy into the provider (ACS URL, tenant URL). Build addresses other servers call or post to on `Env.APIURL`, and pages people open on `Env.PublicURL`; they differ when the API has its own domain. They're shown on the connection's page.
 
 ## Checklist
 

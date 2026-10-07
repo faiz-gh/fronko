@@ -18,11 +18,11 @@ func (p *Provider) Validate(context.Context, integrations.Settings) error { retu
 // Endpoints are what the identity provider needs: the SCIM base URL. The
 // token is generated separately.
 func (p *Provider) Endpoints(_ *integrations.Connection, env integrations.Env) []integrations.Endpoint {
-	if env.PublicURL == "" {
+	if env.APIURL == "" {
 		return nil
 	}
 	return []integrations.Endpoint{{
-		Key: "tenant_url", Label: "Tenant URL (SCIM base URL)", Value: env.PublicURL + BasePath,
+		Key: "tenant_url", Label: "Tenant URL (SCIM base URL)", Value: env.APIURL + BasePath,
 		Help: "Where the identity provider sends people and groups.",
 	}}
 }

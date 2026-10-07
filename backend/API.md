@@ -1057,7 +1057,7 @@ Connections to outside services: lead sync, booking pages, SCIM and SAML. The [i
 | `403` | `"you can't manage this connection"`: a member creating an organisation connection, or listing `?scope=org` |
 | `404` | `"connection not found"`, or `"unknown integration"` for a provider id the server doesn't have |
 | `409` | `"you already have a connection to this integration"`, or the category's own message (one booking page per person, one directory and one SSO connection per organisation) |
-| `422` | `"this integration isn't available on this server"` (coming soon, or `PUBLIC_URL` / `SECRETS_KEY` missing), `"finish setting up this connection first"` (testing a pending connection), or `"SECRETS_KEY isn't set on this server, so secrets can't be stored"` |
+| `422` | `"this integration isn't available on this server"` (coming soon, or the site's address / `SECRETS_KEY` missing), `"finish setting up this connection first"` (testing a pending connection), or `"SECRETS_KEY isn't set on this server, so secrets can't be stored"` |
 
 ### Manifest
 
@@ -1156,7 +1156,7 @@ Every provider the user may connect, grouped by category, with their connections
 }
 ```
 
-`unavailable` says why a provider can't be connected here (`"Coming soon"`, `"Needs PUBLIC_URL to be set on the server"`, `"Needs SECRETS_KEY to be set on the server"`), or is empty. `testable` means its connections have a Test or Send test lead action. `oauth_redirect_url` is what to register in an OAuth app, or `""` without `PUBLIC_URL`.
+`unavailable` says why a provider can't be connected here (`"Coming soon"`, `"Needs FRONTEND_URL (or PUBLIC_URL) to be set on the server"`, `"Needs SECRETS_KEY to be set on the server"`), or is empty. `testable` means its connections have a Test or Send test lead action. `oauth_redirect_url` is what to register in an OAuth app, or `""` without `PUBLIC_URL`.
 
 ### `GET /api/integrations/connections`
 
@@ -1243,7 +1243,7 @@ For `oauth2` connections. The browser **navigates** here (it's not an XHR): Fron
 
 ### `GET /api/integrations/oauth/callback`
 
-Where providers send the browser back (`state`, and `code` or `error`). Fronko checks the state's signature, expiry, user and the cookie's nonce, exchanges the code with the connection's own client ID and secret, and seals the token. It then redirects to `/dashboard/integrations/{provider}?connection={id}` with `&oauth=connected` or `&oauth_error=<message>`. Register `<PUBLIC_URL>/api/integrations/oauth/callback` as the redirect URL in the OAuth app.
+Where providers send the browser back (`state`, and `code` or `error`). Fronko checks the state's signature, expiry, user and the cookie's nonce, exchanges the code with the connection's own client ID and secret, and seals the token. It then redirects to `/dashboard/integrations/{provider}?connection={id}` with `&oauth=connected` or `&oauth_error=<message>`. The callback is on the API's address and the final redirect on the site's (`PUBLIC_URL`), so this works when the API has its own domain. Register the catalog's `oauth_redirect_url` (`/api/integrations/oauth/callback` on the API's address) in the OAuth app.
 
 ### `GET /api/org/domains` 🛡️
 
@@ -1321,7 +1321,7 @@ The identity provider posts its response here (`SAMLResponse`, form-encoded, up 
 
 A SCIM 2.0 server ([RFC 7643](https://www.rfc-editor.org/rfc/rfc7643), [RFC 7644](https://www.rfc-editor.org/rfc/rfc7644)) for identity providers to provision people and teams. Setup: [Microsoft Entra ID](../docs/integrations/entra-scim.md).
 
-- **Base URL:** `<PUBLIC_URL>/scim/v2`.
+- **Base URL:** `/scim/v2` on the API's address (`PUBLIC_API_URL`, which is `PUBLIC_URL` unless the API has its own domain).
 - **Auth:** `Authorization: Bearer fronko_scim_…`, the token of the organisation's directory connection ([`POST …/tokens`](#post-apiintegrationsconnectionsidtokens)). A missing, revoked or paused token gets `401`; a suspended organisation `403`.
 - **Content type:** `application/scim+json` (plain `application/json` is accepted).
 - **Errors:** SCIM error bodies, `{"schemas":["urn:ietf:params:scim:api:messages:2.0:Error"],"status":"409","scimType":"uniqueness","detail":"…"}`. Refused writes are logged on the connection.

@@ -52,7 +52,8 @@ Compare `deploy/.env` with [`deploy/.env.example`](../../deploy/.env.example). S
 
 | Variable | What to set |
 | -------- | ----------- |
-| `PUBLIC_URL` | Where people reach the site, such as `https://cards.example.com`. HubSpot, SAML and SCIM need it |
+| `FRONTEND_URL` | The site's address, such as `https://cards.example.com`, even if the API is on the same domain. HubSpot, SAML and SCIM need it. (`PUBLIC_URL` overrides it, if the site's address isn't the first `FRONTEND_URL`.) |
+| `BACKEND_URL` | Only if the API has its own domain (such as `https://api.cards.example.com`). The backend now also builds OAuth, SAML and SCIM addresses on it; `FRONTEND_URL` stays the site's address |
 | `JOB_WORKERS` | Leave at `2` unless you know you want otherwise |
 | `SECRETS_KEY` | Already optional for storage; integrations with secrets need it too. If you set it for the first time, generate it with `openssl rand -base64 32` and back it up |
 

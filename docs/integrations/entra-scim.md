@@ -4,7 +4,7 @@ Team Member Import keeps Fronko's people in step with Microsoft Entra ID (former
 
 - **Who can connect it:** the owner and admins. In Entra you need the Cloud Application Administrator or Application Administrator role.
 - **How many:** one directory connection per organisation.
-- **Server needs:** `PUBLIC_URL` (the SCIM tenant URL is built from it). The site must be reachable from the internet over HTTPS, since Microsoft's servers call it.
+- **Server needs:** `FRONTEND_URL` or `PUBLIC_URL` (the SCIM tenant URL is built from it, or from `BACKEND_URL` when the API has its own domain). The site must be reachable from the internet over HTTPS, since Microsoft's servers call it.
 
 Pair it with [Entra ID single sign-on](entra-saml.md) so people sign in with their Microsoft account and never need a Fronko password.
 
@@ -12,7 +12,7 @@ Pair it with [Entra ID single sign-on](entra-saml.md) so people sign in with the
 
 1. In Fronko, open **Integrations → Microsoft Entra ID** (under Team Member Import), click **Connect** and save.
 2. Click **Generate token**. Copy the token (it starts with `fronko_scim_`) right away: it's shown once. Fronko stores only a hash of it.
-3. Note the **Tenant URL**, `<PUBLIC_URL>/scim/v2`, for example `https://cards.example.com/scim/v2`.
+3. Note the **Tenant URL**, `/scim/v2` on the API's address: for example `https://cards.example.com/scim/v2`, or `https://api.cards.example.com/scim/v2` when the API has its own domain.
 
 The connection becomes **Active** once it has a token.
 
@@ -95,4 +95,4 @@ Click **Generate token** again to replace it; the old one stops working at once.
 | `400` "a valid work email is required" | Give the person a `mail` address in Entra, or make their `userPrincipalName` their email |
 | `409` "… already has a Fronko account in another organisation" | The email is used in another Fronko organisation |
 | `409` "a user with this userName already exists" | Two Entra users map to the same Fronko person; check for duplicate addresses |
-| Test Connection fails to reach the server | `PUBLIC_URL` must be the public HTTPS address, and `/scim/` must reach the backend through your proxy |
+| Test Connection fails to reach the server | The tenant URL must be the public HTTPS address (check `FRONTEND_URL` or `BACKEND_URL`), and `/scim/` must reach the backend through your proxy |

@@ -5,11 +5,11 @@ Sign in to Fronko with Microsoft Entra ID (formerly Azure AD), and create Fronko
 To also add, update and remove people automatically, set up [Entra ID SCIM provisioning](entra-scim.md) as well. The two work together: SCIM creates the accounts (with no password while SSO is on), SAML signs people in.
 
 - **Who can connect it:** the owner and admins. In Entra you need the Cloud Application Administrator or Application Administrator role.
-- **Server needs:** `PUBLIC_URL` and `SECRETS_KEY`.
+- **Server needs:** `FRONTEND_URL` (or `PUBLIC_URL`) and `SECRETS_KEY`.
 
 ## 1. Start in Fronko
 
-Open **Integrations → Microsoft Entra ID** (under SAML SSO), click **Connect** and **Save** without filling anything in yet. The connection shows Fronko's **ACS URL**, **Entity ID** and **Sign-in URL**. Keep the page open.
+Open **Integrations → Microsoft Entra ID** (under SAML SSO), click **Connect** and **Save** without filling anything in yet. The connection shows Fronko's **ACS URL**, **Entity ID** and **Sign-in URL**. Keep the page open. Copy them from there: the examples below assume the API is on the site's domain, and when it has its own (`api.cards.example.com`), the ACS URL and Entity ID are on that.
 
 ## 2. Create the enterprise application
 
@@ -27,7 +27,7 @@ If you've already created a Fronko app for SCIM, use the same one.
    | ------------- | ----- |
    | Identifier (Entity ID) | Fronko's **Entity ID** (`https://cards.example.com/auth/saml/<id>/metadata`). Tick **Default** |
    | Reply URL (Assertion Consumer Service URL) | Fronko's **ACS URL** (`https://cards.example.com/auth/saml/<id>/acs`) |
-   | Sign on URL | Fronko's **Sign-in URL** (`https://cards.example.com/auth/sso/<handle>`) |
+   | Sign on URL | Fronko's **Sign-in URL** (`https://cards.example.com/login/sso/<handle>`) |
 
    Save.
 3. Leave **Attributes & Claims** at the defaults: `emailaddress` (`user.mail`), `givenname`, `surname` and `name`. Fronko reads the email claim, so make sure everyone who'll sign in has a **mail** address in Entra. If yours are only in `userPrincipalName`, change the `emailaddress` claim's source to `user.userprincipalname`.

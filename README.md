@@ -169,7 +169,6 @@ DATABASE_URL=postgres://fronko:password@your-db-host:5432/fronko?sslmode=require
 JWT_SECRET=replace-with-output-of-openssl-rand-base64-32
 SECRETS_KEY=replace-with-output-of-openssl-rand-base64-32
 FRONTEND_URL=https://cards.example.com
-PUBLIC_URL=https://cards.example.com
 
 SMTP_HOST=smtp.resend.com
 SMTP_PORT=587
@@ -209,7 +208,7 @@ Sign in at `https://cards.example.com/admin/login`. To change a forgotten admin 
 | Topology | Setup |
 | -------- | ----- |
 | **Single domain** (default) | Leave `BACKEND_URL` empty. The frontend's nginx proxies `/api` and `/auth`, so all requests are same-origin and need no CORS setup. |
-| **Separate API domain** | Route a domain such as `api.cards.example.com` to `backend:8080`, then set `BACKEND_URL` to it and `FRONTEND_URL` to the site's origin. Use a subdomain of the same site so the `SameSite=Lax` session cookie is still sent, and allow request bodies up to 25 MB on that proxy for uploads. |
+| **Separate API domain** | Route a domain such as `api.cards.example.com` to `backend:8080`, then set `BACKEND_URL` to it and `FRONTEND_URL` to the site's origin. Use a subdomain of the same site so the `SameSite=Lax` session cookie is still sent, and allow request bodies up to 25 MB on that proxy for uploads. The backend also gets `BACKEND_URL` as `PUBLIC_API_URL`, so OAuth callbacks, SAML and SCIM addresses are on the API's domain while people still land on the site. |
 
 Both URLs are read when the containers start, so changing them needs only a restart, not a rebuild.
 
@@ -222,10 +221,10 @@ All settings are environment variables, set in `deploy/.env`.
 | `DATABASE_URL` | Yes | PostgreSQL connection string. |
 | `JWT_SECRET` | Yes | Key for signing session tokens. Must be at least 16 characters; generate one with `openssl rand -base64 32`. |
 | `SECRETS_KEY` | | Base64 of 32 random bytes. Encrypts storage credentials and integration secrets at rest. Without it, photo and brochure uploads are disabled, and so are integrations that store a secret. **Keep it stable and backed up**: if it changes or is lost, saved credentials can't be decrypted. |
-| `PUBLIC_URL` | | Where people reach the site, such as `https://cards.example.com` (no trailing slash). Needed by HubSpot (OAuth), SAML SSO and SCIM, which show as unavailable without it, and used for card links in lead sync. |
+| `PUBLIC_URL` | | Where people reach the site, if it isn't the first `FRONTEND_URL` (no trailing slash). Integrations need one of the two: HubSpot (OAuth), SAML SSO and SCIM show as unavailable without it. Sign-ins and authorisations end there, and lead sync uses it for card links. |
 | `JOB_WORKERS` | | Background jobs (such as lead sync) this instance runs at once. Defaults to `2`; `0` queues jobs without running them. |
-| `FRONTEND_URL` | | Public origin of the site. Allowed as a CORS origin; comma-separate several. |
-| `BACKEND_URL` | | Public API URL the browser calls. Leave empty to proxy through the frontend (same-origin). |
+| `FRONTEND_URL` | | Public origin of the site, such as `https://cards.example.com`. Allowed as a CORS origin (comma-separate several), and the first one is the site's address for integrations unless `PUBLIC_URL` says otherwise. Set it even on a single domain. |
+| `BACKEND_URL` | | Public API URL the browser calls, such as `https://api.cards.example.com`. Leave empty to proxy through the frontend (same-origin). When set, OAuth redirect URLs, SAML ACS URLs and the SCIM base URL are on it. |
 | `COOKIE_SECURE` | | Defaults to `true`. Set to `false` only when testing over plain HTTP. |
 | `SMTP_HOST` | | Outgoing mail server. Without it, emails (including their codes) are only written to the backend log. |
 | `SMTP_PORT` | | Defaults to `587`. Port `465` uses implicit TLS; other ports upgrade with STARTTLS. |
@@ -271,7 +270,7 @@ On metal cards the chip only reads through a small window; slide the card slowly
 
 ## Integrations
 
-Admins connect integrations under **Dashboard → Integrations**; members connect their own booking page and lead sync webhooks there too. The server only needs `SECRETS_KEY`, and `PUBLIC_URL` for HubSpot, SAML and SCIM. There are setup guides for each provider:
+Admins connect integrations under **Dashboard → Integrations**; members connect their own booking page and lead sync webhooks there too. The server only needs `SECRETS_KEY`, and `FRONTEND_URL` (the site's address) for HubSpot, SAML and SCIM. There are setup guides for each provider:
 
 | Category | Guides |
 | -------- | ------ |

@@ -221,17 +221,17 @@ func newKeyPair() (keyPEM, certPEM string, err error) {
 
 // Endpoints are the values to enter in the identity provider.
 func (p *Provider) Endpoints(c *integrations.Connection, env integrations.Env) []integrations.Endpoint {
-	if env.PublicURL == "" {
+	if env.APIURL == "" || env.PublicURL == "" {
 		return nil
 	}
-	urls := urlsFor(env.PublicURL, c.ID)
+	urls := urlsFor(env.APIURL, c.ID)
 	return []integrations.Endpoint{
 		{Key: "acs_url", Label: "ACS URL (Reply URL)", Value: urls.acs,
 			Help: "Where your identity provider sends people after they sign in."},
 		{Key: "entity_id", Label: "Entity ID (Audience URI / Identifier)", Value: urls.metadata},
 		{Key: "metadata_url", Label: "SP metadata URL", Value: urls.metadata,
 			Help: "For identity providers that can read Fronko's settings from a URL."},
-		{Key: "sign_in_url", Label: "Sign-in URL", Value: env.PublicURL + "/auth/sso/" + env.OrgHandle,
+		{Key: "sign_in_url", Label: "Sign-in URL", Value: SignInURL(env.PublicURL, env.OrgHandle),
 			Help: "Opens your identity provider's sign-in for this organisation. Use it as the app's Sign on URL, or share it."},
 	}
 }

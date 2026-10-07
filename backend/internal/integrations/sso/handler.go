@@ -54,13 +54,19 @@ type Handler struct {
 	client       *http.Client
 	resolver     TXTResolver
 	publicURL    string
+	apiURL       string
 	cookieSecure bool
 	stateKey     []byte
 }
 
 // Options configure the handler.
 type Options struct {
-	PublicURL    string
+	// PublicURL is where people reach the site: sign-ins end there.
+	PublicURL string
+	// APIURL is where the API is reached (the ACS URL and entity ID are
+	// built on it); empty means PublicURL. The sign-in cookie and the
+	// session cookie are set on this address.
+	APIURL       string
 	CookieSecure bool
 	// StateKey signs the sign-in cookie; derive it from a server secret.
 	StateKey []byte
@@ -71,9 +77,13 @@ type Options struct {
 
 func NewHandler(svc *integrations.Service, store *Store, userStore *users.Store, orgStore *orgs.Store,
 	authService *auth.Service, codes *users.Codes, opts Options) *Handler {
-	return &Handler{svc: svc, store: store, users: userStore, orgs: orgStore, auth: authService, codes: codes,
+	h := &Handler{svc: svc, store: store, users: userStore, orgs: orgStore, auth: authService, codes: codes,
 		cache: newMetadataCache(opts.HTTP), client: opts.HTTP, resolver: opts.Resolver,
-		publicURL: opts.PublicURL, cookieSecure: opts.CookieSecure, stateKey: opts.StateKey}
+		publicURL: opts.PublicURL, apiURL: opts.APIURL, cookieSecure: opts.CookieSecure, stateKey: opts.StateKey}
+	if h.apiURL == "" {
+		h.apiURL = h.publicURL
+	}
+	return h
 }
 
 // signInState is what the cookie remembers between the request and the response.
@@ -127,9 +137,11 @@ func (h *Handler) setState(w http.ResponseWriter, value string, maxAge int) {
 	http.SetCookie(w, c)
 }
 
-// fail sends the browser back to the sign-in page with a message.
-func fail(w http.ResponseWriter, r *http.Request, msg string) {
-	http.Redirect(w, r, loginPath+"?"+url.Values{"sso_error": {msg}}.Encode(), http.StatusSeeOther)
+// fail sends the browser back to the site's sign-in page with a message.
+// The site's address is spelled out, since these requests are served on
+// the API's address, which may be another domain.
+func (h *Handler) fail(w http.ResponseWriter, r *http.Request, msg string) {
+	http.Redirect(w, r, h.publicURL+loginPath+"?"+url.Values{"sso_error": {msg}}.Encode(), http.StatusSeeOther)
 }
 
 // safeReturn keeps return_to to a path on this site.
@@ -147,33 +159,33 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	org, err := h.store.orgByHandle(ctx, r.PathValue("handle"))
 	if errors.Is(err, database.ErrNotFound) {
-		fail(w, r, "No organisation uses that address. Check the spelling, or sign in with your password.")
+		h.fail(w, r, "No organisation uses that address. Check the spelling, or sign in with your password.")
 		return
 	}
 	if err != nil {
 		log.Printf("sso: org lookup: %v", err)
-		fail(w, r, "Something went wrong. Try again.")
+		h.fail(w, r, "Something went wrong. Try again.")
 		return
 	}
 	if org.Suspended {
-		fail(w, r, auth.OrgSuspendedMessage)
+		h.fail(w, r, auth.OrgSuspendedMessage)
 		return
 	}
 	link, err := h.svc.OrgConnection(ctx, org.ID, integrations.CategorySSO)
 	if errors.Is(err, database.ErrNotFound) {
-		fail(w, r, "Single sign-on isn't set up for this organisation. Sign in with your password.")
+		h.fail(w, r, "Single sign-on isn't set up for this organisation. Sign in with your password.")
 		return
 	}
 	if err != nil {
 		log.Printf("sso: connection lookup: %v", err)
-		fail(w, r, "Something went wrong. Try again.")
+		h.fail(w, r, "Something went wrong. Try again.")
 		return
 	}
 	sp, err := h.serviceProvider(ctx, link)
 	if err != nil {
 		h.svc.Record(ctx, link.Connection.ID, integrations.Event{Kind: integrations.ActivitySignIn,
 			Outcome: integrations.OutcomeFailed, Summary: "Couldn't start a sign-in: " + err.Error()})
-		fail(w, r, "Your identity provider can't be reached right now. Try again, or ask your admin to check the single sign-on settings.")
+		h.fail(w, r, "Your identity provider can't be reached right now. Try again, or ask your admin to check the single sign-on settings.")
 		return
 	}
 
@@ -184,7 +196,7 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 	req, err := sp.MakeAuthenticationRequest(location, binding, saml.HTTPPostBinding)
 	if err != nil {
 		log.Printf("sso: make request: %v", err)
-		fail(w, r, "Something went wrong. Try again.")
+		h.fail(w, r, "Something went wrong. Try again.")
 		return
 	}
 	h.setState(w, h.sign(signInState{
@@ -203,21 +215,21 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 	target, err := req.Redirect("", sp)
 	if err != nil {
 		log.Printf("sso: redirect: %v", err)
-		fail(w, r, "Something went wrong. Try again.")
+		h.fail(w, r, "Something went wrong. Try again.")
 		return
 	}
 	http.Redirect(w, r, target.String(), http.StatusFound)
 }
 
 func (h *Handler) serviceProvider(ctx context.Context, link *integrations.Linked) (*saml.ServiceProvider, error) {
-	if h.publicURL == "" {
+	if h.apiURL == "" {
 		return nil, errors.New("PUBLIC_URL isn't set")
 	}
 	md, err := h.cache.get(ctx, link)
 	if err != nil {
 		return nil, err
 	}
-	return serviceProvider(link, h.publicURL, md, h.client)
+	return serviceProvider(link, h.apiURL, md, h.client)
 }
 
 // External: POST /auth/saml/{id}/acs. The identity provider's response.
@@ -238,14 +250,14 @@ func (h *Handler) ACS(w http.ResponseWriter, r *http.Request) {
 
 	link, err := h.svc.ConnectionByID(ctx, id)
 	if err != nil || link.Connection.Category != integrations.CategorySSO || link.Connection.Status != integrations.StatusActive {
-		fail(w, r, "This single sign-on connection is switched off or no longer exists.")
+		h.fail(w, r, "This single sign-on connection is switched off or no longer exists.")
 		return
 	}
 	connID := link.Connection.ID
 	reject := func(summary, msg string, detail map[string]any) {
 		h.svc.Record(ctx, connID, integrations.Event{Kind: integrations.ActivitySignIn,
 			Outcome: integrations.OutcomeFailed, Summary: summary, Detail: detail})
-		fail(w, r, msg)
+		h.fail(w, r, msg)
 	}
 
 	sp, err := h.serviceProvider(ctx, link)
@@ -256,7 +268,7 @@ func (h *Handler) ACS(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := r.ParseForm(); err != nil {
-		fail(w, r, "The sign-in response couldn't be read. Try again.")
+		h.fail(w, r, "The sign-in response couldn't be read. Try again.")
 		return
 	}
 	var ids []string
@@ -288,7 +300,7 @@ func (h *Handler) ACS(w http.ResponseWriter, r *http.Request) {
 	user, created, msg, err := h.resolveUser(ctx, link, who)
 	if err != nil {
 		log.Printf("sso: resolve user: %v", err)
-		fail(w, r, "Something went wrong. Try again.")
+		h.fail(w, r, "Something went wrong. Try again.")
 		return
 	}
 	if msg != "" {
@@ -299,7 +311,7 @@ func (h *Handler) ACS(w http.ResponseWriter, r *http.Request) {
 	token, err := h.auth.GenerateJWT(user.ID, user.SessionVersion)
 	if err != nil {
 		log.Printf("sso: token: %v", err)
-		fail(w, r, "Something went wrong. Try again.")
+		h.fail(w, r, "Something went wrong. Try again.")
 		return
 	}
 	auth.SetSessionCookie(w, token, h.cookieSecure)
@@ -323,7 +335,7 @@ func (h *Handler) ACS(w http.ResponseWriter, r *http.Request) {
 	if state.ReturnTo != "" {
 		returnTo = state.ReturnTo
 	}
-	http.Redirect(w, r, returnTo, http.StatusSeeOther)
+	http.Redirect(w, r, h.publicURL+returnTo, http.StatusSeeOther)
 }
 
 // identity is who the identity provider says signed in.
@@ -473,11 +485,11 @@ func (h *Handler) Metadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	link, err := h.svc.ConnectionByID(r.Context(), id)
-	if err != nil || link.Connection.Category != integrations.CategorySSO || h.publicURL == "" {
+	if err != nil || link.Connection.Category != integrations.CategorySSO || h.apiURL == "" {
 		httpx.WriteError(w, http.StatusNotFound, "not found")
 		return
 	}
-	sp, err := serviceProvider(link, h.publicURL, nil, h.client)
+	sp, err := serviceProvider(link, h.apiURL, nil, h.client)
 	if err != nil {
 		httpx.Internal("sp metadata", err).Write(w)
 		return

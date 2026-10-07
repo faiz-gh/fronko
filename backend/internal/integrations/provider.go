@@ -163,8 +163,13 @@ type Initializer interface {
 
 // Env is what a provider may need to know about where it runs.
 type Env struct {
-	// PublicURL is PUBLIC_URL, or "".
+	// PublicURL is PUBLIC_URL, or "": where people reach the site. Use it
+	// for pages and links people open.
 	PublicURL string
+	// APIURL is PUBLIC_API_URL (PUBLIC_URL unless the API has its own
+	// domain), or "". Use it for addresses other servers call or post to,
+	// such as SAML's ACS URL or SCIM's base URL.
+	APIURL string
 	// OrgHandle is the connection's organisation's handle.
 	OrgHandle string
 }

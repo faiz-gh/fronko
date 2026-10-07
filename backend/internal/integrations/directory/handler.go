@@ -39,21 +39,23 @@ type Identity interface {
 // Handler serves the SCIM API to an organisation's identity provider,
 // authenticated by the token of its directory connection.
 type Handler struct {
-	svc       *integrations.Service
-	store     *Store
-	users     *users.Store
-	orgs      *orgs.Store
-	teams     *teams.Store
-	auth      *auth.Service
-	codes     *users.Codes
-	identity  Identity
-	publicURL string
+	svc      *integrations.Service
+	store    *Store
+	users    *users.Store
+	orgs     *orgs.Store
+	teams    *teams.Store
+	auth     *auth.Service
+	codes    *users.Codes
+	identity Identity
+	// apiURL is where the API is reached (PUBLIC_API_URL), the base of
+	// resource locations; "" uses the request's own host.
+	apiURL string
 }
 
 func NewHandler(svc *integrations.Service, store *Store, userStore *users.Store, orgStore *orgs.Store,
-	teamStore *teams.Store, authService *auth.Service, codes *users.Codes, identity Identity, publicURL string) *Handler {
+	teamStore *teams.Store, authService *auth.Service, codes *users.Codes, identity Identity, apiURL string) *Handler {
 	return &Handler{svc: svc, store: store, users: userStore, orgs: orgStore, teams: teamStore,
-		auth: authService, codes: codes, identity: identity, publicURL: publicURL}
+		auth: authService, codes: codes, identity: identity, apiURL: apiURL}
 }
 
 // call is one authenticated SCIM request.
@@ -89,7 +91,7 @@ func (h *Handler) authed(next handlerFunc) http.HandlerFunc {
 			writeSCIMError(w, &scimError{Status: http.StatusForbidden, Detail: "this organisation is suspended"})
 			return
 		}
-		base := h.publicURL
+		base := h.apiURL
 		if base == "" {
 			scheme := "https"
 			if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {

@@ -3,11 +3,11 @@
 Sign in to Fronko with Okta, and create Fronko accounts for new people the first time they sign in. Read [SAML single sign-on](saml.md) for how sign-in, account creation, required SSO and email domains work; this page has the Okta steps.
 
 - **Who can connect it:** the owner and admins. Okta admin rights are needed for steps 2–5.
-- **Server needs:** `PUBLIC_URL` and `SECRETS_KEY`.
+- **Server needs:** `FRONTEND_URL` (or `PUBLIC_URL`) and `SECRETS_KEY`.
 
 ## 1. Start in Fronko
 
-Open **Integrations → Okta** (under SAML SSO), click **Connect** and **Save** without filling anything in yet. The connection shows Fronko's sign-in URLs: the **ACS URL**, the **Entity ID** and the **Sign-in URL**. Keep the page open.
+Open **Integrations → Okta** (under SAML SSO), click **Connect** and **Save** without filling anything in yet. The connection shows Fronko's sign-in URLs: the **ACS URL**, the **Entity ID** and the **Sign-in URL**. Keep the page open. Copy them from there: the examples below assume the API is on the site's domain, and when it has its own (`api.cards.example.com`), the ACS URL and Entity ID are on that.
 
 ## 2. Create the app in Okta
 
@@ -54,7 +54,7 @@ Click **Test**. Fronko should report the metadata is valid and when Okta's signi
 
 ## Okta dashboard tile
 
-Okta shows assigned apps on people's dashboards. Clicking the tile is an IdP-initiated sign-in, which Fronko refuses unless **Allow sign-in from the identity provider's app launcher** is on. If you'd rather keep it off (recommended), make the tile start at Fronko instead: on the app's **General** tab, set **Application visibility** to hide the generated tile, then add a **Bookmark App** pointing at Fronko's **Sign-in URL** (`https://cards.example.com/auth/sso/<handle>`).
+Okta shows assigned apps on people's dashboards. Clicking the tile is an IdP-initiated sign-in, which Fronko refuses unless **Allow sign-in from the identity provider's app launcher** is on. If you'd rather keep it off (recommended), make the tile start at Fronko instead: on the app's **General** tab, set **Application visibility** to hide the generated tile, then add a **Bookmark App** pointing at Fronko's **Sign-in URL** (`https://cards.example.com/login/sso/<handle>`).
 
 ## Provisioning
 

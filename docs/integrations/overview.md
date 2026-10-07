@@ -18,9 +18,9 @@ Some integrations depend on server settings. When one is missing, the integratio
 | Setting | Needed by | Why |
 | ------- | --------- | --- |
 | `SECRETS_KEY` | Anything with a secret: webhook signing secrets, HubSpot, SAML | Secrets are encrypted at rest with it (AES-256-GCM), bound to their connection |
-| `PUBLIC_URL` | HubSpot (OAuth), SAML, SCIM | The addresses you enter in the other service (OAuth redirect URL, SAML ACS URL, SCIM tenant URL) are built from it |
+| `FRONTEND_URL` (or `PUBLIC_URL`) | HubSpot (OAuth), SAML, SCIM | The addresses you enter in the other service (OAuth redirect URL, SAML ACS URL, SCIM tenant URL) are built from the site's address, or the API's when it has its own domain |
 
-`PUBLIC_URL` is where people reach the site, such as `https://cards.example.com`, with no trailing slash. It's also put in lead payloads as the card's link. See [Configuration](../../README.md#configuration).
+The site's address is the first `FRONTEND_URL`, such as `https://cards.example.com`; set `PUBLIC_URL` only if it's something else. If the API has its own domain (`BACKEND_URL`, such as `https://api.cards.example.com`), the backend builds the OAuth redirect URL, SAML ACS URL and SCIM tenant URL on that domain instead, and still sends people back to the site. The page always shows the addresses to use. It's also put in lead payloads as the card's link. See [Configuration](../../README.md#configuration).
 
 In production, integrations never call private or local addresses (see [Outbound requests](#outbound-requests)). For local development, `FRONKO_ENV=development` lifts that, so a webhook can reach a receiver on your machine.
 

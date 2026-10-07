@@ -4,14 +4,14 @@ SAML SSO lets people sign in to Fronko with your company's identity provider (Id
 
 - **Who can connect it:** the owner and admins.
 - **How many:** one single sign-on connection per organisation.
-- **Server needs:** `PUBLIC_URL` (the sign-in URLs are built from it) and `SECRETS_KEY` (each connection's private key is stored encrypted).
+- **Server needs:** `FRONTEND_URL` or `PUBLIC_URL` (the sign-in URLs are built from it) and `SECRETS_KEY` (each connection's private key is stored encrypted).
 
 ## How people sign in
 
 People can start single sign-on three ways:
 
 - **From the sign-in page.** **Sign in with SSO** asks for their work email or the organisation's handle. An email works once its domain is [verified](#verify-your-email-domain); the handle always works.
-- **From the organisation's sign-in link**, `<PUBLIC_URL>/auth/sso/<handle>`, for example `https://cards.example.com/auth/sso/acme`. Share it, or bookmark it. `/login/sso/<handle>` in the app goes to the same place.
+- **From the organisation's sign-in link**, `<site>/login/sso/<handle>`, for example `https://cards.example.com/login/sso/acme`. Share it, or bookmark it.
 - **From the identity provider's app launcher** (IdP-initiated), only if you switch on **Allow sign-in from the identity provider's app launcher**. It's off by default because it's less safe: there's no request from Fronko for the response to answer.
 
 Fronko sends the person to the identity provider with a signed request. When the identity provider posts back a signed response, Fronko checks the signature, the audience, the time window and that it answers the request this browser started, then signs the person in.
@@ -64,7 +64,9 @@ This works with OneLogin, JumpCloud, Google Workspace, ADFS, Ping, Keycloak and 
    | **ACS URL** `…/auth/saml/<id>/acs` | Assertion Consumer Service URL, Reply URL, Single sign-on URL |
    | **Entity ID** `…/auth/saml/<id>/metadata` | Audience URI, SP Entity ID, Identifier |
    | **SP metadata URL** (the same address) | Some identity providers can read all of this from it |
-   | **Sign-in URL** `…/auth/sso/<handle>` | Sign on URL, Login URL (optional) |
+   | **Sign-in URL** `…/login/sso/<handle>` | Sign on URL, Login URL (optional) |
+
+   The ACS URL, Entity ID and metadata URL are on the API's address (`api.cards.example.com` when the API has its own domain); the sign-in URL is on the site.
 
 2. In your identity provider, create a SAML 2.0 application with those values. Send the email address as the NameID (format EmailAddress) or as an `email` attribute, and optionally `firstName` and `lastName`, or `displayName`. Responses must be signed.
 3. Copy the identity provider's **metadata URL** into Fronko. If it doesn't publish one, paste the metadata XML instead. The URL is better: Fronko re-reads it every hour, so certificate rollovers just work.

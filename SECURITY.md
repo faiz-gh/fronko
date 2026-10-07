@@ -58,7 +58,7 @@ Fronko's built-in protections are described in the backend's [security measures]
 - **Protect platform admin accounts.** They see every organisation's owner email and usage, read feedback, and can suspend organisations. Create only the admins you need (`./fronko admin create`), give each a long unique password, and review the panel's audit log. Admin sign-in has no second factor yet. Remove an admin with SQL (`DELETE FROM platform_admins WHERE email = …`) when they no longer need access.
 - **Card analytics stay anonymous by design.** Fronko sets no cookies on public cards and stores no IP addresses: each visitor is a SHA-256 hash with a random salt that is replaced and deleted every day, and analytics endpoints return aggregates only. Events are deleted after `ANALYTICS_RETENTION_DAYS` (default 395). Set it lower if your privacy policy promises a shorter retention, and keep `TRUST_PROXY` correct so the hash (and rate limits) use the real client address.
 - **Configure SMTP.** Without it, verification and password-reset codes are written to the backend log.
-- **Set `PUBLIC_URL` to the HTTPS address people use.** SAML, SCIM and OAuth URLs are built from it, so it must be the real public origin.
+- **Set `FRONTEND_URL` (and `BACKEND_URL`, when the API has its own domain) to the HTTPS addresses people use.** SAML, SCIM and OAuth URLs are built from them, so they must be the real public origin.
 
 ## Integrations
 

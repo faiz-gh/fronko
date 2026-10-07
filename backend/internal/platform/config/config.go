@@ -40,6 +40,12 @@ type Config struct {
 	// for OAuth redirects, SAML and SCIM endpoints; those that do are shown
 	// as unavailable when it is empty.
 	PublicURL string
+	// PublicAPIURL is where browsers and other servers reach the API
+	// (PUBLIC_API_URL), e.g. https://api.example.com when the API has its own
+	// domain. It defaults to PublicURL, for sites that serve the API on the
+	// same origin. OAuth callbacks, SAML and SCIM endpoints are built on it;
+	// pages people land on are built on PublicURL.
+	PublicAPIURL string
 	// JobWorkers is how many background jobs this instance runs at once
 	// (JOB_WORKERS, default 2). Zero leaves the queue to other instances.
 	JobWorkers int
@@ -161,6 +167,22 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("PUBLIC_URL: %w", err)
 		}
 		cfg.PublicURL = public
+	} else if origin := firstOrigin(cfg.CORSAllowedOrigins); origin != "" {
+		// When the API has its own domain, CORS_ALLOWED_ORIGINS (FRONTEND_URL
+		// in Docker) already names the site, so PUBLIC_URL needn't repeat it.
+		public, err := parsePublicURL(origin)
+		if err != nil {
+			return nil, fmt.Errorf("PUBLIC_URL is unset, so it comes from the first CORS_ALLOWED_ORIGINS entry (FRONTEND_URL), which %w", err)
+		}
+		cfg.PublicURL = public
+	}
+	cfg.PublicAPIURL = cfg.PublicURL
+	if raw := strings.TrimSpace(os.Getenv("PUBLIC_API_URL")); raw != "" {
+		api, err := parsePublicURL(raw)
+		if err != nil {
+			return nil, fmt.Errorf("PUBLIC_API_URL: %w", err)
+		}
+		cfg.PublicAPIURL = api
 	}
 
 	if raw := os.Getenv("JOB_WORKERS"); raw != "" {
@@ -181,6 +203,16 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// firstOrigin is the first non-empty entry of a CORS origin list.
+func firstOrigin(origins []string) string {
+	for _, o := range origins {
+		if o = strings.TrimSpace(o); o != "" {
+			return o
+		}
+	}
+	return ""
 }
 
 // parsePublicURL checks that raw is a bare http(s) origin, optionally with a

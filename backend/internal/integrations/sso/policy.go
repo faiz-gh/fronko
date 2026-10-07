@@ -3,6 +3,7 @@ package sso
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/faiz-gh/fronko/backend/internal/auth"
 	"github.com/faiz-gh/fronko/backend/internal/integrations"
@@ -55,6 +56,14 @@ func (p *Policy) PasswordBlocked(ctx context.Context, u *users.User) (signInPath
 	return "", false, nil
 }
 
+// SignInURL is the page on the site that starts an organisation's single
+// sign-on, for people to bookmark and for emails. It's a site page rather
+// than the API's /auth/sso/{handle}, so it stays on the site's domain when
+// the API has its own.
+func SignInURL(publicURL, handle string) string {
+	return publicURL + "/login/sso/" + handle
+}
+
 // SSOSignInURL is the absolute address people sign in at, for emails, or
 // "" when the organisation has no single sign-on.
 func (p *Policy) SSOSignInURL(ctx context.Context, orgID int64) (string, error) {
@@ -62,7 +71,7 @@ func (p *Policy) SSOSignInURL(ctx context.Context, orgID int64) (string, error) 
 	if err != nil || path == "" {
 		return "", err
 	}
-	return p.publicURL + path, nil
+	return SignInURL(p.publicURL, strings.TrimPrefix(path, "/auth/sso/")), nil
 }
 
 // VerifiedEmail reports whether email is on one of the organisation's

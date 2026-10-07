@@ -60,7 +60,7 @@ X-Fronko-Signature: t=1791561600,v1=5f2b…c9
 | `data.phone` | E.164 (`+447700900123`), or `""` when the visitor gave none |
 | `data.notes` | The visitor's message, or `""` |
 | `data.source` | How the visitor reached the card: `nfc`, `qr`, `link`, or `""` |
-| `data.card.url` | The card's public link; `""` when the server has no `PUBLIC_URL` |
+| `data.card.url` | The card's public link; `""` when the server doesn't know the site's address (`FRONTEND_URL` or `PUBLIC_URL`) |
 | `data.owner` | Who held the card when the lead arrived, or `null` when the organisation held it |
 
 **Headers.**

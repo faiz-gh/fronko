@@ -53,8 +53,11 @@ type OrgReader interface {
 
 // Options configure the service from the server's settings.
 type Options struct {
-	// PublicURL is PUBLIC_URL, or "".
+	// PublicURL is PUBLIC_URL, or "": where people reach the site.
 	PublicURL string
+	// APIURL is PUBLIC_API_URL, or "": where the API is reached. OAuth
+	// callbacks are built on it. Empty means PublicURL.
+	APIURL string
 	// Box seals secrets; nil when SECRETS_KEY isn't set.
 	Box *secrets.Box
 	// AllowPrivate lets providers call private addresses (development only).
@@ -152,8 +155,8 @@ func (s *Service) Unavailable(m Manifest) string {
 	for _, r := range m.Requires {
 		switch r {
 		case RequiresPublicURL:
-			if s.opts.PublicURL == "" {
-				return "Needs PUBLIC_URL to be set on the server"
+			if s.opts.PublicURL == "" || s.apiURL() == "" {
+				return "Needs FRONTEND_URL (or PUBLIC_URL) to be set on the server"
 			}
 		case RequiresSecretsKey:
 			needsKey = true
@@ -165,12 +168,23 @@ func (s *Service) Unavailable(m Manifest) string {
 	return ""
 }
 
-// OAuthRedirectURL is the redirect URL to register in an OAuth app.
+// apiURL is where the API is reached from outside: PUBLIC_API_URL, or
+// PUBLIC_URL when the API shares the site's origin.
+func (s *Service) apiURL() string {
+	if s.opts.APIURL != "" {
+		return s.opts.APIURL
+	}
+	return s.opts.PublicURL
+}
+
+// OAuthRedirectURL is the redirect URL to register in an OAuth app. It's on
+// the API's address, where the browser's session cookie and the OAuth
+// cookie live.
 func (s *Service) OAuthRedirectURL() string {
-	if s.opts.PublicURL == "" {
+	if s.apiURL() == "" {
 		return ""
 	}
-	return s.opts.PublicURL + oauthCallbackPath
+	return s.apiURL() + oauthCallbackPath
 }
 
 // View is a connection as the API shows it: secrets are only reported as
@@ -227,7 +241,7 @@ func (s *Service) env(ctx context.Context, orgID int64) (Env, error) {
 	if err != nil {
 		return Env{}, err
 	}
-	return Env{PublicURL: s.opts.PublicURL, OrgHandle: org.Handle}, nil
+	return Env{PublicURL: s.opts.PublicURL, APIURL: s.apiURL(), OrgHandle: org.Handle}, nil
 }
 
 // ready reports whether a connection has everything it needs to work.

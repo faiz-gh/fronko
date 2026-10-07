@@ -273,7 +273,7 @@ func TestIdentityIntegration(t *testing.T) {
 
 		url, err := policy.SSOSignInURL(ctx, owner.OrgID)
 		require.NoError(t, err)
-		assert.Equal(t, "https://fronko.test/auth/sso/"+org.Handle, url)
+		assert.Equal(t, "https://fronko.test/login/sso/"+org.Handle, url)
 
 		_, err = pool.Exec(ctx, `INSERT INTO org_domains (org_id, domain, verification_token, verified_at) VALUES ($1, 'acme.example', 't', now())`, owner.OrgID)
 		require.NoError(t, err)

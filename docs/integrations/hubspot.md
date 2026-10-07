@@ -4,7 +4,7 @@ The **HubSpot** integration creates or updates a HubSpot contact for every lead 
 
 - **Who can connect it:** the owner and admins, for the whole organisation.
 - **How many:** one per organisation.
-- **Server needs:** `PUBLIC_URL` (for the OAuth redirect) and `SECRETS_KEY` (the client secret and tokens are stored encrypted).
+- **Server needs:** `FRONTEND_URL` or `PUBLIC_URL` (for the OAuth redirect) and `SECRETS_KEY` (the client secret and tokens are stored encrypted).
 
 Fronko doesn't ship a shared HubSpot app. Your organisation registers its own, so its credentials, rate limits and permissions are yours alone ([why](../adr/0004-per-organisation-oauth-apps.md)).
 
@@ -12,7 +12,7 @@ Fronko doesn't ship a shared HubSpot app. Your organisation registers its own, s
 
 1. Sign in to a [HubSpot developer account](https://developers.hubspot.com/) (free), and create an app (**Apps → Create app**). Name it after your organisation, for example "Acme Fronko".
 2. Open the app's **Auth** settings:
-   - Under **Redirect URLs**, add the redirect URL shown on Fronko's HubSpot page. It's `<PUBLIC_URL>/api/integrations/oauth/callback`, for example `https://cards.example.com/api/integrations/oauth/callback`.
+   - Under **Redirect URLs**, add the redirect URL shown on Fronko's HubSpot page. It's `/api/integrations/oauth/callback` on the API's address: for example `https://cards.example.com/api/integrations/oauth/callback`, or `https://api.cards.example.com/api/integrations/oauth/callback` when the API has its own domain.
    - Under **Scopes**, add `oauth`, `crm.objects.contacts.read` and `crm.objects.contacts.write`.
 3. Save, and keep the page open: you need its **Client ID** and **Client secret**.
 

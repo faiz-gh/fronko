@@ -54,6 +54,45 @@ func TestPublicURL(t *testing.T) {
 	}
 }
 
+func TestPublicAPIURL(t *testing.T) {
+	setRequired(t)
+	t.Setenv("PUBLIC_URL", "https://cards.example.com")
+	t.Setenv("PUBLIC_API_URL", "")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "https://cards.example.com", cfg.PublicAPIURL, "defaults to PUBLIC_URL")
+
+	t.Setenv("PUBLIC_API_URL", "https://api.example.com/")
+	cfg, err = Load()
+	require.NoError(t, err)
+	assert.Equal(t, "https://cards.example.com", cfg.PublicURL)
+	assert.Equal(t, "https://api.example.com", cfg.PublicAPIURL)
+
+	t.Setenv("PUBLIC_API_URL", "api.example.com")
+	_, err = Load()
+	assert.ErrorContains(t, err, "PUBLIC_API_URL")
+}
+
+func TestPublicURLFromFrontendURL(t *testing.T) {
+	setRequired(t)
+	t.Setenv("PUBLIC_URL", "")
+	t.Setenv("CORS_ALLOWED_ORIGINS", " https://fronko.com/ , https://www.fronko.com")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "https://fronko.com", cfg.PublicURL, "the first allowed origin is the site")
+	assert.Equal(t, "https://fronko.com", cfg.PublicAPIURL)
+
+	t.Setenv("PUBLIC_URL", "https://cards.fronko.com")
+	cfg, err = Load()
+	require.NoError(t, err)
+	assert.Equal(t, "https://cards.fronko.com", cfg.PublicURL, "PUBLIC_URL wins when set")
+
+	t.Setenv("PUBLIC_URL", "")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "fronko.com")
+	_, err = Load()
+	assert.ErrorContains(t, err, "FRONTEND_URL")
+}
+
 func TestJobWorkers(t *testing.T) {
 	setRequired(t)
 	t.Setenv("JOB_WORKERS", "0")
