@@ -226,7 +226,7 @@
 				{/if}
 			</p>
 			{#if storage.status.enabled && session.isOwner}
-				<Button href="/dashboard/settings#storage" class="mt-1">Connect storage</Button>
+				<Button href="/dashboard/settings?tab=storage" class="mt-1">Connect storage</Button>
 			{/if}
 		</div>
 	{:else}

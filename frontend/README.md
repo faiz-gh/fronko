@@ -91,14 +91,16 @@ frontend/
 │   │   │   ├── lead.ts            # submit / list leads
 │   │   │   ├── storage.ts         # bucket connection settings
 │   │   │   ├── files.ts           # files by area, uploadFile() with progress, fileUrl()
-│   │   │   ├── org.ts             # organisation, users, card assignment, file grants
+│   │   │   ├── org.ts             # organisation, users, card assignment, file grants, branding, showsOrgLogo()
 │   │   │   ├── feedback.ts        # sendFeedback(), feedback categories
 │   │   │   └── admin.ts           # platform admin: sign-in, summary, trends, orgs, suspension, feedback inbox, audit
 │   │   ├── card/card.ts           # CardData model, normalization, URL safety, tap/vCard URLs, brand detection
 │   │   ├── card/blocks.ts         # Card layout blocks, templates, normalizeBlocks()
 │   │   ├── card/qr.ts             # Lazy-loaded QR generation and PNG/SVG downloads
 │   │   ├── phone.ts               # Country list, dial codes, formatting, validation, legacy phone parsing
-│   │   ├── image.ts               # Canvas crop/rotate → WebP/JPEG File, used by ImageCropDialog
+│   │   ├── image.ts               # Canvas crop/rotate → WebP, PNG or JPEG File, used by ImageCropDialog
+│   │   ├── signature/templates.ts # Email signature templates and the per-card SignatureSettings
+│   │   ├── signature/render.ts    # renderSignature(): email-safe HTML + plain text for a card
 │   │   ├── components/
 │   │   │   ├── app/               # App-specific components (see below); app/admin/ holds the admin panel's,
 │   │   │   │                      #   app/card-blocks/ one component per ProfileCard block
@@ -110,6 +112,7 @@ frontend/
 │   │   ├── cards.svelte.ts        # The cards the user can see, shared by the sidebar and dashboard pages
 │   │   ├── org-users.svelte.ts    # Everyone in the organisation (admins), for pickers, filters and Users
 │   │   ├── password.ts            # Temporary password generator and copyable sign-in details
+│   │   ├── branding.svelte.ts     # The organisation's logo, logo policy and signature settings (everyone)
 │   │   ├── storage.svelte.ts      # Storage connection status (storage.ready), shared by Files/Settings/editor
 │   │   ├── format.ts              # timeAgo(), formatDateTime(), plural()
 │   │   ├── utils.ts               # cn() class merger + shadcn type helpers
@@ -130,7 +133,8 @@ frontend/
 │       │   ├── users/+page.svelte # Admins: the team, with status, totals and storage
 │       │   ├── users/[id]/+page.svelte # Admins: one user: cards, storage limit, granted files, reset, suspend, delete
 │       │   ├── files/+page.svelte # Files by area: upload, browse, rename, delete, manage access
-│       │   ├── settings/+page.svelte # Account (email change), password, storage connection (S3 keys)
+│       │   ├── signatures/+page.svelte # Email signatures: pick a card, template, what to include; copy or download
+│       │   ├── settings/+page.svelte # Tabs: Account, Organisation, Branding (admins), Storage
 │       │   └── [id]/+page.svelte  # Card editor + leads
 │       ├── admin/
 │       │   ├── +layout.svelte     # Admin guard + shell (AdminSidebar / mobile drawer); /admin/login renders bare
@@ -169,8 +173,9 @@ frontend/
 | `/dashboard/users/{id}` | Admins | One user: assign or unassign cards, storage limit, files granted to them, correct an unverified email, reset password, suspend or restore, make admin (owner), delete |
 | `/dashboard/leads` | Signed in | Every lead across your cards. Filter by card (`?card=ID`, kept in the URL so it can be linked to), search (name, email, phone or message), page size and pages, a Refresh button that refetches leads and lead counts without reloading the page, and CSV export of everything that matches (including phone). Clicking a lead's card filters to that card |
 | `/dashboard/files` | Signed in | The shared **file library**: drag-and-drop upload with progress, Photos/PDFs tabs, thumbnails, inline rename, "Used on" (which cards use each file), delete with a usage warning, pagination. Shows a "Connect storage" state until a bucket is connected |
-| `/dashboard/settings` | Signed in | **Account**: username and email (with a Verified badge). **Change** opens `ChangeEmailForm`: new address + current password → a code sent to the new address → confirm; resend has a countdown, and the current email stays until confirmed. **Password**: current, new and confirm; changing it signs out every other session and keeps this one. **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
-| `/dashboard/{id}` | Signed in | Editor. The **Card** tab has sections for Profile (with photo and 3:1 cover, both cropped before upload), Contact (email, mobile with country picker, website, booking link), Links (add, reorder, remove), Layout (template picker, then blocks to reorder, hide, add or remove, with inline settings for headings, text, galleries and events), Appearance (accent, light/dark theme) and Sharing (public slug, lead collection, and what an NFC tap and a QR scan each do, with their links to copy or try). A sticky preview pane on the right switches between the card and its QR code (which encodes the `?via=qr` link); below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
+| `/dashboard/signatures` | Signed in | **Email signatures.** Pick a card (`?card=ID`; admins see every card), then a template (Classic, Corporate, Compact, Bold, Minimal; gallery thumbnails are the real signature), and switch on what to include (photo, organisation logo, phone, email, website, location, booking link, social links, card link). Choices are saved on the card (`data.signature`). The preview is the exact HTML in a sandboxed iframe, with a dark-background toggle. **Copy signature** puts rich HTML (and plain text) on the clipboard for pasting into Gmail, Outlook or Apple Mail; **Copy HTML** and **Download .html** are there too, with step-by-step install tabs per mail app. When the organisation locks a template, only that one shows; a required logo shows its switch locked on; the organisation's banner and disclaimer are added under every signature |
+| `/dashboard/settings` | Signed in | Four tabs, kept in `?tab=` (`organisation`, `branding`, `storage`; Account is the default). Members see Account and Storage. **Organisation** (admins; the owner edits): name and default storage per user. **Branding** (admins): `BrandingSettings`, see Components. **Account**: username and email (with a Verified badge). **Change** opens `ChangeEmailForm`: new address + current password → a code sent to the new address → confirm; resend has a countdown, and the current email stays until confirmed. **Password**: current, new and confirm; changing it signs out every other session and keeps this one. **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
+| `/dashboard/{id}` | Signed in | Editor. The **Card** tab shows a `SectionRail` listing every section with a one-line summary (e.g. "1 of 5 filled", "2 links", "Classic · customised") and a red dot on sections with an invalid field; only the selected section is shown beside it, so the whole card is visible at a glance. The selected section is kept in the URL hash (`#contact`, `#sharing`, …), so links can open one; the save bar's "Show me" jumps to the first invalid section. The sections are Profile (with photo and 3:1 cover, both cropped before upload), Contact (email, mobile with country picker, website, booking link), Links (add, reorder, remove), Layout (template picker, then blocks to reorder, hide, add or remove, with inline settings for headings, text, galleries and events), Appearance (accent, light/dark theme, and the organisation-logo switch: hidden without a logo, locked on when required) and Sharing (public slug, lead collection, and what an NFC tap and a QR scan each do, with their links to copy or try, plus "Create signature"). A sticky preview pane on the right switches between the card and its QR code (which encodes the `?via=qr` link); below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
 | `/admin/login` | Public | Platform admin sign-in (email and password). `next=/admin/...` sets where to go afterwards; `expired=1` shows a "session expired" notice |
 | `/admin` | Platform admin | Totals (organisations, active organisations, users, cards and leads, storage used, new feedback) and trend charts (organisations, users, cards, leads, storage used, organisations with storage) over 30 days, 90 days or a year |
 | `/admin/orgs` | Platform admin | Every organisation with owner email, users, cards, leads, storage (connected, provider, used) and last activity. Debounced search, All/Active/Suspended filter, sort menu, pagination. Rows open the organisation |
@@ -186,12 +191,13 @@ Every account belongs to an organisation, and `session.role` is `owner`, `admin`
 
 | | Owner | Admin | Member |
 | - | :-: | :-: | :-: |
-| Sidebar | Overview, Leads, Cards, Users, Files | same | Overview, Leads, Files, plus their cards |
+| Sidebar | Overview, Leads, Cards, Users, Files, Signatures | same | Overview, Leads, Files, Signatures, plus their cards |
 | Cards | create, delete, assign, edit all | same | edit their assigned cards, except the slug |
 | Leads | all, filter by user (`?user=ID\|none`) | same | leads that arrived while they held the card |
 | Files | Organisation, Shared, Users' files; manage access | same | My files (with a storage meter), Shared, Shared with me |
 | Users | create, edit, suspend, reset, delete, make admin | members only | none |
-| Settings | Organisation (name, default storage limit), Storage | org name (read only) | storage usage; email is managed by the org |
+| Settings | Organisation (name, default storage limit), Branding, Storage | org name (read only), Branding | storage usage; email is managed by the org |
+| Branding | logo, logo policy, signature template lock, brand colour, disclaimer, banner | same | sees it; chooses the logo per card when it's optional |
 
 Users the organisation creates are emailed their username and a temporary password. They sign in with it, verify their email (`/verify-email`, without "Change email"), then must choose a password on `/set-password` before the dashboard opens.
 
@@ -209,7 +215,7 @@ Trend charts are `TrendChart`, a hand-drawn SVG with one series per chart (no le
 
 If the platform suspends the organisation, any API call answers `401 org_suspended` with a reason. `apiClient` then calls `session.suspend(reason)`, which signs the user out and goes to `/login`, where an alert shows the reason. Signing in again shows the same alert.
 
-Once signed in, the layout renders the app shell. From 1024px up, a fixed sidebar (`AppSidebar`) shows the organisation, the navigation and, for members, their cards. Below that width, a top bar opens the same sidebar as a slide-in drawer. The layout also loads `cards` (see `cards.svelte.ts`), `storage` and, for admins, `orgUsers`, and mounts the global "New card" dialog, which anything can open with `cards.createOpen = true`. After a create, save or delete, call `cards.upsert()` or `cards.remove()` so the sidebar and overview stay in sync without refetching.
+Once signed in, the layout renders the app shell. From 1024px up, a fixed sidebar (`AppSidebar`) shows the organisation, the navigation and, for members, their cards. Below that width, a top bar opens the same sidebar as a slide-in drawer. The layout also loads `cards` (see `cards.svelte.ts`), `storage`, `branding` and, for admins, `orgUsers`, and mounts the global "New card" dialog, which anything can open with `cards.createOpen = true`. After a create, save or delete, call `cards.upsert()` or `cards.remove()` so the sidebar and overview stay in sync without refetching.
 
 ## How it talks to the backend
 
@@ -285,8 +291,24 @@ interface CardData {
   template: TemplateKey;  // 'classic' | 'event' | 'portfolio' | 'minimal': the preset last applied
   blocks: CardBlock[];    // what the card shows, in order (see below)
   tap: { nfc: TapAction; qr: TapAction }; // 'profile' | 'save_contact' | 'lead_form'
+  show_org_logo: boolean; // show the organisation's logo emblem; ignored when the org requires it
+  signature: SignatureSettings; // this card's email signature (src/lib/signature/templates.ts)
+}
+
+interface SignatureSettings {
+  template: 'classic' | 'corporate' | 'compact' | 'bold' | 'minimal'; // the org's locked template wins
+  show_photo: boolean;    // only templates with room for a photo use it
+  show_logo: boolean;     // ignored when the org requires its logo
+  show_card_link: boolean;
+  show_socials: boolean;  // the card's links
+  show_phone: boolean; show_email: boolean; show_website: boolean;
+  show_location: boolean; show_booking: boolean;
 }
 ```
+
+**Organisation logo.** `showsOrgLogo(org, card.show_org_logo)` (in `api/org.ts`) decides whether a card or signature shows it: only when the organisation has a logo, and then always when `logo_policy` is `required`, otherwise per the card's own choice. It's decided at render time, so changing the policy applies to every card at once. Public cards get the org from the `org` field of the public profile response; the dashboard reads the `branding` store.
+
+**Email signatures** (`src/lib/signature/`). `renderSignature(card, slug, branding, opts)` is a pure function returning `{ template, html, text }`. Mail clients strip `<style>` and classes and Outlook renders with Word, so the HTML is tables with inline styles only, web-safe fonts, absolute image URLs with explicit `width`/`height` (the page measures the logo and banner first with `measureImage()`), no SVG, and every user value escaped. Card accents are OKLCH, so `ACCENT_HEX` maps them to hex; the organisation's `brand_color` overrides them. Logos render as a square (up to 48px), the banner at up to 600×200, and the disclaimer in small print. Images should be PNG or JPEG: Outlook desktop can't show WebP, which is why the logo and banner are cropped to PNG and JPEG (card photos are still WebP, so they may not show in Outlook desktop). Templates are listed in `SIGNATURE_TEMPLATES`; keep them in step with `signatureTemplates` in `backend/internal/handlers/branding.go`.
 
 **Blocks** (`src/lib/card/blocks.ts`) lay the card out as one column. Each is `{ id, type, hidden? }` plus its own data:
 
@@ -302,7 +324,7 @@ interface CardData {
 
 Contact details stay on `CardData` because the vCard and the editor's sections use them; blocks only decide where they appear. `TEMPLATES` are presets (`templateBlocks(key)`), and `applyTemplate()` keeps the text, gallery and event content that the new layout also has room for. `normalizeBlocks()` drops unknown blocks and duplicates and keeps the header first; cards saved before layouts existed get the Classic preset.
 
-**Always read stored data through `normalizeCard(raw)`.** It turns anything (missing fields, wrong types, `null`) into a complete `CardData`, with these defaults: accent `indigo`, theme `light`, `collect_leads: true`, template `classic` with its blocks, and both tap actions `profile`. It also upgrades links from older profiles that were saved as plain strings, and splits an old free-text `phone` into the dial code and number. A number without a leading `+` keeps its digits, and the editor asks for the country code. If you add a field, add it to `CardData`, `emptyCard()` and `normalizeCard()` so older profiles keep loading.
+**Always read stored data through `normalizeCard(raw)`.** It turns anything (missing fields, wrong types, `null`) into a complete `CardData`, with these defaults: accent `indigo`, theme `light`, `collect_leads: true`, template `classic` with its blocks, and both tap actions `profile`. `show_org_logo` defaults to `true` and `signature` to `defaultSignature()`. It also upgrades links from older profiles that were saved as plain strings, and splits an old free-text `phone` into the dial code and number. A number without a leading `+` keeps its digits, and the editor asks for the country code. If you add a field, add it to `CardData`, `emptyCard()` and `normalizeCard()` so older profiles keep loading.
 
 Other helpers in `card.ts`:
 
@@ -328,8 +350,10 @@ App-specific components live in `src/lib/components/app/`:
 
 | Component | Props | Description |
 | --------- | ----- | ----------- |
-| `ProfileCard` | `card`, `slug`, `actions?` (snippet), `files?`, `class?` | Renders a card from its visible blocks, in one column. Each block is a component in `card-blocks/`. The header has three styles: banner (the accent or the cover image with an accent stripe, and an accent ring around the avatar), badge (a name badge in the accent colour) and compact (photo beside the name, with the content under it left-aligned). The `actions` snippet goes where the `actions` block is, and is left out when not given (previews). When `files` (metadata keyed by file id, from the public profile response) is given, it adds brochure sizes and hides brochures and gallery images whose file was deleted |
-| `TemplatePicker` | `value`, `accent`, `onselect` | Radio tiles with a small wireframe of each template |
+| `ProfileCard` | `card`, `slug`, `actions?` (snippet), `files?`, `org?`, `class?` | Renders a card from its visible blocks, in one column. Each block is a component in `card-blocks/`. The header has three styles: banner (the accent or the cover image with an accent stripe, and an accent ring around the avatar), badge (a name badge in the accent colour) and compact (photo beside the name, with the content under it left-aligned). The `actions` snippet goes where the `actions` block is, and is left out when not given (previews). When `files` (metadata keyed by file id, from the public profile response) is given, it adds brochure sizes and hides brochures and gallery images whose file was deleted. When `org` has a logo the card shows (`showsOrgLogo`), the header puts it as a round emblem on the lower right of the photo; it wears the same ring as the photo, so the two rings merge into a bump |
+| `TemplatePicker` | `value`, `accent`, `logo?`, `onselect` | Radio tiles with a small wireframe of each template; `logo` adds the emblem dot to each avatar |
+| `SectionRail` | `items` (`{ id, label, icon, summary, error? }[]`), `active`, `onselect`, `label`, `class?` | Every section of a long form with a one-line summary and an error dot, as a vertical tab list (a scrolling strip below 1024px; arrow keys move between items). Pair it with `FormSection panel` blocks whose `id` matches |
+| `BrandingSettings` | none | Settings → Branding: logo (cropped square to 512×512 PNG on upload, or picked from org/shared files), logo policy (required or employee chooses), signature template lock, brand colour, disclaimer, and banner (cropped to 4:1, 3:1 or 2:1 at 1200px wide, JPEG) with its link. Saves through `PUT /api/org/branding` and updates the `branding` store |
 | `BlockListEditor` | `bind:blocks`, `files`, `onfile` | The editor's block list: expand a block for its settings, move, hide, remove, and "Add block". Galleries upload several images at once or pick from the library; `onfile` gets each file so the editor can remember its metadata |
 | `FileDropzone` | `kind?`, `area?`, `onuploaded?`, `compact?`, `multiple?`, `disabled?` | Drag-and-drop or click to upload, with per-file progress and inline errors. It checks type and size on the client for quick feedback; the server re-checks by sniffing |
 | `FilePickerDialog` | `open` (bindable), `kind`, `title`, `selected?`, `onselect` | Pick a photo or PDF from any file the user can see (filterable by area, paginated), or upload a new one inline. Used by the editor's Photo and Brochures fields |
@@ -345,7 +369,7 @@ App-specific components live in `src/lib/components/app/`:
 | `FileAccessDialog` | `file` (bindable; set it to open) | Choose which members can see an organisation file or someone's personal file |
 | `RecentLeads` | `leads`, `total`, `showUser?`, `empty` | The overview's latest-leads panel |
 | `DeleteCardDialog` | `target` (bindable), `ondeleted?` | Confirms and deletes a card, then updates `cards` |
-| `FormSection` | `title`, `description?`, `id?` | Editor section. The heading sits beside the fields at 1536px and wider, above them otherwise |
+| `FormSection` | `title`, `description?`, `id?`, `panel?` | A form section. The heading sits beside the fields at 1536px and wider, above them otherwise. With `panel`, it's the tab panel for the `SectionRail` item with the same `id` (`id="panel-<id>"`), heading above |
 | `CardAvatar` | `card`, `fallback`, `class?` | Avatar using the card's photo or initials on its accent colour |
 | `QrCode` | `url`, `svg` (bindable), `class?` | Renders a QR code. `qrcode` is loaded the first time one is shown. Codes are always dark-on-white so they scan reliably |
 | `QrDialog` | `open` (bindable), `slug`, `name`, `dark?` | `QrCode` in a dialog, with SVG and 1024px PNG downloads and copy link. Encodes `tapUrl(slug, 'qr')`, so scans run the card's QR tap action |
@@ -354,7 +378,7 @@ App-specific components live in `src/lib/components/app/`:
 | `CardFilter` | `value`, `onchange` | "All cards" or one card, with lead counts |
 | `BrandIcon` | `url`, `kind?` (`'link'` or `'calendar'`), `class?` | Brand icon for a social or booking URL, falling back to a generic link or calendar icon |
 | `PhoneInput` | `country`, `code`, `number` (all bindable), `id?`, `invalid?`, `contentClass?` | Searchable country picker plus a number field that formats as you type (`libphonenumber-js`). Writes digits only, and writes nothing until the user edits, so it never marks a form dirty. Helpers live in `$lib/phone.ts` |
-| `ImageCropDialog` | `file` (bindable; set it to open), `aspect`, `shape`, `outputWidth`, `outputHeight`, `onconfirm` | Crop, zoom and rotate a freshly picked image (`svelte-easy-crop`), then hand back a WebP (or JPEG) `File`. The editor uses 1:1 / 512px for photos and 3:1 / 1500×500 for covers |
+| `ImageCropDialog` | `file` (bindable; set it to open), `aspect`, `shape`, `outputWidth`, `outputHeight`, `format?`, `ratios?`, `onconfirm` | Crop, zoom and rotate a freshly picked image (`svelte-easy-crop`), then hand back a `File`. `format` is `webp` (default, JPEG fallback), `png` (keeps transparency) or `jpeg`. `ratios` (`{ label, aspect, width, height }[]`) adds a shape toggle whose choice sets the aspect and output size. The editor uses 1:1 / 512px for photos and 3:1 / 1500×500 for covers; Branding uses 1:1 / 512px PNG for the logo and 4:1, 3:1 or 2:1 JPEG for the banner |
 | `Logo` | `href?`, `class?` | Wordmark link: the stacked-card F (stem follows the text colour, arms are Fronko orange) and "fronko" |
 | `AuthLayout` | `children` (snippet) | The split frame shared by `/login`, `/verify-email` and `/forgot-password`: logo and form column on the left, sample card on the right (from 1024px) |
 | `CodeInput` | `value` (bindable), `id?`, `disabled?`, `invalid?`, `oncomplete?` | Six-slot input for emailed codes (shadcn `input-otp`, digits only, `autocomplete="one-time-code"`). Pasting fills every slot; `oncomplete` fires once all six are in |
@@ -382,7 +406,7 @@ npx shadcn-svelte@latest add <component>
 - **Palette.** The UI uses graphite neutrals, and the primary (action) colour is ink. Indigo (`--brand`, with `bg-brand`, `text-brand` and `bg-brand-soft`) is reserved for lead-count badges and focus rings, so use it sparingly. The logo has its own orange (`orange-600`, `orange-400` in dark mode). Each card's own accent colour belongs to the card, not the app.
 - **Dashboard dark mode.** `$lib/theme.svelte.ts` stores a Light, Dark or System preference in localStorage (`fronko-theme`), and the sidebar's `ThemeToggle` sets it. The dashboard and admin layouts add `.dark` to `<html>` only while you're in `/dashboard` or `/admin`, so portalled dialogs, menus and toasts match, and the marketing and public pages stay light. An inline script in `app.html` applies the theme before first paint on dashboard and admin URLs. `ProfileCard` always scopes itself with `.dark` or `.light`, so a light card previews as light inside the dark dashboard. The `dark:` variant skips anything inside `.light` for the same reason.
 - **Utilities.** `bg-dots` draws the faint dot grid used behind previews, and `tabular` sets tabular numerals for counts.
-- **Layout widths.** App pages are full width (the overview caps at 1680px), and the sidebar is `w-68`. Breakpoints that change the structure: `lg` (1024px) shows the sidebar, `xl` (1280px) shows the editor's preview pane, `2xl` (1536px) puts section headings beside the fields and moves recent leads into their own column.
+- **Layout widths.** App pages are full width (the overview caps at 1680px), and the sidebar is `w-68`. Breakpoints that change the structure: `lg` (1024px) shows the sidebar and turns the editor's section strip into a rail beside the panel, `xl` (1280px) shows the editor's preview pane, `2xl` (1536px) puts section headings beside the fields (outside the editor), shows the template picker in one row, and moves recent leads into their own column.
 - **Per-card theming.** `ProfileCard` sets `--card-accent` from `ACCENTS[card.accent]`. The public page wraps the card in a `.dark` element when `card.theme === 'dark'`, so a single card can be dark without switching the whole app.
 - Use `cn()` from `$lib/utils` to merge conditional classes. It resolves Tailwind conflicts.
 

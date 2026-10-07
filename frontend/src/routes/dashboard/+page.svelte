@@ -69,7 +69,7 @@
 	// First steps, until the organisation is set up.
 	const steps = $derived([
 		...(session.isOwner
-			? [{ done: !!storage.status?.configured, label: 'Connect storage for photos and brochures', href: '/dashboard/settings#storage' }]
+			? [{ done: !!storage.status?.configured, label: 'Connect storage for photos and brochures', href: '/dashboard/settings?tab=storage' }]
 			: []),
 		{ done: (cards.list?.length ?? 0) > 0, label: 'Create a card', action: () => (cards.createOpen = true) },
 		{ done: people.length > 0, label: 'Add someone from your team', action: () => (createUserOpen = true) },

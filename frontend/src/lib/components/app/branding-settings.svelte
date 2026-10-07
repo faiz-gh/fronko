@@ -17,7 +17,9 @@
 	import { SIGNATURE_TEMPLATES, SIGNATURE_TEMPLATE_KEYS } from '$lib/signature/templates';
 	import { storage } from '$lib/storage.svelte';
 	import { cn } from '$lib/utils';
+	import type { CropRatio } from '$lib/image';
 	import FilePickerDialog from './file-picker-dialog.svelte';
+	import ImageCropDialog from './image-crop-dialog.svelte';
 
 	type Draft = Omit<OrgBranding, 'name'>;
 	type Slot = 'logo' | 'banner';
@@ -67,13 +69,30 @@
 		else draft.signature.banner_file = id;
 	}
 
-	async function upload(slot: Slot, file: File | undefined) {
+	// A picked image is cropped first: the logo to a square, the banner to a
+	// standard email-banner shape. Both are saved as PNG/JPEG, which every mail
+	// client can show (Outlook desktop can't show WebP).
+	let cropLogo = $state<File | null>(null);
+	let cropBanner = $state<File | null>(null);
+
+	const BANNER_RATIOS: CropRatio[] = [
+		{ label: '4:1', aspect: 4, width: 1200, height: 300 },
+		{ label: '3:1', aspect: 3, width: 1200, height: 400 },
+		{ label: '2:1', aspect: 2, width: 1200, height: 600 }
+	];
+
+	function pick(slot: Slot, file: File | undefined) {
 		if (!file) return;
 		const problem = checkUpload(file, 'image');
 		if (problem) {
 			toast.error(problem);
 			return;
 		}
+		if (slot === 'logo') cropLogo = file;
+		else cropBanner = file;
+	}
+
+	async function upload(slot: Slot, file: File) {
 		progress[slot] = 0;
 		try {
 			const uploaded = await uploadFile(file, {
@@ -155,7 +174,7 @@
 				accept={ACCEPT.image}
 				class="hidden"
 				onchange={(e) => {
-					upload(slot, e.currentTarget.files?.[0]);
+					pick(slot, e.currentTarget.files?.[0]);
 					e.currentTarget.value = '';
 				}}
 			/>
@@ -171,7 +190,7 @@
 			{/if}
 		</div>
 		<Field.Description>
-			{storage.ready ? hint : 'Connect storage below to upload images.'}
+			{storage.ready ? hint : 'Connect storage in the Storage tab to upload images.'}
 		</Field.Description>
 	</Field.Field>
 {/snippet}
@@ -181,7 +200,7 @@
 {:else}
 	<form onsubmit={save} class="flex flex-col gap-8">
 		<Field.Group class="gap-6">
-			{@render imageSlot('logo', 'Logo', 'PNG with a transparent background works best. Shown on cards and email signatures.')}
+			{@render imageSlot('logo', 'Logo', 'Square; you can crop it after choosing. A transparent PNG works best. Shown as an emblem on profile photos and in email signatures.')}
 
 			<Field.Field>
 				<Field.Label id="logo-policy-label">Logo on cards and signatures</Field.Label>
@@ -278,7 +297,7 @@
 				</Field.Description>
 			</Field.Field>
 
-			{@render imageSlot('banner', 'Banner', 'An image under every signature, such as an event or a promotion. Shown up to 400 × 120 px.')}
+			{@render imageSlot('banner', 'Banner', 'An image under every signature, such as an event or a promotion. Crop it to 4:1 (600 × 150, the usual size), 3:1 or 2:1; it shows 600 px wide.')}
 
 			<Field.Field data-invalid={bannerUrlInvalid || undefined}>
 				<Field.Label for="banner-url">Banner link</Field.Label>
@@ -311,5 +330,23 @@
 		title={pickerFor === 'banner' ? 'Choose a banner' : 'Choose a logo'}
 		selected={pickerFor ? [current(pickerFor)].filter(Boolean) : []}
 		onselect={picked}
+	/>
+	<ImageCropDialog
+		bind:file={cropLogo}
+		title="Crop logo"
+		aspect={1}
+		outputWidth={512}
+		outputHeight={512}
+		format="png"
+		onconfirm={(f) => upload('logo', f)}
+	/>
+	<ImageCropDialog
+		bind:file={cropBanner}
+		title="Crop banner"
+		outputWidth={1200}
+		outputHeight={300}
+		ratios={BANNER_RATIOS}
+		format="jpeg"
+		onconfirm={(f) => upload('banner', f)}
 	/>
 {/if}
