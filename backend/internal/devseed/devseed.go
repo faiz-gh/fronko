@@ -52,7 +52,7 @@ const (
 // tables lists every table, for --reset.
 const tables = `organizations, users, email_codes, teams, team_members, profiles, leads, user_storage,
 	files, file_grants, file_team_grants, file_refs, card_events, analytics_salts, platform_admins,
-	admin_audit_log, feedback, feedback_replies, org_usage_snapshots, platform_usage_snapshots, jobs, integration_connections, integration_activity`
+	admin_audit_log, feedback, feedback_replies, org_usage_snapshots, platform_usage_snapshots, jobs, integration_connections, integration_activity, integration_tokens, org_domains`
 
 // RunCLI is `fronko seed`.
 func RunCLI(args []string) error {
@@ -158,6 +158,19 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 		{UserID: rep.ID, Role: auth.TeamRoleLead},
 	}); err != nil {
 		return err
+	}
+
+	// A verified email domain (for single sign-on by email) and a default
+	// booking page for the organisation's cards. The Calendly link is made
+	// up, so the button opens Calendly's "not found" page.
+	if _, err := pool.Exec(ctx, `INSERT INTO org_domains (org_id, domain, verification_token, verified_at, created_by)
+		VALUES ($1, 'lumenlabs.example', 'seeded', now(), $2)`, owner.OrgID, owner.ID); err != nil {
+		return fmt.Errorf("domain: %w", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO integration_connections (org_id, provider, category, name, status, config, created_by)
+		VALUES ($1, 'calendly', 'calendar', 'Calendly', 'active', '{"url": "https://calendly.com/lumenlabs-demo/intro"}', $2)`,
+		owner.OrgID, owner.ID); err != nil {
+		return fmt.Errorf("booking page: %w", err)
 	}
 
 	if err := adminStore.CreatePlatformAdmin(ctx, &platformadmin.PlatformAdmin{Email: AdminEmail, PasswordHash: hash(AdminPassword)}); err != nil {

@@ -30,6 +30,13 @@ const (
 // Categories in the order the dashboard shows them.
 var Categories = []Category{CategoryLeadSync, CategoryCalendar, CategoryDirectory, CategorySSO}
 
+// Single reports whether an owner may have only one connection in the
+// category, whichever provider it's to: one booking page per person, one
+// directory and one sign-in method per organisation.
+func (c Category) Single() bool {
+	return c == CategoryCalendar || c == CategoryDirectory || c == CategorySSO
+}
+
 // Scope is who a connection belongs to.
 type Scope string
 
@@ -109,6 +116,8 @@ type Field struct {
 	// Generate makes the form offer a random value (for a secret both
 	// sides need to know, such as a signing secret).
 	Generate bool `json:"generate,omitempty"`
+	// MaxLength overrides the default limit for text and textarea fields.
+	MaxLength int `json:"max_length,omitempty"`
 }
 
 // Manifest describes a provider: what the catalog shows and what a

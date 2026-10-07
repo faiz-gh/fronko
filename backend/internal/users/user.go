@@ -7,10 +7,11 @@ import (
 )
 
 type User struct {
-	ID           int64  `json:"id"`
-	OrgID        int64  `json:"-"`
-	Role         string `json:"role"`
-	Username     string `json:"username"`
+	ID       int64  `json:"id"`
+	OrgID    int64  `json:"-"`
+	Role     string `json:"role"`
+	Username string `json:"username"`
+	// PasswordHash is "" for accounts that only sign in with single sign-on.
 	PasswordHash string `json:"-"` // Never exposed in JSON
 	// Email is nil only for accounts created before emails were required.
 	Email           *string    `json:"email"`
@@ -23,10 +24,28 @@ type User struct {
 	CreatedBy         *int64     `json:"-"`
 	LastLoginAt       *time.Time `json:"last_login_at"`
 	// SessionVersion is carried in session tokens; bumping it revokes them all.
-	SessionVersion int       `json:"-"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	SessionVersion int `json:"-"`
+	// FullName is the person's name as their identity provider knows it.
+	FullName *string `json:"full_name"`
+	// ExternalID and ExternalUsername are the identity provider's id and
+	// user name for the person (SCIM externalId and userName).
+	ExternalID       *string `json:"-"`
+	ExternalUsername *string `json:"-"`
+	// ProvisionedBy is what created the account: nil for a person, or
+	// ProvisionedSCIM or ProvisionedSSO.
+	ProvisionedBy *string   `json:"provisioned_by"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
+
+// What created an account, besides a person.
+const (
+	ProvisionedSCIM = "scim"
+	ProvisionedSSO  = "sso"
+)
+
+// HasPassword reports whether the user can sign in with a password.
+func (u *User) HasPassword() bool { return u.PasswordHash != "" }
 
 // IsAdmin reports whether the user can manage the organisation.
 func (u *User) IsAdmin() bool { return u.Role == auth.RoleOwner || u.Role == auth.RoleAdmin }

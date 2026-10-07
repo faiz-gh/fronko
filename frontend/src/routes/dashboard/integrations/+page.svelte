@@ -82,7 +82,7 @@
 	{:else}
 		{#each sections as section (section.id)}
 			{@const Icon = icon(section.id)}
-			<section aria-labelledby="cat-{section.id}" class="flex flex-col gap-4">
+			<section id={section.id} aria-labelledby="cat-{section.id}" class="flex scroll-mt-6 flex-col gap-4">
 				<div class="flex items-start gap-3">
 					<span class="bg-muted text-muted-foreground grid size-8 shrink-0 place-items-center rounded-lg">
 						<Icon class="size-4" />

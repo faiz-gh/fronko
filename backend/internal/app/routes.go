@@ -27,6 +27,7 @@ type Routes struct {
 	ctx        context.Context
 	trustProxy bool
 	mux        *http.ServeMux
+	external   *http.ServeMux
 	user       *http.ServeMux
 	platform   *http.ServeMux
 	session    func(http.Handler) http.Handler
@@ -49,6 +50,7 @@ func NewRoutes(ctx context.Context, session Session, trustProxy bool, authEvery 
 		ctx:        ctx,
 		trustProxy: trustProxy,
 		mux:        http.NewServeMux(),
+		external:   http.NewServeMux(),
 		user:       http.NewServeMux(),
 		platform:   http.NewServeMux(),
 		session:    session,
@@ -69,6 +71,15 @@ func (r *Routes) RateLimit(every time.Duration, burst int) Handler {
 // Public serves anyone, signed in or not.
 func (r *Routes) Public(pattern string, h http.HandlerFunc) {
 	r.mux.HandleFunc(pattern, h)
+}
+
+// External serves other servers and sites that bring their own credentials:
+// a SCIM client with its bearer token, or an identity provider posting a
+// sign-in response from its own origin. These routes skip the same-origin
+// check that protects the session cookie, so they must never act on the
+// session cookie alone.
+func (r *Routes) External(pattern string, h http.HandlerFunc) {
+	r.external.HandleFunc(pattern, h)
 }
 
 // SignedIn needs a session but works before the email is verified, so the
@@ -134,9 +145,12 @@ func (r *Routes) mountArea(pattern string) {
 
 // Handler returns the finished router. platformGuard authenticates platform
 // admins; it is only used when a module registered PlatformAdmin routes.
-func (r *Routes) Handler(platformGuard func(http.Handler) http.Handler) http.Handler {
+// browser wraps every route but the External ones (the same-origin check).
+func (r *Routes) Handler(platformGuard, browser func(http.Handler) http.Handler) http.Handler {
 	if r.hasAdmin {
 		r.mux.Handle("/api/admin/", platformGuard(r.platform))
 	}
-	return r.mux
+	// External patterns are more specific than "/", so they take precedence.
+	r.external.Handle("/", browser(r.mux))
+	return r.external
 }

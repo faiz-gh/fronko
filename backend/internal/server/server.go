@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -26,7 +27,9 @@ import (
 	"github.com/faiz-gh/fronko/backend/internal/feedback"
 	"github.com/faiz-gh/fronko/backend/internal/files"
 	"github.com/faiz-gh/fronko/backend/internal/integrations"
+	"github.com/faiz-gh/fronko/backend/internal/integrations/directory"
 	"github.com/faiz-gh/fronko/backend/internal/integrations/providers"
+	"github.com/faiz-gh/fronko/backend/internal/integrations/sso"
 	"github.com/faiz-gh/fronko/backend/internal/leads"
 	"github.com/faiz-gh/fronko/backend/internal/orgs"
 	"github.com/faiz-gh/fronko/backend/internal/platform/config"
@@ -34,6 +37,7 @@ import (
 	"github.com/faiz-gh/fronko/backend/internal/platform/events"
 	"github.com/faiz-gh/fronko/backend/internal/platform/jobs"
 	"github.com/faiz-gh/fronko/backend/internal/platform/mail"
+	"github.com/faiz-gh/fronko/backend/internal/platform/netguard"
 	"github.com/faiz-gh/fronko/backend/internal/platform/secrets"
 	"github.com/faiz-gh/fronko/backend/internal/platform/storage"
 	"github.com/faiz-gh/fronko/backend/internal/platform/web"
@@ -212,10 +216,35 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 	integrationSvc := integrations.NewService(integrations.NewStore(pool), registry, leadStore, orgStore,
 		deriveKey(cfg.JWTSecret, "integrations oauth state"),
 		integrations.Options{PublicURL: cfg.PublicURL, Box: box, AllowPrivate: devOutbound})
+	// Single sign-on and SCIM build on the integrations core.
+	ssoStore := sso.NewStore(pool)
+	ssoPolicy := sso.NewPolicy(integrationSvc, ssoStore, cfg.PublicURL)
+	ssoHandler := sso.NewHandler(integrationSvc, ssoStore, userStore, orgStore, authService, codes, sso.Options{
+		PublicURL:    cfg.PublicURL,
+		CookieSecure: cfg.CookieSecure,
+		StateKey:     deriveKey(cfg.JWTSecret, "sso sign-in state"),
+		HTTP:         netguard.Client(netguard.Options{AllowPrivate: devOutbound, Timeout: 20 * time.Second}),
+		Resolver:     net.DefaultResolver,
+	})
+	scim := directory.NewHandler(integrationSvc, directory.NewStore(pool), userStore, orgStore, teamStore,
+		authService, codes, ssoPolicy, cfg.PublicURL)
+	bookings := func(ctx context.Context, orgID int64) (func(int64) *cards.Booking, error) {
+		set, err := integrationSvc.Bookings(ctx, orgID)
+		if err != nil {
+			return nil, err
+		}
+		return func(holderID int64) *cards.Booking {
+			b := set.For(holderID)
+			if b == nil {
+				return nil
+			}
+			return &cards.Booking{Provider: b.Provider, Name: b.Name, URL: b.URL, Prefill: b.Prefill, Scope: string(b.Scope)}
+		}, nil
+	}
 	admin := platformadmin.NewAdminHandler(adminStore, feedbackStore, authService, mailer, cfg.FeedbackNotifyEmail, cfg.CookieSecure)
 
 	modules := []app.Module{
-		account.NewAuthHandler(userStore, orgStore, teamStore, codes, authService, cfg.CookieSecure),
+		account.NewAuthHandler(userStore, orgStore, teamStore, codes, authService, ssoPolicy, cfg.CookieSecure),
 		orgs.NewOrgHandler(orgStore, userStore, codes, authService),
 		teams.NewTeamHandler(teamStore, userStore),
 		branding.NewHandler(brandingStore, fileStore),
@@ -223,7 +252,7 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 			Files:   files.NewFileHandler(storageSvc, fileStore, userStore, teamStore, orgStore),
 			Storage: files.NewStorageHandler(storageSvc),
 		},
-		cards.NewProfileHandler(cardStore, fileStore, brandingStore, userStore, cfg.CORSAllowedOrigins, events),
+		cards.NewProfileHandler(cardStore, fileStore, brandingStore, userStore, cfg.CORSAllowedOrigins, events, bookings),
 		leads.NewLeadHandler(leadStore, cardStore, events),
 		analytics.Module{
 			Handler:   analytics.NewAnalyticsHandler(analyticsStore, cardStore, events),
@@ -232,6 +261,8 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 		},
 		feedback.NewFeedbackHandler(feedbackStore, userStore, orgStore, mailer, cfg.FeedbackNotifyEmail),
 		integrations.Module{Service: integrationSvc, Handler: integrations.NewHandler(integrationSvc, cfg.CookieSecure)},
+		ssoHandler,
+		scim,
 		admin,
 	}
 
@@ -262,7 +293,8 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 		}
 	}
 
-	a.Handler = web.CORS(cfg.CORSAllowedOrigins, web.SameOrigin(cfg.CORSAllowedOrigins, routes.Handler(admin.Guard())))
+	sameOrigin := func(h http.Handler) http.Handler { return web.SameOrigin(cfg.CORSAllowedOrigins, h) }
+	a.Handler = web.CORS(cfg.CORSAllowedOrigins, routes.Handler(admin.Guard(), sameOrigin))
 	return a, nil
 }
 

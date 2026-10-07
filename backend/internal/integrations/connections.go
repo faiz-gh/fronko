@@ -36,6 +36,7 @@ var (
 	ErrUnavailable     = errors.New("this integration isn't available on this server")
 	ErrForbidden       = errors.New("you can't manage this connection")
 	ErrOnlyOne         = errors.New("you already have a connection to this integration")
+	ErrBadToken        = errors.New("invalid or revoked token")
 	ErrNotReady        = errors.New("finish setting up this connection first")
 	ErrNoSecretsKey    = errors.New("SECRETS_KEY isn't set on this server, so secrets can't be stored")
 )
@@ -123,6 +124,21 @@ func (s *Service) seal(id int64, v vault) ([]byte, error) {
 	return s.opts.Box.Seal(plain, secretsAAD(id))
 }
 
+// onlyOneError is ErrOnlyOne with a message for the category.
+type onlyOneError struct{ msg string }
+
+func (e *onlyOneError) Error() string        { return e.msg }
+func (e *onlyOneError) Is(target error) bool { return target == ErrOnlyOne }
+
+var onlyOneMessages = map[Category]map[Scope]string{
+	CategoryCalendar: {
+		ScopeUser: "you already have a booking page connected; remove it before adding another",
+		ScopeOrg:  "your organisation already has a default booking page; remove it before adding another",
+	},
+	CategoryDirectory: {ScopeOrg: "your organisation already imports people from a directory; remove that connection first"},
+	CategorySSO:       {ScopeOrg: "your organisation already has single sign-on set up; remove that connection first"},
+}
+
 // Unavailable explains why a provider can't be connected on this server,
 // or returns "" when it can.
 func (s *Service) Unavailable(m Manifest) string {
@@ -168,14 +184,20 @@ type View struct {
 	Authorized bool `json:"authorized"`
 	// Missing lists required settings that still need a value.
 	Missing []string `json:"missing"`
+	// Endpoints are values to enter in the provider's own settings.
+	Endpoints []Endpoint `json:"endpoints"`
+	// Token describes the token the provider calls Fronko with, for
+	// scim_token providers; nil until one is generated.
+	Token *TokenInfo `json:"token"`
 }
 
-func (s *Service) view(c *Connection) (*View, error) {
+func (s *Service) view(ctx context.Context, c *Connection) (*View, error) {
 	v, err := s.open(c)
 	if err != nil && !errors.Is(err, ErrNoSecretsKey) {
 		return nil, err
 	}
-	out := &View{Connection: c, Scope: c.Scope(), Secrets: map[string]bool{}, Authorized: v.Token != nil}
+	out := &View{Connection: c, Scope: c.Scope(), Secrets: map[string]bool{}, Authorized: v.Token != nil,
+		Endpoints: []Endpoint{}, Token: c.token}
 	p, ok := s.registry.Get(c.Provider)
 	if !ok {
 		return out, nil
@@ -190,12 +212,29 @@ func (s *Service) view(c *Connection) (*View, error) {
 	if out.Missing == nil {
 		out.Missing = []string{}
 	}
+	if d, ok := p.(Describer); ok {
+		env, err := s.env(ctx, c.OrgID)
+		if err != nil {
+			return nil, err
+		}
+		out.Endpoints = d.Endpoints(c, env)
+	}
 	return out, nil
 }
 
+func (s *Service) env(ctx context.Context, orgID int64) (Env, error) {
+	org, err := s.orgs.GetOrganization(ctx, orgID)
+	if err != nil {
+		return Env{}, err
+	}
+	return Env{PublicURL: s.opts.PublicURL, OrgHandle: org.Handle}, nil
+}
+
 // ready reports whether a connection has everything it needs to work.
-func ready(m Manifest, settings Settings, v vault) bool {
-	return len(missingFields(m, settings)) == 0 && (m.Auth != AuthOAuth2 || v.Token != nil)
+func ready(m Manifest, settings Settings, v vault, c *Connection) bool {
+	return len(missingFields(m, settings)) == 0 &&
+		(m.Auth != AuthOAuth2 || v.Token != nil) &&
+		(m.Auth != AuthSCIMToken || c.token != nil)
 }
 
 // canManage reports whether the user may see and change a connection:
@@ -229,7 +268,7 @@ func (s *Service) List(ctx context.Context, p auth.Principal, scope Scope, provi
 	}
 	out := make([]*View, 0, len(conns))
 	for _, c := range conns {
-		v, err := s.view(c)
+		v, err := s.view(ctx, c)
 		if err != nil {
 			return nil, err
 		}
@@ -260,7 +299,7 @@ func (s *Service) Get(ctx context.Context, p auth.Principal, id int64) (*View, e
 	if err != nil {
 		return nil, err
 	}
-	return s.view(c)
+	return s.view(ctx, c)
 }
 
 // CreateInput is a new connection.
@@ -301,7 +340,15 @@ func (s *Service) Create(ctx context.Context, p auth.Principal, in CreateInput) 
 	} else if !p.IsAdmin() {
 		return nil, ErrForbidden
 	}
-	if !m.Multiple {
+	if m.Category.Single() {
+		n, err := s.store.CountInCategory(ctx, p.OrgID, c.UserID, m.Category)
+		if err != nil {
+			return nil, err
+		}
+		if n > 0 {
+			return nil, &onlyOneError{msg: onlyOneMessages[m.Category][in.Scope]}
+		}
+	} else if !m.Multiple {
 		n, err := s.store.CountConnections(ctx, p.OrgID, c.UserID, m.ID)
 		if err != nil {
 			return nil, err
@@ -323,10 +370,15 @@ func (s *Service) Create(ctx context.Context, p auth.Principal, in CreateInput) 
 	if err := prov.Validate(ctx, settings); err != nil {
 		return nil, asUserError(err)
 	}
+	if init, ok := prov.(Initializer); ok {
+		if err := init.Init(ctx, &settings); err != nil {
+			return nil, err
+		}
+	}
 	v := vault{Fields: settings.Secrets}
 	c.Config = settings.Values
 	c.Status = StatusPending
-	if ready(m, settings, v) {
+	if ready(m, settings, v, c) {
 		c.Status = StatusActive
 	}
 	if err := s.store.CreateConnection(ctx, c, func(id int64) ([]byte, error) { return s.seal(id, v) }); err != nil {
@@ -388,7 +440,7 @@ func (s *Service) Update(ctx context.Context, p auth.Principal, id int64, in Upd
 		c.Enabled = *in.Enabled
 	}
 	switch {
-	case !ready(m, Settings{Values: c.Config, Secrets: v.Fields}, v):
+	case !ready(m, Settings{Values: c.Config, Secrets: v.Fields}, v, c):
 		c.Status = StatusPending
 	case c.Status == StatusPending || settingsChanged || reenabled:
 		c.Status, c.FailureCount, c.LastError, c.LastErrorAt = StatusActive, 0, nil, nil
@@ -399,7 +451,7 @@ func (s *Service) Update(ctx context.Context, p auth.Principal, id int64, in Upd
 	if settingsChanged {
 		s.logActivity(ctx, c.ID, &Activity{Kind: ActivitySetup, Outcome: OutcomeSuccess, Summary: "Settings changed", userID: p.UserID})
 	}
-	return s.view(c)
+	return s.view(ctx, c)
 }
 
 // Delete removes a connection and its log.

@@ -12,7 +12,9 @@ export class ApiError extends Error {
 		/** Why the organisation was suspended, on an "org_suspended" error. */
 		readonly reason?: string,
 		/** The form field at fault, when the backend names one. */
-		readonly field?: string
+		readonly field?: string,
+		/** Where to sign in instead, on an "sso_required" error. */
+		readonly ssoUrl?: string
 	) {
 		super(message);
 	}
@@ -84,7 +86,8 @@ export async function apiClient<T>(
 			body.code,
 			retryAfter,
 			body.reason,
-			body.field
+			body.field,
+			body.sso_url
 		);
 	}
 

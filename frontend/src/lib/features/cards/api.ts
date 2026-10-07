@@ -13,6 +13,8 @@ export interface Profile {
 	updated_at: string;
 	/** For members, only the leads that arrived while they held the card. */
 	lead_count: number;
+	/** The "Book a meeting" page: the holder's from Integrations, or the organisation's default. */
+	booking: Booking | null;
 }
 
 export interface PublicProfile {
@@ -25,6 +27,22 @@ export interface PublicProfile {
 	files: PublicFile[];
 	/** The card's organisation and its logo. */
 	org: PublicOrg | null;
+	booking: Booking | null;
+}
+
+/** A booking page connected in Integrations (Calendar Booking). */
+export interface Booking {
+	/** The integration's id ("calendly") and display name. */
+	provider: string;
+	name: string;
+	url: string;
+	/**
+	 * The page's query parameters that take what a visitor gave the lead form:
+	 * values are "name", "first_name", "last_name" or "email".
+	 */
+	prefill?: Record<string, string>;
+	/** "user": the holder's own page; "org": the organisation's default. */
+	scope: 'user' | 'org';
 }
 
 export interface PublicOrg {

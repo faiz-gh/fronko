@@ -25,6 +25,9 @@ const (
 	CodePasswordChangeRequired = "password_change_required"
 	// CodeAccountSuspended marks the 401 for accounts the organisation suspended.
 	CodeAccountSuspended = "account_suspended"
+	// CodeSSORequired marks the 403 for people who must sign in with their
+	// organisation's single sign-on; it carries sso_url, where to start.
+	CodeSSORequired = "sso_required"
 	// CodeOrgSuspended marks responses for an organisation the platform
 	// suspended; they carry the reason the admin gave.
 	CodeOrgSuspended = "org_suspended"

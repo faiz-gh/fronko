@@ -1,15 +1,17 @@
 # Fronko Backend
 
-The Fronko API server. It's a single Go binary built on the standard library's `net/http`, backed by PostgreSQL through `pgx`.
+The Fronko API server. It's a single Go binary built on the standard library's `net/http`, backed by PostgreSQL through `pgx`. One process serves the API, runs background jobs from a queue in Postgres, and runs periodic tasks.
 
 It handles:
 
-- **Accounts.** Username/password registration and login. Sessions are JWTs carried in an HttpOnly cookie.
-- **Profiles ("cards").** Each user can own several public profiles. Each one has a slug, unique within its organisation, and a free-form JSONB `data` document. A card's public link is `/p/{org handle}/{slug}`.
-- **Leads.** Anonymous visitors can submit their name, email, an optional mobile number (dial code and number stored separately, digits only) and a message to a profile. The owner can list and search those leads.
-- **Platform admin.** Separate admin accounts (created with `./fronko admin create`) get usage totals per organisation, daily usage trends, a product-feedback inbox with email replies, organisation suspension and an audit log. See [Platform admin](#platform-admin).
+- **Accounts and organisations.** Username/password registration and login, emailed codes, roles (owner, admin, member), teams, and SAML single sign-on. Sessions are JWTs carried in an HttpOnly cookie.
+- **Cards.** Each organisation has any number of public profiles, each with a slug unique within the organisation and a free-form JSONB `data` document. A card's public link is `/p/{org handle}/{slug}`.
+- **Leads.** Anonymous visitors send their name, email, an optional mobile number and a message to a card. Leads are listed, searched and exported, and synced to CRMs and automation tools.
+- **Files, branding, analytics and feedback.** A file library in the organisation's own S3 bucket, organisation branding, cookieless card analytics, and product feedback.
+- **Integrations.** Lead sync (webhooks, Zapier, Make, n8n, HubSpot), booking pages on cards, a SCIM 2.0 server and SAML 2.0 sign-in.
+- **Platform admin.** Separate admin accounts (created with `./fronko admin create`) get usage totals per organisation, trends, a feedback inbox, organisation suspension and an audit log.
 
-For the full endpoint reference, see [API.md](./API.md).
+For the endpoints, see [API.md](./API.md). For how the code is put together, see [Architecture](../docs/architecture.md).
 
 ---
 
@@ -20,10 +22,10 @@ For the full endpoint reference, see [API.md](./API.md).
 - [Getting started](#getting-started)
 - [Configuration](#configuration)
 - [Database](#database)
-- [Request pipeline](#request-pipeline)
 - [Authentication & sessions](#authentication--sessions)
 - [Platform admin](#platform-admin)
 - [Card analytics](#card-analytics)
+- [Integrations](#integrations)
 - [Security measures](#security-measures)
 - [Error handling conventions](#error-handling-conventions)
 - [Testing](#testing)
@@ -41,64 +43,56 @@ For the full endpoint reference, see [API.md](./API.md).
 | Database driver | [`jackc/pgx/v5`](https://github.com/jackc/pgx) (`pgxpool`)             |
 | Migrations      | [`golang-migrate`](https://github.com/golang-migrate/migrate) (run by the container entrypoint) |
 | Auth            | [`golang-jwt/jwt/v5`](https://github.com/golang-jwt/jwt) (HS256) and `bcrypt` |
+| Background work | A job queue and periodic tasks in Postgres (`internal/platform/jobs`)  |
+| Integrations    | `golang.org/x/oauth2`, [`crewjam/saml`](https://github.com/crewjam/saml) |
 | Rate limiting   | `golang.org/x/time/rate` (token bucket, in memory)                     |
 | Tests           | `testing` and [`testify`](https://github.com/stretchr/testify)         |
+| Lint            | `gofmt`, `go vet`, [`golangci-lint`](https://golangci-lint.run/) v2 (`.golangci.yml`) |
 
 ## Project layout
 
 ```
 backend/
-├── cmd/fronko/main.go        # Entry point: config, DI wiring, routes, graceful shutdown
-├── cmd/fronko/admin.go       # `fronko admin create|set-password` subcommand for platform admins
+├── cmd/fronko/main.go        # subcommands: serve (default), admin, seed
 ├── internal/
-│   ├── auth/auth.go              # Password hashing (bcrypt) and JWT issue/validate (with session version)
-│   ├── auth/otp.go               # 6-digit email codes: generation, HMAC hashing, TTL/attempt/cooldown limits
-│   ├── config/config.go          # Environment variable loading and validation
-│   ├── database/db.go            # pgxpool construction and connectivity check
-│   ├── handlers/
-│   │   ├── auth.go               # /auth/login, /auth/register, /auth/logout, /api/me/user
-│   │   ├── admin_auth.go         # Platform admin sign-in/out (/auth/admin/*) and /api/admin/me
-│   │   ├── admin.go              # /api/admin/*: usage, trends, suspend/reinstate, feedback inbox, audit log
-│   │   ├── feedback.go           # POST /api/me/feedback (users sending product feedback)
-│   │   ├── branding.go           # GET/PUT /api/org/branding: logo, logo policy, signature settings
-│   │   ├── account.go            # Email verification and change, forgot/reset password, change password
-│   │   ├── files.go              # File library: upload (type sniffing, previews), list/search/counts, update/move, bulk, usage, content, same-origin image, public redirect, grants
-│   │   ├── teams.go              # /api/org/teams: team CRUD, members, a user's teams
-│   │   ├── storage.go            # StorageService (decrypt keys → bucket client) and /api/me/storage
-│   │   ├── profile.go            # Profile CRUD and public lookup by link (org handle + slug)
-│   │   ├── vcard.go              # GET /api/profiles/{org}/{slug}/vcard: the card as a vCard 3.0 file
-│   │   ├── lead.go               # Lead submission (public), paginated listing and per-profile listing (owner)
-│   │   ├── analytics.go          # EventRecorder (visitor hash, bot and same-org filtering), POST /api/profiles/{org}/{slug}/events, /api/me/analytics/*
-│   │   ├── respond.go            # JSON encode/decode helpers, body size cap
-│   │   └── session.go            # Session cookie set/clear
-│   ├── middleware/
-│   │   ├── cors.go               # CORS headers + preflight for CORS_ALLOWED_ORIGINS
-│   │   ├── jwt.go                # Cookie → JWT → session-version check → user ID in context; RequireVerified
-│   │   ├── admin.go              # AdminMiddleware: fronko_admin cookie → admin JWT → platform admin in context
-│   │   ├── origin.go             # Same-origin check for state-changing requests
-│   │   └── ratelimit.go          # Per-IP token bucket limiter
-│   ├── mail/                     # SMTP sender (implicit TLS / STARTTLS), log fallback, code and notice templates
-│   ├── models/models.go          # Organization, OrgBranding, User, Team, TeamMember, EmailCode, Profile, PublicProfile, Lead, StorageSettings, File, FileUsage
-│   ├── models/admin.go           # PlatformAdmin, OrgUsage, PlatformSummary, UsagePoint, Feedback, AuditEntry
-│   ├── models/analytics.go       # Event types and sources; AnalyticsSummary, AnalyticsPoint, ContentStat, CardStat, TeamStat, MemberStat, ActivityItem
-│   ├── repository/repository.go  # Users, profiles, leads, storage settings; Scope and visibleTo(); maps pg errors to ErrNotFound / ErrConflict
-│   ├── repository/files.go       # Files: visibility rules, listing/search/counts, updates, usage, grants; card file refs (CardFileRefs, file_refs sync)
-│   ├── repository/teams.go       # Teams and memberships
-│   ├── repository/org.go         # Organisation settings, org users, branding
-│   ├── repository/admin.go       # Platform admins, org usage aggregates, snapshots, suspension, audit log
-│   ├── repository/feedback.go    # Feedback and replies
-│   ├── repository/analytics.go   # Recording card events, daily salts, retention purge, and the scoped analytics queries
-│   ├── snapshots/scheduler.go    # Hourly usage snapshot for the admin trends
-│   ├── snapshots/retention.go    # Wraps the snapshot run to also delete expired analytics events and salts
-│   ├── secrets/secrets.go        # AES-256-GCM sealing for storage keys at rest
-│   └── storage/storage.go        # S3 client (aws-sdk-go-v2), endpoint validation, SSRF-safe dialer
-├── migrations/                   # golang-migrate SQL files (up/down)
-├── Dockerfile                    # Multi-stage build; bundles the migrate CLI
-├── entrypoint.sh                 # Runs migrations, then execs the server
+│   ├── server/               # composition root: builds every module, runs HTTP, job workers and tasks
+│   ├── app/                  # Module interfaces and route groups (Routes)
+│   ├── platform/             # infrastructure, no business rules
+│   │   ├── config/           # environment variables
+│   │   ├── database/         # pool, Querier, MapError → ErrNotFound / ErrConflict
+│   │   ├── httpx/            # JSON helpers, path ids, paging
+│   │   ├── events/           # in-process domain event bus
+│   │   ├── jobs/             # Postgres job queue, worker, periodic tasks
+│   │   ├── mail/             # SMTP sender (implicit TLS / STARTTLS), log fallback, templates
+│   │   ├── netguard/         # SSRF-safe HTTP client for user-supplied addresses
+│   │   ├── ratelimit/        # per-IP token buckets
+│   │   ├── secrets/          # AES-256-GCM sealing (SECRETS_KEY)
+│   │   ├── storage/          # S3 client and endpoint validation
+│   │   └── web/              # CORS and the same-origin check
+│   ├── auth/                 # passwords, JWTs, email codes, session middleware, Principal, Scope, VisibleTo
+│   ├── users/                # users, email codes, username and email rules
+│   ├── account/              # register, login, logout, email verification and change, passwords
+│   ├── orgs/                 # organisation settings, handle, user management
+│   ├── teams/  branding/
+│   ├── files/                # file library, card file references, storage settings
+│   ├── cards/                # cards (profiles), public lookup, vCard
+│   ├── leads/                # lead form, listing; publishes leads.Created
+│   ├── analytics/            # event recording, reports, retention
+│   ├── feedback/  platformadmin/
+│   ├── integrations/         # catalog, connections, OAuth, lead dispatch, activity log
+│   │   ├── providers/        # all.go (registry list), comingsoon.go, webhook/, hubspot/, calendar/
+│   │   ├── sso/              # SAML service provider, email domains, SSO policy
+│   │   └── directory/        # SCIM 2.0 server
+│   ├── devseed/              # `fronko seed`: demo data (development only)
+│   └── integrationtest/      # tests against a real database (build tag `integration`)
+├── migrations/               # golang-migrate SQL files (up/down)
+├── Dockerfile                # multi-stage build; bundles the migrate CLI
+├── entrypoint.sh             # runs migrations, then execs the server
+├── .golangci.yml
 └── Makefile
 ```
 
-Dependencies are wired by hand in `cmd/fronko/main.go`. It goes config → pool → repository → auth service → handlers → middleware → mux. There is no DI framework.
+Each feature package owns its handlers, its SQL (`store.go`) and its types, and registers its routes through `app.Routes`. `internal/server/server.go` wires everything by hand; there is no DI framework. [Architecture](../docs/architecture.md) explains the module contract, the route groups, events and jobs, and [Backend modules](../docs/backend-modules.md) shows how to add one.
 
 ## Getting started
 
@@ -110,6 +104,7 @@ Dependencies are wired by hand in `cmd/fronko/main.go`. It goes config → pool 
   ```bash
   go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.1
   ```
+- Optional: [`golangci-lint`](https://golangci-lint.run/welcome/install/) v2, for `make lint`
 
 ### Run locally
 
@@ -118,13 +113,18 @@ cd backend
 
 export DATABASE_URL='postgres://fronko:password@localhost:5432/fronko?sslmode=disable'
 export JWT_SECRET="$(openssl rand -base64 32)"
-export COOKIE_SECURE=false   # plain http in local dev
-# Optional: enables photo/brochure storage. Add STORAGE_ALLOW_PRIVATE_ENDPOINTS=true
-# to connect to a local S3 server (MinIO, SeaweedFS) over http.
+export COOKIE_SECURE=false            # plain http in local dev
+export FRONKO_ENV=development         # lets integrations reach local receivers; enables `seed`
+export PUBLIC_URL=http://localhost:5173
+# Optional: enables photo/brochure storage and integrations with secrets. Add
+# STORAGE_ALLOW_PRIVATE_ENDPOINTS=true to connect to a local S3 server (MinIO, SeaweedFS) over http.
 export SECRETS_KEY="$(openssl rand -base64 32)"
 
 # Apply the schema
 migrate -path migrations -database "$DATABASE_URL" up
+
+# Optional: demo organisations, cards, leads and analytics
+make seed
 
 # Build and run (listens on :8080 by default)
 make run
@@ -136,38 +136,52 @@ Check that it's up:
 curl localhost:8080/health   # → OK
 ```
 
-Then run the frontend dev server (`cd ../frontend && npm run dev`). It proxies `/api` and `/auth` to `localhost:8080`.
+Then run the frontend dev server (`cd ../frontend && npm run dev`). It proxies `/api`, `/auth` and `/scim` to `localhost:8080`. The demo accounts are listed in [CONTRIBUTING](../CONTRIBUTING.md#demo-data).
 
 ### Make targets
 
 | Target                  | What it does                                                     |
 | ----------------------- | ---------------------------------------------------------------- |
-| `make build`            | Builds `bin/fronko`                                          |
-| `make run`              | Builds, then runs the binary                                     |
+| `make build`            | Builds `bin/fronko`                                              |
+| `make run`              | Builds, then runs the server                                     |
 | `make test`             | Unit tests with the race detector (`go test -v -race ./...`)     |
-| `make test-integration` | Repository tests against a real database (see [Testing](#testing)) |
+| `make test-integration` | Database tests against a disposable database (see [Testing](#testing)) |
+| `make lint`             | `golangci-lint run ./...`                                        |
+| `make seed`             | Demo data in `DATABASE_URL` (`FRONKO_ENV=development`); `ARGS=--reset` empties the database first |
 | `make clean`            | Removes `bin/`                                                   |
+
+### Subcommands
+
+| Command | What it does |
+| ------- | ------------ |
+| `fronko` or `fronko serve` | Runs the server |
+| `fronko admin create --email …` | Creates a platform admin (prompts for a password) |
+| `fronko admin set-password --email …` | Replaces a platform admin's password and signs them out everywhere |
+| `fronko seed [--reset]` | Demo data. Refused unless `FRONKO_ENV=development`, and on a database that already has organisations unless `--reset` |
 
 ## Configuration
 
-All configuration comes from environment variables and is read once at startup by `config.Load()`.
+All configuration comes from environment variables, read once at startup by `config.Load()`. A malformed value stops startup.
 
 | Variable        | Required | Default | Description |
 | --------------- | :------: | ------- | ----------- |
 | `DATABASE_URL`  | ✅ | none | PostgreSQL connection string (pgx format). |
-| `JWT_SECRET`    | ✅ | none | HMAC key for signing session JWTs. **Must be at least 16 characters**, or the server refuses to start. Generate one with `openssl rand -base64 32`. |
+| `JWT_SECRET`    | ✅ | none | HMAC key for signing session JWTs; also the root for the keys that sign OAuth and SAML state and hash email codes. **At least 16 characters**, or the server refuses to start. Generate one with `openssl rand -base64 32`. |
 | `PORT`          |    | `8080` | Port to listen on. |
-| `COOKIE_SECURE` |    | `true` | Puts the `Secure` flag on the session cookie. Only the exact value `false` disables it. Set it to `false` only when serving over plain HTTP, for example in local development. |
-| `TRUST_PROXY`   |    | `false` | When set to the exact value `true`, the rate limiter takes the client IP from the `X-Real-IP` header. **Enable this only behind a proxy that always sets that header**, such as the bundled nginx. Otherwise clients can spoof it to dodge rate limits. |
-| `SECRETS_KEY`   |    | none | Base64 of 32 random bytes (`openssl rand -base64 32`). It encrypts users' storage keys. **Unset disables file storage**: the storage endpoints return 503, and everything else works. A malformed value stops startup. **Keep it stable and backed up**: if it changes or is lost, saved storage keys can't be decrypted and users must re-enter them. |
-| `CORS_ALLOWED_ORIGINS` |    | none | Comma-separated browser origins (e.g. `https://fronko.com`) allowed to call the API cross-origin with the session cookie. Matching requests get `Access-Control-Allow-Origin` + `Allow-Credentials`, preflights are answered with 204, and the same-origin check accepts them. Leave empty when the frontend's nginx proxies the API (same-origin). In Docker it's set from `FRONTEND_URL`. |
-| `SMTP_HOST`     |    | none | Outgoing mail server for verification and password-reset codes. **Unset logs each email (with its code) to stdout instead of sending it**, which is only useful in development. |
-| `SMTP_PORT`     |    | `587` | `465` uses implicit TLS; any other port upgrades with STARTTLS when the server offers it. |
+| `COOKIE_SECURE` |    | `true` | Puts the `Secure` flag on the session cookie. Only the exact value `false` disables it, for plain HTTP in local development. |
+| `TRUST_PROXY`   |    | `false` | When `true`, the rate limiter and analytics take the client IP from `X-Real-IP`. **Enable this only behind a proxy that always sets that header**, such as the bundled nginx. |
+| `SECRETS_KEY`   |    | none | Base64 of 32 random bytes (`openssl rand -base64 32`). Encrypts storage keys and integration secrets. **Unset disables file storage** (the storage endpoints return 503) **and integrations that store a secret** (shown as unavailable). **Keep it stable and backed up**: if it changes or is lost, saved keys and secrets can't be decrypted. |
+| `PUBLIC_URL`    |    | none | Where people reach the site, such as `https://cards.example.com`: an absolute `http(s)` URL without credentials, a query or a fragment; a trailing slash is dropped. OAuth redirect URLs, SAML ACS and metadata URLs, the SCIM base URL and card links in lead payloads are built from it. **Unset makes HubSpot, SAML and SCIM unavailable.** |
+| `JOB_WORKERS`   |    | `2` | Background jobs this instance runs at once. `0` queues jobs without running them, for instances that should only serve requests. |
+| `FRONKO_ENV`    |    | `production` | `production` or `development`. Development lets integrations call private and local addresses (a webhook receiver on your machine) and allows `fronko seed`. **Never use development in production.** |
+| `CORS_ALLOWED_ORIGINS` |    | none | Comma-separated browser origins allowed to call the API cross-origin with the session cookie. Leave empty when the frontend's nginx proxies the API (same-origin). In Docker it's set from `FRONTEND_URL`. |
+| `SMTP_HOST`     |    | none | Outgoing mail server. **Unset logs each email (with its code) to stdout instead**, which is only useful in development. |
+| `SMTP_PORT`     |    | `587` | `465` uses implicit TLS; any other port upgrades with STARTTLS when offered. |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | | none | SMTP credentials. Auth is skipped when the username is empty. Credentials are never sent over an unencrypted connection (except to localhost). |
-| `SMTP_FROM`     | with `SMTP_HOST` | none | Sender, e.g. `Fronko <no-reply@fronko.app>`. Must be an address your provider lets you send from. |
-| `FEEDBACK_NOTIFY_EMAIL` | | none | Address emailed for each piece of product feedback (with the sender as Reply-To). Also the Reply-To on admin replies and on suspension emails to owners. Unset: feedback only shows up in the admin panel. A malformed value stops startup. |
-| `ANALYTICS_RETENTION_DAYS` | | `395` | Days of card analytics events to keep (1–3650). Older events, and visitor-hash salts older than yesterday, are deleted on every hourly snapshot run. A value outside the range stops startup. |
-| `STORAGE_ALLOW_PRIVATE_ENDPOINTS` | | `false` | `true` lets storage endpoints use `http` and private or loopback addresses, e.g. a local MinIO. **Development only**: in production it would let users make the server connect to internal hosts. |
+| `SMTP_FROM`     | with `SMTP_HOST` | none | Sender, e.g. `Fronko <no-reply@fronko.app>`. |
+| `FEEDBACK_NOTIFY_EMAIL` | | none | Emailed for each piece of product feedback; also the Reply-To on admin replies and suspension emails. |
+| `ANALYTICS_RETENTION_DAYS` | | `395` | Days of card analytics events to keep (1–3650). |
+| `STORAGE_ALLOW_PRIVATE_ENDPOINTS` | | `false` | `true` lets storage endpoints use `http` and private addresses, e.g. a local MinIO. **Development only.** |
 
 ### Server and pool settings
 
@@ -176,305 +190,219 @@ These are hard-coded:
 | Setting | Value |
 | ------- | ----- |
 | `ReadHeaderTimeout` / `ReadTimeout` / `WriteTimeout` / `IdleTimeout` | 5s / 15s / 15s / 60s |
-| Graceful shutdown window (on `SIGINT`/`SIGTERM`) | 5s |
+| Graceful shutdown (on `SIGINT`/`SIGTERM`) | 5s for HTTP, then up to 10s for running jobs and tasks (jobs cut short go back in the queue) |
 | `pgxpool` Max / Min connections | 25 / 5 |
 | `pgxpool` MaxConnLifetime / MaxConnIdleTime | 5m / 1m |
-| Max request body | 64 KiB |
+| Max JSON request body | 64 KiB |
+| Job timeout / lease / retention | 5 min / 10 min / 30 days |
+| Outbound integration requests | 20s timeout |
 
 ## Database
 
-The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`, 006 changing a verified email, 007 organisations and users, 008 platform admin, 009 organisation branding, 010 teams and file purposes, 011 team and branding usage snapshots, 012 card analytics).
-- **Card analytics (012).** `card_events`: one row per thing a visitor did on a public card. Columns: `org_id`, `profile_id` (both cascade), `assigned_user_id` (who held the card then; `SET NULL`), `session_id` (the visit), `visitor_hash`, `type` (`view`, `click`, `scroll`, `doc_open`, `gallery_open`, `vcard`, `form_open`, `form_submit`, `share`, `leave`), `source` (`nfc`, `qr`, `link`), `target`, `label`, `value` (scroll % or time on card in ms), `device`, `referrer_host`, `created_at`. It is indexed on `(profile_id, created_at)`, `(org_id, created_at)` and `(org_id, assigned_user_id, created_at)`. `analytics_salts` holds one random salt per UTC day. `leads.source` records how the visitor arrived (`NULL` for older leads).
-- **Organisation handles (013).** `organizations.handle` (unique, case-insensitive) is the organisation's part of every card link, `/p/{handle}/{slug}`. Existing organisations got one made from their name (`org-{id}` when too little of it was usable, `-{id}` added on a clash). Card slugs became unique per organisation (`profiles_org_slug_lower_idx`) instead of globally. Old `/p/{slug}` links were dropped: none had been printed.
-- **Usage snapshots (011).** `org_usage_snapshots.team_count`, and `platform_usage_snapshots.team_count`, `orgs_with_teams` and `orgs_with_logo` (all default 0, so days before 011 read as zero).
-- **Teams and file purposes (010).** `teams` (per org; names unique ignoring case) and `team_members` (`role` `lead` or `member`; a user can be in many teams; both FKs cascade). `files` gains a fourth `area`, `team` (with `team_id`, enforced by `files_team_area_check`), a `purpose` (`logo`, `banner`, `avatar`, `cover`, `gallery`, `brochure`, `other`), the `width`/`height`/`pages` the browser reported, an optional `thumb_key` (a small preview next to the original) and `updated_at`. `file_team_grants` gives an org or shared file to a whole team. `file_refs` (`file_id`, `profile_id`, `slot`) records which card slot uses which file; `CreateProfile`/`UpdateProfile` rewrite a card's rows in the same transaction (`syncFileRefs`), and it drives `use_count` and `GET /api/me/files/{id}/usage`. The migration backfilled `file_refs` from `profiles.data` and guessed each file's purpose (PDFs → brochure, the org logo and banner, then card slots). `DeleteTeam` moves the team's files to `org` before deleting it.
-- **Branding (009).** `organizations.logo_file` (public id of an org or shared image, `NULL`: no logo), `logo_policy` (`required` or `optional`, checked by `organizations_logo_policy_check`), and `signature` JSONB (`locked_template`, `brand_color`, `disclaimer`, `banner_file`, `banner_url`; see `models.OrgSignature`). `DeleteFile` clears `logo_file` or `signature.banner_file` in the same statement when they name the deleted file. Email signatures themselves are built in the browser; per-card signature choices live in `profiles.data`.
-- **Platform admin (008).** `platform_admins` (separate from `users`; case-insensitive unique email, own `session_version`). `organizations.suspended_at` and `suspended_reason`. `feedback` (with `sender_email` and `org_name` copied in, and `org_id`/`user_id` `ON DELETE SET NULL`, so feedback outlives the org) and `feedback_replies`. `org_usage_snapshots` (one row per org per day) and `platform_usage_snapshots` (daily totals, kept apart so history survives deleted orgs). `admin_audit_log`, which also copies the admin's email.
-- **Organisations (007).** Every user belongs to one `organizations` row (`users.org_id`) with a `role`: `owner` (exactly one per org, enforced by a partial unique index), `admin` or `member`. 007 gave each existing account its own organisation, as owner. `users` also gained `must_change_password` (set while the org-chosen password is in use), `storage_quota_bytes` (`NULL`: unlimited), `suspended_at`, `created_by` and `last_login_at`.
-- **Cards** belong to the org (`profiles.org_id`); `profiles.user_id` is just the creator. `profiles.assigned_user_id` is the one user working on the card (`ON DELETE SET NULL`).
-- **Leads** record `assigned_user_id`, copied from the card when they arrive, so they stay with that person after a reassignment.
-- **Files** have an `org_id` and an `area`: `personal` (the uploader's own; counts toward their quota), `org` (private to admins), `shared` (everyone in the org) or `team` (that team's members). `file_grants` gives individual users access to extra files and `file_team_grants` whole teams. `former_owner` names a deleted user whose personal file it was.
-- `users.email` (005) is nullable only for accounts that predate it; the app makes those users add one. `email_verified_at` gates the app, and `session_version` is copied into each JWT so bumping it revokes every session.
-- `email_codes` (005) holds at most one live code per user and purpose (`verify_email`, `reset_password`, and `change_email` from 006): an HMAC of the code, an attempt counter and an expiry. For `change_email`, the `email` column (006) holds the new address until it's confirmed.
-- `leads.phone_country_code` and `leads.phone_number` (004) store a visitor's number as two digit-only parts. A check constraint requires both or neither, and enforces the E.164 shape.
-- `user_storage` holds one row per user with encrypted key columns (`BYTEA`). Only the org owner's row is used: it's the organisation's bucket (`GetOrgStorageSettings`). Keeping it keyed by user means the keys' AAD (`storage:<user_id>:…`) didn't need re-sealing when organisations arrived.
-- `files` stores a random `public_id`, the `bucket` and `object_key`, the sniffed `kind` and `content_type`, the size, the original name and an optional title. The bucket is stored per file, so changing buckets later doesn't silently re-point old files.
+The schema lives in `migrations/`:
 
-The original schema file is `migrations/001_initial_schema.up.sql`. It uses `IF NOT EXISTS` throughout, so it's safe to run against a database whose schema was applied by hand.
+| Migration | Contents |
+| --------- | -------- |
+| `001_baseline` | Everything before integrations: organisations, users, email codes, teams, cards, leads, files, branding, analytics, platform admin, feedback and usage snapshots. Earlier migrations 001–013 were squashed into it ([ADR 0005](../docs/adr/0005-squashed-baseline-migration.md)) |
+| `002_jobs` | The background job queue |
+| `003_integrations` | `integration_connections` and `integration_activity` |
+| `004_identity` | `integration_tokens` (SCIM), `org_domains`, SSO and SCIM columns on `users` and `teams` |
 
-```mermaid
-erDiagram
-    users ||--o{ profiles : owns
-    profiles ||--o{ leads : receives
+The SQL files are commented and are the reference for each table. In outline:
 
-    users {
-        bigint user_id PK
-        text username "UNIQUE, case-insensitive unique index"
-        text password_hash "bcrypt"
-        text email "nullable, case-insensitive unique index"
-        timestamptz email_verified_at "nullable"
-        int session_version "in the JWT; bump to revoke"
-        timestamptz created_at
-        timestamptz updated_at
-    }
-    profiles {
-        bigint profile_id PK
-        bigint user_id FK "ON DELETE CASCADE"
-        text slug "unique per organisation, case-insensitive"
-        jsonb data "default {}"
-        timestamptz created_at
-        timestamptz updated_at
-    }
-    leads {
-        bigint lead_id PK
-        bigint profile_id FK "ON DELETE CASCADE"
-        text name
-        text email
-        text phone_country_code "nullable, e.g. +91"
-        text phone_number "nullable, digits only"
-        text notes "nullable"
-        timestamptz created_at
-    }
-```
+- **Organisations and users.** Every user belongs to one `organizations` row with a `role`: `owner` (exactly one per organisation, enforced by a partial unique index), `admin` or `member`. Users have a case-insensitively unique username and email, `email_verified_at`, a `session_version` copied into each JWT (bumping it revokes every session), `must_change_password` while an organisation-chosen password is in use, an optional `storage_quota_bytes`, `suspended_at`, `created_by` and `last_login_at`. `password_hash` is `NULL` for people who only sign in with SSO. `full_name`, `external_id`, `external_username` and `provisioned_by` (`scim` or `sso`) record what an identity provider knows about them. `organizations.handle` is the organisation's part of every card link.
+- **Email codes.** `email_codes` holds at most one live code per user and purpose (`verify_email`, `reset_password`, `change_email`): an HMAC of the code, an attempt counter and an expiry. For `change_email`, `email` holds the new address until it's confirmed.
+- **Teams.** `teams` (names unique per organisation, ignoring case; optional `external_id` for SCIM groups) and `team_members` (`role` `lead` or `member`; a user can be in many teams).
+- **Cards.** `profiles` belong to the organisation (`org_id`); `user_id` is the creator and `assigned_user_id` the one person working on it. Slugs are unique per organisation, case-insensitively. `data` is opaque JSONB owned by the frontend; the backend only reads the keys that name library files.
+- **Leads** belong to a card and record `assigned_user_id` (copied from the card when they arrive, so they stay with that person after a reassignment) and `source` (`nfc`, `qr`, `link`). Phone numbers are stored as a digit-only dial code and number, both or neither.
+- **Files.** `files` have an `area`: `personal` (counts toward the owner's quota), `org`, `shared` or `team`. They store a random 128-bit `public_id`, the bucket and object key, the sniffed type, a `purpose`, dimensions or page count, and an optional preview. `file_grants` and `file_team_grants` give extra access. `file_refs` records which card slot uses which file; it's rewritten whenever a card is saved (`files.SyncRefs`, in the same transaction). `user_storage` holds the organisation's bucket settings (on the owner's row), with encrypted keys.
+- **Branding.** `organizations.logo_file`, `logo_policy` and the `signature` JSONB.
+- **Analytics.** `card_events` (one row per thing a visitor did on a public card) and `analytics_salts` (one random salt per UTC day).
+- **Platform admin.** `platform_admins`, `admin_audit_log`, `feedback`, `feedback_replies`, and daily `org_usage_snapshots` and `platform_usage_snapshots`.
+- **Jobs.** `jobs`: kind, payload, organisation, dedupe key, status (`queued`, `running`, `done`, `dead`), schedule and retry state.
+- **Integrations.** `integration_connections` (organisation-wide when `user_id` is `NULL`, personal otherwise; `config` JSONB, `secrets` sealed as one blob, `status`, failure tracking), `integration_activity` (90 days of log), `integration_tokens` (SHA-256 hashes of SCIM tokens) and `org_domains` (verification token; a domain is unique among verified domains).
 
-**Indexes**
+**Scopes.** Reads that depend on who's asking take an `auth.Scope{OrgID, UserID, Admin}` (from `auth.ScopeOf(r)`). Admins see the whole organisation. Cards and leads go through `auth.VisibleTo(col, n)`: a member sees what's assigned to them, and a team lead also sees (and can edit) what's assigned to people in the teams they lead. Files go through `fileVisible` and `fileEditable` in `files/store.go`. Keep new queries going through a scope so a member can never widen what they see.
 
-| Index | Purpose |
-| ----- | ------- |
-| `users_username_lower_idx` (unique, `LOWER(username)`) | Case-insensitive login, and stops `Alice` and `alice` from coexisting |
-| `users_email_lower_idx` (unique, `LOWER(email)`) | Sign-in and password reset by email; one account per address. The handler tells it apart from the username index by constraint name (`repository.IsEmailConflict`) |
-| `profiles_org_slug_lower_idx` (unique, `org_id, LOWER(slug)`) | Slugs are unique inside an organisation and route case-insensitively (`/p/acme/Faiz` = `/p/acme/faiz`); migration 013 replaced the global `profiles_slug_lower_idx` |
-| `organizations_handle_lower_idx` (unique, `LOWER(handle)`) | Each organisation's link handle (`/p/{handle}/…`), unique case-insensitively (migration 013). `CreateOrgWithOwner` makes it from the name and retries with `-2`, `-3`… on a clash |
-| `profiles_user_id_idx` | Listing a user's profiles (Postgres does not auto-index FKs) |
-| `profiles_data_gin_idx` (GIN on `data`) | Room for future JSONB queries |
-| `leads_profile_id_idx` | Listing a profile's leads |
-| `leads_profile_id_created_at_idx` (`profile_id, created_at DESC`) | Newest-first paging of leads (migration 002) |
-
-**Cascades.** Deleting an organisation deletes everything in it, and deleting a profile deletes its leads. Users are never deleted with a bare `DELETE`: `DeleteOrgUser` first moves their personal files to the org area and passes cards and files they created to the owner, then deletes the row, which unassigns their cards and leads (`SET NULL`) and drops their grants.
-
-**Scopes.** Repository reads take a `repository.Scope{OrgID, UserID, Admin}` (built by `handlers.scopeOf`). Admins see the whole organisation. Cards and leads go through `visibleTo(col, n)`: a member sees what's assigned to them, and a **team lead** also sees (and can edit) what's assigned to the people in the teams they lead. Files go through `fileVisible` (own personal files, `shared`, their teams' files, and files granted to them or one of their teams) and `fileEditable` (own personal files; for leads, their teams' files). The `Principal` carries the user's teams (loaded with the session state on every request), which handlers use for checks like who may upload to or move files into a team. Keep new queries going through a scope so a member can never widen what they see.
-
-**The `data` column.** The backend treats `data` as opaque. It only checks that it is a JSON object, and stores `{}` when the field is missing or `null`. The frontend owns its shape. See [`CardData`](../frontend/README.md#card-data-model).
+**Cascades.** Deleting an organisation deletes everything in it. Deleting a card deletes its leads. Users are never deleted with a bare `DELETE`: `DeleteOrgUser` first moves their personal files to the organisation and passes cards and files they created to the owner.
 
 ### Adding a migration
 
-Add a numbered pair next to the existing files (the next number is 014):
+Add the next numbered pair next to the existing files (the next number is 005):
 
 ```
-migrations/012_<description>.up.sql
-migrations/012_<description>.down.sql
+migrations/005_<description>.up.sql
+migrations/005_<description>.down.sql
 ```
 
-The Docker entrypoint runs `migrate ... up` on every container start. Locally, run the same command by hand (see [Run locally](#run-locally)).
+Never edit a migration that has been merged. The Docker entrypoint runs `migrate ... up` on every container start; locally, run the same command by hand.
 
-### Repository errors
+A database created before the squash (version 13 in `schema_migrations`) can't be migrated and has to be reset; see [Resetting the database](../docs/operations/resetting-the-database.md).
 
-`internal/repository` turns driver errors into two sentinel errors, so handlers never see Postgres codes:
+### Store errors
 
-| Postgres condition | Repository error | Typical HTTP status |
-| ------------------ | ---------------- | ------------------ |
-| `pgx.ErrNoRows` | `ErrNotFound` | 404 |
-| `23505` unique_violation | `ErrConflict` (wraps the driver error, so the constraint name is still available) | 409 |
-| `23503` foreign_key_violation | `ErrNotFound` | 404 (e.g. a lead for a missing profile) |
+`database.MapError` turns driver errors into two sentinel errors, so handlers never see Postgres codes:
 
-`ListLeads` takes a scope and a `LeadFilter` (card, assignee or "unassigned", team, search over name, email, phone number and notes, since, limit/offset) and runs two queries: a `COUNT(*)` for the total and the page itself. The scope condition is always applied, so a filter naming someone the caller can't see simply matches nothing. Search input is escaped so `%` and `_` match literally.
+| Postgres condition | Error | Typical HTTP status |
+| ------------------ | ----- | ------------------- |
+| `pgx.ErrNoRows` | `database.ErrNotFound` | 404 |
+| `23505` unique_violation | `database.ErrConflict` (wraps the driver error, so `database.IsConstraint` can name the index) | 409 |
+| `23503` foreign_key_violation | `database.ErrNotFound` | 404 (e.g. a lead for a missing card) |
 
-Ownership checks happen in SQL: `WHERE profile_id = $1 AND user_id = $2`. So another user's profile looks exactly like a missing one (`ErrNotFound`), and the API never confirms that someone else's profile ID exists.
-
-## Request pipeline
-
-```
-Request
-  └─ CORS                             (all routes; CORS headers + preflight for CORS_ALLOWED_ORIGINS)
-     └─ SameOrigin                    (rejects cross-origin POST/PUT/DELETE not in CORS_ALLOWED_ORIGINS)
-          └─ ServeMux
-               ├─ GET  /health
-               ├─ /auth/login, /auth/register,
-               │  /auth/password/forgot, /auth/password/reset → authLimiter → handler
-               ├─ /auth/logout                → handler
-               ├─ GET  /api/profiles/{org}/{slug}   → handler
-               ├─ GET  /api/files/{id}        → handler
-               ├─ POST /api/profiles/{id}/leads → leadLimiter → handler
-               ├─ GET  /api/me/user,
-               │  PUT  /api/me/email,
-               │  POST /api/me/email/verify,
-               │  POST /api/me/email/resend   → JWTMiddleware → [authLimiter] → handler   (allowed while unverified)
-               ├─ PUT  /api/me/password       → JWTMiddleware → RequireVerified → authLimiter → handler   (allowed with a temporary password)
-               ├─ /api/me/*, /api/org, /api/org/*
-               │                              → JWTMiddleware → RequireVerified → RequirePasswordSet → protected ServeMux
-               │                                   → [RequireAdmin | RequireOwner] → handler
-               ├─ POST /auth/admin/login      → authLimiter → handler
-               ├─ POST /auth/admin/logout     → handler
-               └─ /api/admin/*                → AdminMiddleware → admin ServeMux → handler
-```
-
-Protected routes live on their own `ServeMux`, mounted at `/api/me/`, `/api/org` and `/api/org/` behind `JWTMiddleware`, `RequireVerified` and `RequirePasswordSet`. Any route added there is authenticated and requires a verified email and a user-chosen password automatically; wrap it in `middleware.RequireAdmin` or `RequireOwner` when only those roles may call it. A route that must work earlier is registered on the main mux with a more specific pattern (e.g. `GET /api/me/user`). Inside a protected handler, `middleware.PrincipalFrom(r.Context())` gives the caller's user ID, org ID and role, and `scopeOf(r)` the matching repository scope.
+Ownership checks happen in SQL, so another organisation's card looks exactly like a missing one, and the API never confirms that someone else's ID exists.
 
 ## Authentication & sessions
 
-1. `POST /auth/register` or `POST /auth/login` verifies the credentials and issues an HS256 JWT. Its claims are `sub` (the user ID), `sv` (the user's `session_version`), `iat` and `exp`, and it is valid for 24h (`auth.SessionTTL`). Login accepts a username or an email.
+1. `POST /auth/register` or `POST /auth/login` (username or email) verifies the credentials and issues an HS256 JWT with `sub` (user ID), `sv` (`session_version`), `iat` and `exp`, valid for 24h. A SAML sign-in issues the same token.
 2. The token is sent **only** as a cookie and never appears in a response body:
 
    | Attribute | Value |
    | --------- | ----- |
    | Name | `fronko_session` |
-   | `HttpOnly` | yes. Page scripts, including any XSS, can't read it |
+   | `HttpOnly` | yes |
    | `SameSite` | `Lax` |
-   | `Secure` | controlled by `COOKIE_SECURE` (default on) |
+   | `Secure` | `COOKIE_SECURE` (default on) |
    | `Path` / `Max-Age` | `/` / 86400 |
 
-3. `JWTMiddleware` reads the cookie, validates it (HS256 pinned, `exp` required, and no `platform-admin` audience), then looks up the user's session state (one query joining the organisation): `session_version`, verification, org, role, suspension, `must_change_password` and whether the organisation is suspended. A suspended organisation is rejected first, with `401 {"code":"org_suspended","reason":…}`, so members see why. Then a token whose `sv` doesn't match is rejected with 401, and so are a deleted or suspended account (`account_suspended`). The principal (user, org, role) and the state go into the request context.
-4. `RequireVerified` wraps every `/api/me/` route except `GET /api/me/user` and the `/api/me/email*` routes, answering `403 {"code":"email_unverified"}` until the email is verified. Those exceptions are registered as more specific patterns on the main mux, so they bypass it.
-5. Because the SPA can't read the cookie, it calls `GET /api/me/user` to find out who is signed in.
-6. `RequirePasswordSet` answers `403 {"code":"password_change_required"}` while a user created (or reset) by their organisation still has its temporary password. `PUT /api/me/password` clears the flag. The first-login order is therefore: sign in, verify email, choose a password.
-7. **Password change** (`PUT /api/me/password`), **reset** (`POST /auth/password/reset`), an admin's **temporary password** and **suspending** a user all bump `session_version`, which signs out every existing session. A change re-issues the caller's cookie so that tab stays signed in.
-8. `POST /auth/logout` only clears the cookie; that one token stays valid until it expires unless the password is changed.
+3. `auth.JWTMiddleware` validates the cookie (HS256 pinned, `exp` required, no `platform-admin` audience) and loads the user's session state in one query: `session_version`, verification, organisation, role, teams, suspension, `must_change_password` and whether the organisation is suspended. A suspended organisation is rejected first (`401 org_suspended` with the reason), then a stale `sv`, then a deleted or suspended account. The `Principal` goes into the request context.
+4. `auth.RequireVerified` answers `403 email_unverified` until the email is verified, and `auth.RequirePasswordSet` answers `403 password_change_required` while the user still has an organisation-set temporary password. The route groups in `app.Routes` apply them (see [Architecture](../docs/architecture.md#route-groups)).
+5. The SPA can't read the cookie, so it calls `GET /api/me/user` to learn who is signed in.
+6. Changing or resetting a password, an admin setting a temporary password, and suspending a user all bump `session_version`, signing out every existing session.
+7. `POST /auth/logout` only clears the cookie.
+
+**Single sign-on.** When an organisation has an active SAML connection, people without a password (created by SSO or SCIM) can't use password sign-in or reset, and with "Require single sign-on" on nobody but the owner can. Those requests answer `403 {"code":"sso_required","sso_url":"/auth/sso/{handle}"}`; login only says so after the password checks out, so it reveals nothing. See [SAML single sign-on](../docs/integrations/saml.md).
 
 ### Email codes
 
-Registration (and `PUT /api/me/email`) sends a verification code, and `POST /auth/password/forgot` sends a reset code, only to a **verified** address. Codes are 6 random digits, stored as an HMAC-SHA256 keyed with `JWT_SECRET` and bound to the user and purpose. They expire after 15 minutes. Each check spends an attempt atomically **before** comparing (`UseEmailCodeAttempt`), so even concurrent guesses get at most 5 tries. A correct code is deleted. A new code can be requested once every 60 seconds, and it replaces the old one.
+Codes are 6 random digits, stored as an HMAC-SHA256 keyed with `JWT_SECRET` and bound to the user and purpose. They expire after 15 minutes and allow 5 guesses, each spent atomically **before** comparing (`UseEmailCodeAttempt`). A new code can be requested once every 60 seconds and replaces the old one. Reset codes are only sent to verified addresses.
 
-**Changing a verified email** takes the current password, then a code sent to the new address (`POST /api/me/email/change`, then `/change/confirm`). The new address is held on the `change_email` code row, so the current email keeps working until the change is confirmed. On confirmation the old address gets a notice with the new one masked. The unique index is the final check if two accounts race for the same address.
+**Changing a verified email** takes the current password, then a code sent to the new address; the old address keeps working until it's confirmed, and then gets a notice with the new one masked.
 
-**Users created by an organisation** (`POST /api/org/users`) get a welcome email with their username and temporary password (`mail.MemberInviteMessage`). Sending a password by email is acceptable here only because it's single-use in practice: `must_change_password` locks the account to verification and choosing a new password until it's replaced. Their verification code is sent on first sign-in rather than at creation, so it hasn't expired by the time they use it. A temporary password set later by an admin (`POST /api/org/users/{id}/password`) is not emailed.
+**Users created by an organisation** (`POST /api/org/users`) get a welcome email with their username and a temporary password; `must_change_password` locks the account to verification and choosing a new password until it's replaced. Users created over SCIM get the same email, or, when the organisation has SSO, an invitation to sign in with SSO and no password.
 
-Mail is sent in a background goroutine (30 s timeout, errors logged), so request timing doesn't depend on the SMTP server or reveal whether an address has an account. Forgot-password always answers 204.
+Mail is sent in the background (30s timeout, errors logged), so response timing doesn't reveal whether an address has an account.
 
 ## Platform admin
 
-Platform admins run the Fronko server itself. They are **not** organisation users: they live in `platform_admins`, sign in at `POST /auth/admin/login` (the SPA page is `/admin/login`), and get their own cookie, `fronko_admin` (HttpOnly, `SameSite=Strict`, 8 h). Their JWT carries `aud: "platform-admin"`. `ValidateJWT` rejects that audience and `ValidateAdminJWT` requires it, so an admin token never works as a user session (or the reverse), even for matching IDs. `AdminMiddleware` checks the admin's `session_version` on every request.
+Platform admins run the server itself. They live in `platform_admins`, sign in at `POST /auth/admin/login` (the SPA page is `/admin/login`), and get their own cookie, `fronko_admin` (HttpOnly, `SameSite=Strict`, 8h). Their JWT carries `aud: "platform-admin"`; `ValidateJWT` rejects that audience and `ValidateAdminJWT` requires it, so an admin token never works as a user session or the reverse.
 
-There's no sign-up page. Accounts are made from the command line, which reads `DATABASE_URL` and prompts for a password (12–72 characters):
+Accounts are made from the command line (`./fronko admin create --email …`); there's no sign-up page.
 
-```bash
-./fronko admin create --email you@example.com         # docker compose exec backend ./fronko admin create ...
-./fronko admin set-password --email you@example.com   # replaces it and signs that admin out everywhere
-```
-
-**Privacy boundary.** Usage comes from one aggregate query (`orgUsageQuery` in `repository/admin.go`): per org, user counts by role, the team count, card, lead and file counts (also per file purpose), `SUM(files.size_bytes)`, whether the owner has a `user_storage` row (and its provider), whether a logo is set, the logo policy, whether a signature template is locked, and `MAX(last_login_at)`. It never selects card `data`, lead columns, file names, team names or member identities. The owner's email and the feedback sender's email are the only personal data the admin API returns. Storage used counts files uploaded through Fronko only, not everything in the bucket.
-
-**Trends.** `snapshots.Run` (started from `main.go`) calls `TakeUsageSnapshot` at startup and every hour. Each run upserts today's (UTC) row in both snapshot tables from the same aggregate query, so the last run of a day becomes its final value and the numbers always match the live view. Days the server was down are gaps.
-
-**Suspending an organisation** (`SuspendOrg`) sets `suspended_at` and the reason and bumps every member's `session_version` in one transaction. Then:
-- `JWTMiddleware` and `POST /auth/login` answer `org_suspended` with the reason.
-- `GET /api/profiles/{org}/{slug}` answers `410 {"code":"org_suspended"}` (visitors aren't told why), `POST /api/profiles/{id}/leads` answers 404, and `GET /api/files/{id}` answers 404.
-- The owner is emailed the reason (`mail.OrgSuspendedMessage`), and again on reinstatement. A failed email doesn't undo the action; it's recorded in the audit entry.
-
-**Feedback.** `POST /api/me/feedback` (any signed-in, verified user; `feedbackLimiter`) stores the message and emails `FEEDBACK_NOTIFY_EMAIL` in the background. An admin reply (`POST /api/admin/feedback/{id}/replies`) is emailed to the sender with their message quoted, then stored with `email_sent`, and moves `new` feedback to `read`.
-
-**Audit log.** Admin sign-ins, suspensions, reinstatements, feedback replies and status changes each add an `admin_audit_log` row.
+- **Privacy boundary.** Usage comes from one aggregate query (`orgUsageQuery` in `platformadmin/store.go`). It never selects card data, lead columns, file names, team names or member identities; the owner's email and feedback senders' emails are the only personal data the admin API returns.
+- **Trends.** The `usage snapshot` task upserts today's row in both snapshot tables every hour.
+- **Suspending an organisation** sets `suspended_at` and the reason and bumps every member's `session_version` in one transaction. Sign-in and every API call then answer `org_suspended`, public cards answer `410`, leads and files `404`, and SCIM and SSO refuse. The owner is emailed.
+- **Audit log.** Admin sign-ins, suspensions, reinstatements, feedback replies and status changes each add an `admin_audit_log` row.
 
 ## Card analytics
 
-**Recording.** The public card page batches events and sends them with `navigator.sendBeacon` to `POST /api/profiles/{org}/{slug}/events` (`eventLimiter`). `AnalyticsHandler.Collect` keeps only the types a browser may report: contact saves (`vcard`) and sent forms (`form_submit`) are recorded by the server in `VCard` and `SubmitLead`, so they can't be faked or double-counted. It cleans each event (`cleanEvent`) and hands the batch to `EventRecorder.Record`, which:
+**Recording.** The public card batches events and sends them with `navigator.sendBeacon` to `POST /api/profiles/{org}/{slug}/events`. `AnalyticsHandler.Collect` keeps only the types a browser may report (contact saves and sent forms are recorded by the server in the vCard and lead handlers, so they can't be faked), cleans each event, and hands the batch to `EventRecorder.Record`, which:
 
-1. Drops the request if it comes from a bot (empty or bot-like user agent).
-2. Drops it if it carries a valid session for someone in the card's own organisation (`viewerOrg`), so owners previewing cards don't count.
-3. Hashes the visitor: `SHA-256(daily salt ‖ client IP ‖ user agent ‖ profile id)`. The salt is cached in memory per day and created in the database on first use (`AnalyticsSalt`), so several replicas agree.
-4. Inserts the batch in one statement (`RecordCardEvents`). It takes the org and current assignee from `profiles`, and records nothing for suspended organisations.
+1. drops bots (empty or bot-like user agent),
+2. drops requests carrying a session from the card's own organisation, so previews don't count,
+3. hashes the visitor: `SHA-256(daily salt ‖ client IP ‖ user agent ‖ profile id)`,
+4. inserts the batch in one statement, taking the organisation and current assignee from the card.
 
-Raw IP addresses are never stored. Because each salt is deleted after a day, a hash can't be linked to an address later, to the same person on another day, or to the same person on another card. Failures are logged, never shown to visitors, and `Collect` always answers `204`.
+Raw IP addresses are never stored. Because each salt is deleted after a day, a hash can't be linked to an address, or to the same person on another day or card. `Collect` always answers `204`.
 
-**Retention.** `snapshots.WithAnalyticsRetention` wraps the hourly snapshot run. It first calls `PurgeAnalytics`, which deletes events older than `ANALYTICS_RETENTION_DAYS` and every salt but today's and yesterday's.
+**Retention.** The hourly `analytics retention` task deletes events older than `ANALYTICS_RETENTION_DAYS` and every salt but today's and yesterday's.
 
-**Reporting.** `/api/me/analytics/*` goes through `analyticsFilter` (period, `tz`, card, person and team filters; a team filter needs an admin or that team's lead) and then the repository queries.
-- `eventScope(alias)` limits events exactly like leads: `visibleTo(assigned_user_id)` in the caller's org, plus the filters.
-- Visit-level numbers (engaged, action, scroll depth, time on card, repeat visitors) group events by `session_id` (`sessionStats`).
-- Days and hours are computed in Postgres with `AT TIME ZONE`. Legacy zone names Postgres doesn't know (`Asia/Calcutta`) fall back to the zone's current offset in POSIX form (`posixZone`); the result is cached per name.
-- `AnalyticsTeams` attributes events, leads and cards to each team through `team_members`. Leads only see the teams they lead.
+**Reporting.** `/api/me/analytics/*` limits events exactly like leads (`eventScope`), groups visit-level numbers by session, and computes days and hours in Postgres with `AT TIME ZONE`. Legacy zone names Postgres doesn't know (`Asia/Calcutta`) fall back to a POSIX offset (`posixZone`).
+
+## Integrations
+
+`internal/integrations` connects organisations and people to outside services. Each provider is described by a manifest and registered in `providers/all.go`; the core handles connections, sealed secrets, OAuth, lead dispatch, retries and the activity log.
+
+- **Lead sync.** `leads` publishes `leads.Created` inside the transaction that stores the lead. The integrations module subscribes and, in that same transaction, queues one `integrations.push_lead` job per active lead sync connection (the organisation's, plus the card holder's own). Workers deliver them with retries; three final failures in a row mark the connection `error`.
+- **Calendar booking.** The public profile's `booking` comes from the card holder's calendar connection, or the organisation's default (`BookingFinder`, wired in `server.go`).
+- **SAML SSO** (`integrations/sso`) serves `/auth/sso/{handle}`, `/auth/sso/discover`, `/auth/saml/{id}/metadata` and `/auth/saml/{id}/acs`, the email domains API, and the policy `account` uses to block passwords.
+- **SCIM** (`integrations/directory`) serves `/scim/v2/*`, authenticated with the directory connection's bearer token.
+
+Guides: [overview](../docs/integrations/overview.md), [writing a provider](../docs/integrations/writing-a-provider.md), and one per provider in [`docs/integrations/`](../docs/integrations/).
 
 ## Security measures
 
 | Threat | Mitigation | Where |
 | ------ | ---------- | ----- |
-| Token theft via XSS | JWT lives only in an HttpOnly cookie | `handlers/session.go` |
-| CSRF | `SameSite=Lax`, plus `SameOrigin` middleware that rejects POST/PUT/DELETE whose `Origin` host differs from `Host` unless it's listed in `CORS_ALLOWED_ORIGINS` | `middleware/origin.go` |
-| Cross-origin reads | CORS headers are only sent to origins in `CORS_ALLOWED_ORIGINS` (exact match, no wildcard) | `middleware/cors.go` |
-| Admin and user sessions crossing over | Separate cookies, an `aud: "platform-admin"` claim each validator checks, separate tables and ID spaces, and `SameSite=Strict` on the admin cookie | `auth/auth.go`, `middleware/admin.go` |
-| Admin data revealing organisations' content | Admin endpoints read only aggregates (`orgUsageQuery`); an integration test checks no card data, leads or member names appear | `repository/admin.go` |
+| Token theft via XSS | JWT lives only in an HttpOnly cookie | `auth/cookie.go` |
+| CSRF | `SameSite=Lax`, plus a same-origin check that rejects POST/PUT/PATCH/DELETE whose `Origin` host differs from `Host` unless listed in `CORS_ALLOWED_ORIGINS`. Only `External` routes (SCIM, the SAML ACS) skip it, and they never act on the session cookie alone | `platform/web/origin.go`, `app/routes.go` |
+| Cross-origin reads | CORS headers only for origins in `CORS_ALLOWED_ORIGINS` (exact match) | `platform/web/cors.go` |
+| A route mounted without auth by mistake | Signed-in routes must live under `/api/<area>/`, and the first route in an area mounts the whole area behind the session chain | `app/routes.go` |
+| Admin and user sessions crossing over | Separate cookies, an `aud` claim each validator checks, separate tables, `SameSite=Strict` admin cookie | `auth/auth.go`, `platformadmin/middleware.go` |
+| Admin data revealing organisations' content | Admin endpoints read only aggregates; an integration test checks no card data, leads or member names appear | `platformadmin/store.go` |
 | JWT algorithm confusion | `jwt.WithValidMethods(["HS256"])` and `WithExpirationRequired()` | `auth/auth.go` |
-| Weak or empty signing key | Startup fails when `JWT_SECRET` is shorter than 16 chars | `config/config.go` |
-| Username enumeration via timing | Unknown usernames still run a bcrypt compare against a dummy hash | `handlers/auth.go` |
-| Account enumeration via password reset | Forgot-password always returns 204 and sends mail asynchronously | `handlers/account.go` |
-| Guessing email codes | 5 attempts per code (counted atomically), 15-minute expiry, per-IP rate limit, and a 60 s resend cooldown | `handlers/account.go`, `repository/repository.go` |
-| Codes leaking from the database | Only an HMAC of each code, keyed with `JWT_SECRET`, is stored | `auth/otp.go` |
-| Stolen sessions surviving a password change | `session_version` in the JWT, checked on every request | `middleware/jwt.go` |
-| Email header injection | Recipients are parsed with `net/mail` and CR/LF is rejected before building a message | `mail/mail.go` |
-| Brute force or lead spam | Per-IP token-bucket rate limits on auth and lead endpoints | `middleware/ratelimit.go` |
-| Rate-limit bypass via spoofed headers | `X-Real-IP` is only trusted when `TRUST_PROXY=true` | `middleware/ratelimit.go` |
-| bcrypt 72-byte truncation | Passwords are limited to 8–72 bytes at registration | `handlers/auth.go` |
-| Oversized bodies | `http.MaxBytesReader` caps JSON bodies at 64 KiB and uploads at about 21.3 MiB (a 20 MB PDF, a 300 KB preview and the multipart envelope); nginx caps `/api/` at 25 MB | `handlers/respond.go`, `handlers/files.go`, `frontend/docker/default.conf.template` |
-| Storage keys leaking from the database | AES-256-GCM with `SECRETS_KEY`. The AAD binds each ciphertext to its user and field. Keys are write-only in the API, and only a 4-char hint is stored in plain text | `secrets/`, `handlers/storage.go` |
-| SSRF through a user-supplied endpoint | https only, no literal private addresses, and a dialer `Control` hook that rejects private, loopback, link-local, CGNAT and metadata addresses **after DNS resolution** (defeats DNS rebinding). Redirects aren't followed and env proxies are ignored | `storage/storage.go` |
-| Malicious uploads (HTML/SVG posing as images) | The type is sniffed from the bytes, and only JPEG, PNG, WebP and PDF are accepted. The stored content type comes from sniffing, not the client | `handlers/files.go` |
-| Enumerating other people's files | Public file IDs are 128-bit random values. Signed-in endpoints (including `/api/me/files/{id}/content` and `/usage`) go through `fileVisible`/`fileEditable`, and public profiles only list files their card references | `handlers/files.go`, `repository/files.go` |
-| Untrusted file previews | Previews are made in the browser, so the server treats them like any upload: sniffed, JPEG/PNG/WebP only, at most 300 KB, and dropped (not failed) if they don't pass | `handlers/files.go` |
-| Provider errors leaking internals | `storage.Describe` turns SDK errors into short messages; the raw error is only logged | `storage/storage.go` |
-| IDOR on profiles and leads | Ownership enforced in the SQL `WHERE` clause; foreign profiles return 404 | `repository/repository.go` |
-| Leaking owner info publicly | Public lookups return `PublicProfile` (id, slug, org handle, data), with no `user_id` or timestamps | `models/models.go` |
-| SQL injection | All queries are parameterized | `repository/repository.go` |
-| Tracking card visitors | No cookies and no stored IPs. The visitor hash uses a daily random salt that is deleted after a day. Analytics endpoints return aggregates only, scoped like leads. Events expire after `ANALYTICS_RETENTION_DAYS` | `handlers/analytics.go`, `repository/analytics.go` |
-| Inflated or faked analytics | Bots and the card's own organisation are skipped. Contact saves and sent forms are only recorded server-side. Event types, lengths and values are validated, batches are capped at 20 and per-IP rate limited | `handlers/analytics.go` |
+| Weak signing key | Startup fails when `JWT_SECRET` is shorter than 16 chars | `platform/config/config.go` |
+| Username enumeration via timing | Unknown usernames (and SSO-only accounts) still run a bcrypt compare against a dummy hash | `account/handler.go` |
+| Account enumeration via password reset | Forgot-password always answers 204 and sends mail asynchronously | `account/account.go` |
+| Guessing email codes | 5 attempts per code (counted atomically), 15-minute expiry, per-IP rate limit, 60s resend cooldown | `users/codes.go`, `users/store.go` |
+| Codes leaking from the database | Only an HMAC of each code is stored | `auth/otp.go` |
+| Stolen sessions surviving a password change | `session_version` in the JWT, checked on every request | `auth/session.go` |
+| Email header injection | Recipients parsed with `net/mail`; CR/LF rejected | `platform/mail/mail.go` |
+| Brute force, lead spam | Per-IP token buckets (see below) | `platform/ratelimit/` |
+| Rate-limit bypass via spoofed headers | `X-Real-IP` only trusted when `TRUST_PROXY=true` | `platform/ratelimit/ratelimit.go` |
+| bcrypt 72-byte truncation | Passwords limited to 8–72 bytes | `users/validate.go` |
+| Oversized bodies | JSON bodies capped at 64 KiB, uploads at about 21.3 MiB, SAML responses at 1 MiB; nginx caps `/api/` at 25 MB | `platform/httpx/respond.go`, `files/handler.go`, `integrations/sso/handler.go` |
+| Secrets leaking from the database | AES-256-GCM with `SECRETS_KEY`; the AAD binds each ciphertext to its owner (`storage:<user>:…`, `integration_connection:<id>`). Secrets are write-only in the API | `platform/secrets/`, `files/service.go`, `integrations/connections.go` |
+| SSRF through user-supplied addresses (storage endpoints, webhooks, booking links, SAML metadata, OAuth) | https only, no literal private addresses, and a dialer hook that rejects private, loopback, link-local, CGNAT and metadata addresses **after DNS resolution**. Redirects aren't followed and proxy variables are ignored | `platform/netguard/`, `platform/storage/` |
+| Forged webhook deliveries | Optional HMAC-SHA256 signature over timestamp and body (`X-Fronko-Signature`) | `integrations/providers/webhook/` |
+| OAuth CSRF and code injection | HMAC-signed `state` bound to the user and connection, 10-minute expiry, nonce (and PKCE verifier) in a short-lived cookie | `integrations/oauth.go` |
+| SAML response forgery or replay | Signed responses checked for audience, destination and time; SP-initiated responses must answer the request in this browser's signed cookie; IdP-initiated off by default; XML round-trip validation | `integrations/sso/` |
+| Stolen SCIM tokens | Stored as SHA-256 only, shown once, revoked on rotation or when the connection is paused; the owner can't be deprovisioned | `integrations/linked.go`, `integrations/directory/` |
+| Claiming someone else's email domain | DNS TXT proof, and a domain can be verified by one organisation only | `integrations/sso/domains.go` |
+| Malicious uploads | Type sniffed from the bytes; only JPEG, PNG, WebP and PDF accepted | `files/handler.go` |
+| Enumerating other people's files | 128-bit random public IDs; signed-in endpoints go through `fileVisible`/`fileEditable`; public cards only list files they reference | `files/` |
+| IDOR on cards, leads and connections | Ownership enforced in SQL; foreign IDs return 404 | each module's `store.go`, `integrations/connections.go` |
+| Leaking owner info publicly | Public lookups return `PublicProfile`, without `user_id` or timestamps | `cards/card.go` |
+| SQL injection | All queries are parameterised | every `store.go` |
+| Tracking card visitors | No cookies, no stored IPs, a daily salt deleted after a day, aggregates only | `analytics/` |
+| Inflated analytics | Bots and the card's own organisation skipped; saves and forms only recorded server-side; events validated, batches capped at 20 and rate limited | `analytics/handler.go`, `analytics/recorder.go` |
 
 ### Rate limits
 
-Defined as constants in `cmd/fronko/main.go`:
+Per client IP, in memory:
 
-| Limiter | Applies to | Burst | Refill |
-| ------- | ---------- | ----- | ------ |
-| `authLimiter` | `POST /auth/login`, `/auth/register`, `/auth/password/forgot`, `/auth/password/reset`, `PUT /api/me/email`, `POST /api/me/email/verify`, `POST /api/me/email/resend`, `POST /api/me/email/change`, `POST /api/me/email/change/confirm` and `PUT /api/me/password` (one shared bucket per IP) | 10 | 1 per 10s |
-| `leadLimiter` | `POST /api/profiles/{id}/leads` | 5 | 1 per 15s |
-| `eventLimiter` | `POST /api/profiles/{org}/{slug}/events` | 30 | 1 per 2s |
-| `uploadLimiter` | `POST /api/me/files` | 10 | 1 per 6s |
-| `feedbackLimiter` | `POST /api/me/feedback` | 5 | 1 per 12 min |
+| Limiter | Applies to | Burst | Refill | Defined in |
+| ------- | ---------- | ----- | ------ | ---------- |
+| auth | Login, register, forgot/reset password, email verify/resend/change, password change, platform admin login, SSO discover, the SAML ACS, domain verification and SCIM token rotation (one shared bucket) | 10 | 1 per 10s | `server/server.go` |
+| lead | `POST /api/profiles/{id}/leads` | 5 | 1 per 15s | `leads/module.go` |
+| events | `POST /api/profiles/{org}/{slug}/events` | 30 | 1 per 2s | `analytics/module.go` |
+| upload | `POST /api/me/files` | 10 | 1 per 6s | `files/module.go` |
+| feedback | `POST /api/me/feedback` | 5 | 1 per 12 min | `feedback/module.go` |
+| integration tests | `POST /api/integrations/connections/{id}/test` | 5 | 1 per 10s | `integrations/module.go` |
+| SCIM | `/scim/v2/*` | 200 | 1 per 20ms | `integrations/directory/module.go` |
 
-`POST /auth/admin/login` shares `authLimiter`.
-
-A rejected request gets `429 Too Many Requests` with a `Retry-After` header in seconds, and it does not use up a token. Buckets idle for more than 10 minutes are evicted every minute.
+A rejected request gets `429 Too Many Requests` with `Retry-After` in seconds and doesn't use up a token. Buckets idle for 10 minutes are evicted.
 
 ## Error handling conventions
 
-- Every error response is JSON: `{"error": "<human-readable message>"}`. The messages are written for end users, and the frontend shows them as they are.
-- Unexpected errors are logged with `log.Printf` and returned as a generic `"internal error"`. Driver details never reach the client.
-- `handlers/respond.go` provides `writeJSON`, `writeError` and `decodeJSON`. Use them in new handlers so responses stay consistent.
+- Every error response is JSON: `{"error": "<message>"}`, sometimes with a machine-readable `code` (`email_unverified`, `sso_required` …) or, for integration settings, the `field` at fault. Messages are written for end users; the frontend shows them as they are.
+- Unexpected errors are logged and returned as a generic `"internal error"` (`httpx.Internal`). Driver details never reach the client.
+- Use `httpx.WriteJSON`, `httpx.WriteError`, `httpx.DecodeJSON` and `httpx.PathID` in handlers so responses stay consistent.
+- SCIM endpoints answer SCIM error bodies (`urn:ietf:params:scim:api:messages:2.0:Error`) instead.
 
 ## Testing
 
 ```bash
-make test               # unit tests
-make test-integration   # repository integration tests (needs a database, see below)
+make test               # unit tests, with the race detector
+make test-integration   # database tests (needs a disposable database, see below)
+make lint               # golangci-lint
 ```
 
-Unit tests cover:
-- `auth`: email code format, HMAC binding to user/purpose/key, session version in the JWT, and admin and user tokens not being interchangeable.
-- `mail`: message building (headers, multipart, Reply-To), header-injection rejection, the email-changed notice (no code, masked address), the member invite (sign-in details in text and escaped HTML), `MaskEmail`, and the feedback, reply and suspension messages (control characters stripped from subjects).
-- `middleware`: rate limiter, same-origin check, CORS, the principal and suspension checks in `JWTMiddleware` (including `org_suspended` and rejecting admin tokens), `RequirePasswordSet`, the role gates, and `AdminMiddleware` (user tokens, revoked and deleted admins).
-- `snapshots`: the scheduler runs at start and on each tick, and stops with its context. The analytics retention wrapper purges before each snapshot and doesn't block it on failure.
-- `secrets`: sealing round trip, tamper, wrong AAD and wrong key.
-- `storage`: endpoint validation, private-address dialing, the connection probe against a fake S3 server.
-- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals (avatar, cover, brochures, gallery images), vCard building (escaping, name split, phone, unsafe websites) and the origin of the card link inside it, lead phone normalization and validation, upload areas by role, the optional quota field, organisation-name validation, and feedback validation. For analytics: which event types a browser may send, scroll and time clamping, device classes, sources, the visitor hash (stable per day, different per salt and card), bot detection, `Collect` rejecting bad bodies, the filter parameters (period limits, time zones, team access) and the POSIX zone fallback.
+**Unit tests** sit next to the code. They cover, among others: JWTs, sessions and email codes (`auth`), mail building and header injection (`platform/mail`), rate limiting, CORS and the same-origin check (`platform/web`, `platform/ratelimit`), sealing (`platform/secrets`), the SSRF guard (`platform/netguard`), storage validation, the event bus and job backoff, configuration parsing, uploads and file areas, vCards, lead validation, analytics (event cleaning, visitor hashes, filters, time zones), integration settings validation, every provider (webhook signatures and retries, the presets' host checks, HubSpot's OAuth and contacts API, calendar links), SCIM parsing and filters, and SAML metadata and attribute handling.
 
-The integration tests (`internal/repository/repository_test.go`, `admin_test.go` and `analytics_test.go`) sit behind the `integration` build tag. They read **`TEST_DATABASE_URL`**, not `DATABASE_URL`, because they `TRUNCATE` every table. Point them at a disposable database that already has the migrations applied:
-
-```bash
-export TEST_DATABASE_URL='postgres://fronko:password@localhost:5432/fronko_test?sslmode=disable'
-migrate -path migrations -database "$TEST_DATABASE_URL" up
-make test-integration
-```
-
-They cover users (case-insensitive usernames and emails, which unique index a conflict came from), email verification and changes, session-version bumps, the email-code lifecycle (attempt cap, expiry, replacement, and the target address on `change_email` codes), organisations (one owner each, org creation), profiles and assignment, leads (including who keeps them after a reassignment, and the user filters), storage settings (the org's bucket is the owner's), files (visibility by area and grant, edit rights, quota under a lock), and user management (roles, suspension, temporary passwords, deleting a user without losing their work). `admin_test.go` covers the usage numbers for a busy and an empty org (and that nothing private appears in them), listing filters and sorting, snapshots and trends, suspending and reinstating an org, platform admins and the audit log, and feedback surviving its org's deletion. `analytics_test.go` covers one salt per day, totals, sources, sessions (engaged, action, repeat visitors, median time, scroll depth), devices and lead sources, scoping (a member sees only their card, a lead their team, the team filter), daily points, content grouping, the cards list including unvisited cards, team comparison (only led teams for leads), the leaderboard, the activity feed and the retention purge.
-
-If `TEST_DATABASE_URL` is unset, the tests are skipped.
+**Integration tests** (`internal/integrationtest/`) sit behind the `integration` build tag and run every module's store against a real PostgreSQL: users and codes, organisations, cards and leads with scopes, files, admin aggregates (and that nothing private appears in them), analytics, the job queue (claiming, retries, reclaiming, dedupe), integrations (connections, dispatch inside the lead transaction, activity) and identity (SCIM provisioning, domains, SSO users). They read **`TEST_DATABASE_URL`**, not `DATABASE_URL`, because they `TRUNCATE` every table, and are skipped when it's unset.
 
 A throwaway database is the easiest option:
 
 ```bash
 docker run -d --rm --name fronko-test-db -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test \
   -e POSTGRES_DB=fronko_test -p 55999:5432 postgres:18
-cat migrations/*.up.sql | docker exec -i fronko-test-db psql -q -U test -d fronko_test
-TEST_DATABASE_URL='postgres://test:test@localhost:55999/fronko_test?sslmode=disable' make test-integration
+export TEST_DATABASE_URL='postgres://test:test@localhost:55999/fronko_test?sslmode=disable'
+migrate -path migrations -database "$TEST_DATABASE_URL" up
+make test-integration
 docker stop fronko-test-db
 ```
+
+CI (`.github/workflows/ci.yml`) runs `gofmt`, `go vet`, `golangci-lint`, the unit tests, and the integration tests against a Postgres service.
 
 ## Docker image
 
@@ -483,7 +411,7 @@ docker stop fronko-test-db
 1. **Builder** (`golang:1.27-alpine`): installs the pinned `migrate` CLI (v4.19.1) and builds a static binary (`CGO_ENABLED=0`).
 2. **Runtime** (`alpine:3`): ships the binary, the `migrate` CLI and `migrations/`, and runs as an unprivileged user (`uid 10001`).
 
-`entrypoint.sh` requires `DATABASE_URL`, runs `migrate up`, then `exec`s the server. Every container start therefore brings the schema up to date before serving traffic.
+`entrypoint.sh` requires `DATABASE_URL`, runs `migrate up`, then `exec`s the server, so every container start brings the schema up to date before serving traffic.
 
 ```bash
 docker build -t fronko-backend .
@@ -492,19 +420,21 @@ docker run --rm -p 8080:8080 \
   fronko-backend
 ```
 
-For the full stack (backend + nginx-served frontend), see `deploy/` and the [root README](../README.md).
+For the full stack, see `deploy/` and the [root README](../README.md).
 
 ## Known limitations
 
-- **Rate limits are per process.** Several backend replicas each enforce their own budget. Sharing limits across replicas needs a shared store such as Redis.
-- **No per-session logout.** Logging out removes the cookie but doesn't invalidate that JWT; it stays valid until `exp` (up to 24h) unless the password is changed or reset, which revokes every session.
-- **An email change can't be undone from the old address.** The old address gets a notice, but recovering a hijacked account (someone with the password moved it to their address) needs the server operator.
-- **`collect_leads` isn't enforced by the server.** The frontend hides the lead form when a card's `data.collect_leads` is `false`, but `POST /api/profiles/{id}/leads` still accepts submissions.
-- **`lead_count` is only filled in by `GET /api/me/profiles`.** Create, update and single-profile responses return `0`.
-- **Anyone with a file's link can open it.** `/api/files/{id}` needs no sign-in, which is how public cards show photos and brochures. IDs are 128-bit random values and only appear on cards that use them, but a link that is shared stays usable until the file is deleted.
-- **Uploads are buffered in memory**, up to 20 MB per request, so they can be type-checked before writing to the bucket. The upload rate limit keeps this bounded per IP.
-- **Deleting a file doesn't edit cards.** Cards that referenced it simply stop showing it; the editor shows the stale entry until removed.
-- **Unique visitors are per day.** Visitor hashes rotate daily by design, so the same person on two days counts twice and "came back" is only detected within a day. Visitors on a shared network with the same browser version look like one person.
-- **Analytics are only as complete as the browser allows.** Ad blockers can block the beacon, and time on card for a visit is only sent when the tab is hidden or closed.
-- **Admin sign-in has no second factor yet.** Use a long, unique password; TOTP is a planned follow-up.
-- **Changing or losing `SECRETS_KEY` breaks saved storage keys.** Users have to re-enter them. Rotation isn't automated yet; the version byte in each ciphertext is there for it.
+- **Rate limits are per process.** Several replicas each enforce their own budget; sharing them needs a store such as Redis. (The job queue and periodic tasks are already safe with several replicas.)
+- **No per-session logout.** Logging out removes the cookie but doesn't invalidate that JWT; it stays valid until `exp` (up to 24h) unless the password is changed or reset.
+- **An email change can't be undone from the old address.** Recovering a hijacked account needs the server operator.
+- **`collect_leads` isn't enforced by the server.** The frontend hides the lead form when it's off, but the endpoint still accepts submissions.
+- **`lead_count` is only filled in by `GET /api/me/profiles`.**
+- **Anyone with a file's link can open it.** `/api/files/{id}` needs no sign-in; IDs are 128-bit random and only appear on cards that use them.
+- **Uploads are buffered in memory**, up to 20 MB per request, so they can be type-checked first.
+- **Deleting a file doesn't edit cards.** Cards that referenced it stop showing it.
+- **Unique visitors are per day**, by design, and analytics are only as complete as the browser allows (ad blockers, beacons on close).
+- **Admin sign-in has no second factor yet.**
+- **Changing or losing `SECRETS_KEY` breaks saved secrets.** Storage keys and integration secrets have to be re-entered and SAML connections re-created. Rotation isn't automated yet.
+- **Leads aren't replayed.** Leads that arrive while a lead sync connection is paused or in error aren't sent when it comes back. Lead deliveries are at least once, so a receiver can see a rare duplicate.
+- **SAML.** Single logout isn't supported, and each organisation has one SSO connection.
+- **SCIM.** No bulk operations, sorting or ETags; roles aren't provisioned (everyone is a member).

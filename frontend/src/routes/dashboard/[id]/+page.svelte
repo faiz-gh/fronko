@@ -387,7 +387,7 @@
 								{#if section === 'profile'}
 									<ProfileSection bind:card slug={profile.slug} {errors} onfile={remember} />
 								{:else if section === 'contact'}
-									<ContactSection bind:card {errors} />
+									<ContactSection bind:card {errors} booking={profile.booking} holder={profile.assigned_user} />
 								{:else if section === 'links'}
 									<LinksSection bind:card />
 								{:else if section === 'brochures'}
@@ -450,7 +450,14 @@
 					</div>
 				</div>
 
-				<PreviewPanel {card} savedSlug={profile.slug} {slug} files={fileMeta} bind:mode={previewMode} />
+				<PreviewPanel
+					{card}
+					savedSlug={profile.slug}
+					{slug}
+					files={fileMeta}
+					booking={profile.booking}
+					bind:mode={previewMode}
+				/>
 			</div>
 		</Tabs.Content>
 
@@ -469,7 +476,7 @@
 	<Dialog.Root bind:open={previewOpen}>
 		<Dialog.Content class="bg-muted max-h-[90svh] overflow-y-auto p-4 sm:max-w-sm">
 			<Dialog.Title class="sr-only">Preview</Dialog.Title>
-			<ProfileCard {card} slug={profile.slug} files={fileMeta} org={branding.value} />
+			<ProfileCard {card} slug={profile.slug} files={fileMeta} org={branding.value} booking={profile.booking} />
 		</Dialog.Content>
 	</Dialog.Root>
 {/if}

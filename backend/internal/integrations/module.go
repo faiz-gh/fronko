@@ -33,6 +33,7 @@ func (m Module) Routes(r *app.Routes) {
 	r.User("DELETE /api/integrations/connections/{id}", h.DeleteConnection)
 	r.User("POST /api/integrations/connections/{id}/test", r.RateLimit(testInterval, testBurst)(h.TestConnection))
 	r.User("GET /api/integrations/connections/{id}/activity", h.ListActivity)
+	r.User("POST /api/integrations/connections/{id}/tokens", r.AuthLimit(h.RotateToken))
 	r.User("GET /api/integrations/connections/{id}/oauth/start", h.StartOAuth)
 	r.User("GET "+oauthCallbackPath, h.OAuthCallback)
 }

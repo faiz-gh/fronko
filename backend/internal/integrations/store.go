@@ -21,9 +21,11 @@ const (
 
 // Activity kinds and outcomes.
 const (
-	ActivityPushLead = "push_lead"
-	ActivityTest     = "test"
-	ActivitySetup    = "setup"
+	ActivityPushLead  = "push_lead"
+	ActivityTest      = "test"
+	ActivitySetup     = "setup"
+	ActivityProvision = "provision"
+	ActivitySignIn    = "sign_in"
 
 	OutcomeSuccess  = "success"
 	OutcomeRetrying = "retrying"
@@ -51,6 +53,17 @@ type Connection struct {
 	UpdatedAt    time.Time      `json:"updated_at"`
 
 	sealed []byte
+	// token describes the newest inbound token, for scim_token providers.
+	token *TokenInfo
+}
+
+// TokenInfo describes a token an outside service uses to call Fronko. The
+// token itself is only shown when it's generated.
+type TokenInfo struct {
+	// Hint is the token's last characters.
+	Hint       string     `json:"hint"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
 }
 
 // Scope is who the connection belongs to.
@@ -88,19 +101,26 @@ func NewStore(db *pgxpool.Pool) *Store {
 
 const connectionColumns = `c.connection_id, c.org_id, COALESCE(c.user_id, 0), c.provider, c.category, c.name,
 	c.enabled, c.status, c.config, c.secrets, c.last_error, c.last_error_at, c.failure_count, c.last_synced_at,
-	c.created_by, cu.username, c.created_at, c.updated_at`
+	c.created_by, cu.username, c.created_at, c.updated_at, tk.hint, tk.created_at, tk.last_used_at`
 
-const connectionFrom = `integration_connections c LEFT JOIN users cu ON cu.user_id = c.created_by`
+const connectionFrom = `integration_connections c LEFT JOIN users cu ON cu.user_id = c.created_by
+	LEFT JOIN LATERAL (SELECT t.hint, t.created_at, t.last_used_at FROM integration_tokens t
+		WHERE t.connection_id = c.connection_id ORDER BY t.token_id DESC LIMIT 1) tk ON true`
 
 func scanConnection(row pgx.Row) (*Connection, error) {
 	var c Connection
 	var createdBy *int64
-	var createdByName *string
+	var createdByName, tokenHint *string
+	var tokenCreated *time.Time
+	var tokenUsed *time.Time
 	err := row.Scan(&c.ID, &c.OrgID, &c.UserID, &c.Provider, &c.Category, &c.Name,
 		&c.Enabled, &c.Status, &c.Config, &c.sealed, &c.LastError, &c.LastErrorAt, &c.FailureCount, &c.LastSyncedAt,
-		&createdBy, &createdByName, &c.CreatedAt, &c.UpdatedAt)
+		&createdBy, &createdByName, &c.CreatedAt, &c.UpdatedAt, &tokenHint, &tokenCreated, &tokenUsed)
 	if err != nil {
 		return nil, database.MapError(err)
+	}
+	if tokenHint != nil && tokenCreated != nil {
+		c.token = &TokenInfo{Hint: *tokenHint, CreatedAt: *tokenCreated, LastUsedAt: tokenUsed}
 	}
 	if createdBy != nil && createdByName != nil {
 		c.CreatedBy = &auth.UserRef{ID: *createdBy, Username: *createdByName}
@@ -165,11 +185,48 @@ type ConnectionFilter struct {
 
 // ListConnections returns the matching connections, oldest first.
 func (s *Store) ListConnections(ctx context.Context, orgID int64, f ConnectionFilter) ([]*Connection, error) {
-	rows, err := s.db.Query(ctx, `SELECT `+connectionColumns+` FROM `+connectionFrom+`
-		WHERE c.org_id = $1
+	return s.listWhere(ctx, `c.org_id = $1
 			AND (($2 AND c.user_id IS NULL) OR ($3::bigint <> 0 AND c.user_id = $3))
-			AND ($4 = '' OR c.provider = $4)
-		ORDER BY c.created_at, c.connection_id`, orgID, f.Org, f.UserID, f.Provider)
+			AND ($4 = '' OR c.provider = $4)`, orgID, f.Org, f.UserID, f.Provider)
+}
+
+// CountConnections counts an owner's connections to a provider (userID 0:
+// the organisation's).
+func (s *Store) CountConnections(ctx context.Context, orgID, userID int64, provider string) (int, error) {
+	var n int
+	err := s.db.QueryRow(ctx, `SELECT count(*) FROM integration_connections
+		WHERE org_id = $1 AND user_id IS NOT DISTINCT FROM NULLIF($2::bigint, 0) AND provider = $3`,
+		orgID, userID, provider).Scan(&n)
+	return n, err
+}
+
+// CountInCategory counts an owner's connections in a category (userID 0:
+// the organisation's).
+func (s *Store) CountInCategory(ctx context.Context, orgID, userID int64, category Category) (int, error) {
+	var n int
+	err := s.db.QueryRow(ctx, `SELECT count(*) FROM integration_connections
+		WHERE org_id = $1 AND user_id IS NOT DISTINCT FROM NULLIF($2::bigint, 0) AND category = $3`,
+		orgID, userID, category).Scan(&n)
+	return n, err
+}
+
+// FindConnections returns the connections in a category that apply to a
+// person: the organisation's and, when userID is set, their own. Only
+// enabled, active ones are returned unless all is set.
+func (s *Store) FindConnections(ctx context.Context, orgID, userID int64, category Category, all bool) ([]*Connection, error) {
+	return s.listWhere(ctx, `c.org_id = $1 AND c.category = $3 AND ($4 OR (c.enabled AND c.status = 'active'))
+			AND (c.user_id IS NULL OR ($2::bigint <> 0 AND c.user_id = $2))`, orgID, userID, category, all)
+}
+
+// connectionsInCategory returns every enabled, active connection in a
+// category across the organisation, personal ones included.
+func (s *Store) connectionsInCategory(ctx context.Context, orgID int64, category Category) ([]*Connection, error) {
+	return s.listWhere(ctx, `c.org_id = $1 AND c.category = $2 AND c.enabled AND c.status = 'active'`, orgID, category)
+}
+
+func (s *Store) listWhere(ctx context.Context, where string, args ...any) ([]*Connection, error) {
+	rows, err := s.db.Query(ctx, `SELECT `+connectionColumns+` FROM `+connectionFrom+`
+		WHERE `+where+` ORDER BY c.created_at, c.connection_id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -185,14 +242,31 @@ func (s *Store) ListConnections(ctx context.Context, orgID int64, f ConnectionFi
 	return out, rows.Err()
 }
 
-// CountConnections counts an owner's connections to a provider (userID 0:
-// the organisation's).
-func (s *Store) CountConnections(ctx context.Context, orgID, userID int64, provider string) (int, error) {
-	var n int
-	err := s.db.QueryRow(ctx, `SELECT count(*) FROM integration_connections
-		WHERE org_id = $1 AND user_id IS NOT DISTINCT FROM NULLIF($2::bigint, 0) AND provider = $3`,
-		orgID, userID, provider).Scan(&n)
-	return n, err
+// addToken stores a new inbound token for a connection and removes its
+// older ones, so rotating a token revokes the previous one at once.
+func (s *Store) addToken(ctx context.Context, connectionID int64, hash []byte, hint string, createdBy int64) error {
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `DELETE FROM integration_tokens WHERE connection_id = $1`, connectionID); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO integration_tokens (connection_id, token_hash, hint, created_by)
+			VALUES ($1, $2, $3, NULLIF($4::bigint, 0))`, connectionID, hash, hint, createdBy)
+		return database.MapError(err)
+	})
+}
+
+// connectionByToken returns the connection a token belongs to, and records
+// that the token was used (at most once a minute, to spare writes).
+func (s *Store) connectionByToken(ctx context.Context, hash []byte) (*Connection, error) {
+	var id int64
+	if err := s.db.QueryRow(ctx, `SELECT connection_id FROM integration_tokens WHERE token_hash = $1`, hash).Scan(&id); err != nil {
+		return nil, database.MapError(err)
+	}
+	if _, err := s.db.Exec(ctx, `UPDATE integration_tokens SET last_used_at = now()
+		WHERE token_hash = $1 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')`, hash); err != nil {
+		return nil, err
+	}
+	return s.getConnectionByID(ctx, id)
 }
 
 // UpdateConnection saves a connection's editable state.

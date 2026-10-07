@@ -28,7 +28,7 @@ export function sectionFrom(hash: string): SectionId {
 export function sectionErrors(e: CardErrors): Record<SectionId, boolean> {
 	return {
 		profile: e.avatar,
-		contact: e.website || e.email || e.phone || e.calendar,
+		contact: e.website || e.email || e.phone,
 		links: false,
 		brochures: false,
 		layout: false,
@@ -45,9 +45,7 @@ export function isCustomised(card: CardData): boolean {
 
 /** The rail entries, each with a one-line summary of what's filled in. */
 export function railItems(card: CardData, link: string, errors: Record<SectionId, boolean>): RailItem<SectionId>[] {
-	const contacts = [card.email, card.phone_number, card.website, card.calendar_url, card.location].filter((v) =>
-		v.trim()
-	).length;
+	const contacts = [card.email, card.phone_number, card.website, card.location].filter((v) => v.trim()).length;
 	const links = card.links.filter((l) => l.url.trim()).length;
 	const hasPhoto = !!(card.avatar_file || card.avatar_url.trim());
 	const items: Omit<RailItem<SectionId>, 'error'>[] = [
@@ -57,7 +55,7 @@ export function railItems(card: CardData, link: string, errors: Record<SectionId
 			icon: UserIcon,
 			summary: card.name.trim() ? `${card.name.trim()}${hasPhoto ? '' : ' · no photo'}` : 'Add your name'
 		},
-		{ id: 'contact', label: 'Contact', icon: PhoneIcon, summary: contacts ? `${contacts} of 5 filled` : 'Nothing yet' },
+		{ id: 'contact', label: 'Contact', icon: PhoneIcon, summary: contacts ? `${contacts} of 4 filled` : 'Nothing yet' },
 		{ id: 'links', label: 'Links', icon: LinkIcon, summary: links ? plural(links, 'link') : 'None yet' },
 		{
 			id: 'brochures',

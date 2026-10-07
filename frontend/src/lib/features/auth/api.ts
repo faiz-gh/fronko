@@ -1,4 +1,4 @@
-import { apiClient } from '$lib/core/api';
+import { apiClient, apiUrl } from '$lib/core/api';
 import type { TeamRef } from '$lib/features/teams/api';
 
 /** owner registered the organisation; admins help run it; members work on the cards assigned to them. */
@@ -17,6 +17,8 @@ export interface AuthUser {
 	org_handle: string;
 	/** Still using the temporary password the organisation set. */
 	must_change_password: boolean;
+	/** False for accounts that only sign in with single sign-on. */
+	has_password?: boolean;
 	/** Teams they're in, with their role in each. */
 	teams?: TeamRef[];
 }
@@ -27,6 +29,20 @@ export function login(identifier: string, password: string): Promise<AuthUser> {
 		method: 'POST',
 		body: JSON.stringify({ username: identifier, password })
 	});
+}
+
+/**
+ * Finds where to sign in with single sign-on, from a work email on a
+ * verified domain or an organisation's handle. `url` is a backend path.
+ */
+export function discoverSSO(identifier: string): Promise<{ url: string; handle: string }> {
+	return apiClient('/auth/sso/discover', { method: 'POST', body: JSON.stringify({ identifier }) });
+}
+
+/** The address that starts single sign-on; the browser navigates there. */
+export function ssoStartUrl(path: string, returnTo?: string): string {
+	const q = returnTo && returnTo !== '/dashboard' ? `?${new URLSearchParams({ return_to: returnTo })}` : '';
+	return apiUrl(path + q);
 }
 
 /** Creates an organisation (named `organization`, or after the username) with this account as its owner. */

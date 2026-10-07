@@ -160,6 +160,20 @@ func MemberInviteMessage(orgName, username, tempPassword string) Message {
 	})
 }
 
+// MemberSSOInviteMessage tells someone their organisation added them to
+// Fronko, where they sign in with the organisation's single sign-on.
+func MemberSSOInviteMessage(orgName, username, signInURL string) Message {
+	details := []detail{{"Username", username}}
+	if signInURL != "" {
+		details = append(details, detail{"Sign in at", signInURL})
+	}
+	return codeMessage(orgName+" added you to Fronko", codeEmail{
+		Intro:   orgName + " created a Fronko account for you. You sign in with your company account (single sign-on).",
+		Details: details,
+		Footer:  "If you weren't expecting this, you can ignore this email.",
+	})
+}
+
 // cleanSubject turns control characters (line breaks above all) into spaces,
 // since subjects can include names and text that users typed.
 func cleanSubject(s string) string {

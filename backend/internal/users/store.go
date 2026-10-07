@@ -3,6 +3,7 @@ package users
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -32,11 +33,13 @@ func (r *Store) CreateUser(ctx context.Context, user *User) error {
 // Insert adds user with q, which may be a transaction.
 func Insert(ctx context.Context, q database.Querier, user *User) error {
 	query := `
-		INSERT INTO users (org_id, role, username, email, password_hash, must_change_password, storage_quota_bytes, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO users (org_id, role, username, email, email_verified_at, password_hash, must_change_password,
+			storage_quota_bytes, created_by, full_name, external_id, external_username, provisioned_by)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, $8, $9, $10, $11, $12, $13)
 		RETURNING user_id, session_version, created_at, updated_at`
-	err := q.QueryRow(ctx, query, user.OrgID, user.Role, user.Username, user.Email, user.PasswordHash,
-		user.MustChangePassword, user.StorageQuotaBytes, user.CreatedBy).Scan(
+	err := q.QueryRow(ctx, query, user.OrgID, user.Role, user.Username, user.Email, user.EmailVerifiedAt, user.PasswordHash,
+		user.MustChangePassword, user.StorageQuotaBytes, user.CreatedBy, user.FullName, user.ExternalID,
+		user.ExternalUsername, user.ProvisionedBy).Scan(
 		&user.ID, &user.SessionVersion, &user.CreatedAt, &user.UpdatedAt,
 	)
 	return database.MapError(err)
@@ -51,17 +54,23 @@ func IsEmailConflict(err error) bool {
 
 // userColumns lists the columns scanUser expects, optionally table-qualified.
 func userColumns(p string) string {
-	cols := []string{"user_id", "org_id", "role", "username", "password_hash", "email", "email_verified_at",
-		"must_change_password", "storage_quota_bytes", "suspended_at", "created_by", "last_login_at",
-		"session_version", "created_at", "updated_at"}
-	return p + strings.Join(cols, ", "+p)
+	cols := []string{"user_id", "org_id", "role", "username", "COALESCE(" + p + "password_hash, '')", "email",
+		"email_verified_at", "must_change_password", "storage_quota_bytes", "suspended_at", "created_by",
+		"last_login_at", "session_version", "full_name", "external_id", "external_username", "provisioned_by",
+		"created_at", "updated_at"}
+	for i, c := range cols {
+		if !strings.Contains(c, "(") {
+			cols[i] = p + c
+		}
+	}
+	return strings.Join(cols, ", ")
 }
 
 // userDest returns scan destinations matching userColumns.
 func userDest(u *User) []any {
 	return []any{&u.ID, &u.OrgID, &u.Role, &u.Username, &u.PasswordHash, &u.Email, &u.EmailVerifiedAt,
 		&u.MustChangePassword, &u.StorageQuotaBytes, &u.SuspendedAt, &u.CreatedBy, &u.LastLoginAt,
-		&u.SessionVersion, &u.CreatedAt, &u.UpdatedAt}
+		&u.SessionVersion, &u.FullName, &u.ExternalID, &u.ExternalUsername, &u.ProvisionedBy, &u.CreatedAt, &u.UpdatedAt}
 }
 
 func (r *Store) getUser(ctx context.Context, where string, args ...any) (*User, error) {
@@ -71,6 +80,26 @@ func (r *Store) getUser(ctx context.Context, where string, args ...any) (*User, 
 		return nil, database.MapError(err)
 	}
 	return &user, nil
+}
+
+// FreeUsername returns base, or base-2, base-3… for the first username no
+// account uses. The insert can still race; callers retry on a conflict.
+func (r *Store) FreeUsername(ctx context.Context, base string) (string, error) {
+	for n := 1; n < 1000; n++ {
+		name := base
+		if n > 1 {
+			name = fmt.Sprintf("%s-%d", base, n)
+		}
+		var taken bool
+		if err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE LOWER(username) = LOWER($1))`,
+			name).Scan(&taken); err != nil {
+			return "", err
+		}
+		if !taken {
+			return name, nil
+		}
+	}
+	return "", errors.New("no free username")
 }
 
 // GetUserByUsername matches case-insensitively, consistent with users_username_lower_idx.

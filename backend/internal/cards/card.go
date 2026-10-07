@@ -1,6 +1,7 @@
 package cards
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 
@@ -21,6 +22,8 @@ type Profile struct {
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 	LeadCount      int64           `json:"lead_count"` // only populated when listing a user's profiles
+	// Booking is the booking page the card shows: its holder's, or else the organisation's.
+	Booking *Booking `json:"booking"`
 	// OrgHandle and OrgSuspended are only populated by the public link lookup.
 	OrgHandle    string `json:"-"`
 	OrgSuspended bool   `json:"-"`
@@ -35,4 +38,32 @@ type PublicProfile struct {
 	Data      json.RawMessage     `json:"data"`
 	Files     []files.PublicFile  `json:"files"` // library files the card references
 	Org       *branding.PublicOrg `json:"org"`
+	// Booking is the "Book a meeting" button's page, or null.
+	Booking *Booking `json:"booking"`
+}
+
+// Booking is a booking page connected in Integrations (Calendar Booking).
+type Booking struct {
+	// Provider is the integration's id ("calendly"), Name its display name.
+	Provider string `json:"provider"`
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	// Prefill maps the page's query parameters to what a visitor gave the
+	// card's lead form: "name", "first_name", "last_name" or "email".
+	Prefill map[string]string `json:"prefill,omitempty"`
+	// Scope is "user" for the holder's own page, "org" for the organisation's default.
+	Scope string `json:"scope"`
+}
+
+// BookingFinder loads the booking pages connected in an organisation and
+// returns a lookup by card holder (0: the organisation). It's the
+// integrations module, wired in by the server.
+type BookingFinder func(ctx context.Context, orgID int64) (func(holderID int64) *Booking, error)
+
+// holderID is who holds the card, or 0 for the organisation.
+func (p *Profile) holderID() int64 {
+	if p.AssignedUserID == nil {
+		return 0
+	}
+	return *p.AssignedUserID
 }

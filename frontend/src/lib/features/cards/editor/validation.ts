@@ -9,7 +9,6 @@ export interface CardErrors {
 	website: boolean;
 	email: boolean;
 	phone: boolean;
-	calendar: boolean;
 	qr: boolean;
 }
 
@@ -21,7 +20,6 @@ export function cardErrors(card: CardData, slug: string): CardErrors {
 		website: !!card.website.trim() && !safeUrl(card.website),
 		email: !!card.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(card.email.trim()),
 		phone: !!card.phone_number && !isValidPhone(card.phone_country_code, card.phone_number),
-		calendar: !!card.calendar_url.trim() && !safeUrl(card.calendar_url),
 		// Colours too close to scan can't be saved.
 		qr: !!qrContrastIssue(card.qr)?.blocking
 	};

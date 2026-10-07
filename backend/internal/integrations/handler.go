@@ -22,17 +22,19 @@ type CategoryInfo struct {
 	ID          Category `json:"id"`
 	Label       string   `json:"label"`
 	Description string   `json:"description"`
+	// Single means one connection per owner across the category's providers.
+	Single bool `json:"single"`
 }
 
 var categoryInfo = map[Category]CategoryInfo{
 	CategoryLeadSync: {CategoryLeadSync, "Lead Sync",
-		"Send every lead your cards collect to your CRM or automation tool, as soon as it arrives."},
+		"Send every lead your cards collect to your CRM or automation tool, as soon as it arrives.", false},
 	CategoryCalendar: {CategoryCalendar, "Calendar Booking",
-		"Let people book a meeting with you straight from your card."},
+		"Let people book a meeting with you straight from your card.", true},
 	CategoryDirectory: {CategoryDirectory, "Team Member Import",
-		"Add, update and remove people in Fronko automatically from your identity provider."},
+		"Add, update and remove people in Fronko automatically from your identity provider.", true},
 	CategorySSO: {CategorySSO, "SAML SSO",
-		"Let people sign in with your company's identity provider."},
+		"Let people sign in with your company's identity provider.", true},
 }
 
 // CatalogEntry is a provider as the catalog shows it.
@@ -40,6 +42,8 @@ type CatalogEntry struct {
 	Manifest
 	// Unavailable says why it can't be connected here, or is empty.
 	Unavailable string `json:"unavailable"`
+	// Testable means connections have a Test (or Send test lead) action.
+	Testable bool `json:"testable"`
 	// Connections are the user's (and, for admins, the organisation's)
 	// connections to it, for the status badges.
 	Connections []ConnectionSummary `json:"connections"`
@@ -96,7 +100,10 @@ func (h *Handler) Catalog(w http.ResponseWriter, r *http.Request) {
 		if !p.IsAdmin() && !m.AllowsScope(ScopeUser) {
 			continue
 		}
-		entry := &CatalogEntry{Manifest: m, Unavailable: h.svc.Unavailable(m), Connections: byProvider[m.ID]}
+		_, pushes := prov.(LeadPusher)
+		_, tests := prov.(Tester)
+		entry := &CatalogEntry{Manifest: m, Unavailable: h.svc.Unavailable(m), Testable: pushes || tests,
+			Connections: byProvider[m.ID]}
 		if entry.Connections == nil {
 			entry.Connections = []ConnectionSummary{}
 		}
@@ -207,6 +214,23 @@ func (h *Handler) TestConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, res)
+}
+
+// Protected: POST /api/integrations/connections/{id}/tokens. Generates the
+// token a scim_token provider calls Fronko with, replacing any earlier one.
+// The response is the only time the token is shown.
+func (h *Handler) RotateToken(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.PathID(w, r, "id", "connection")
+	if !ok {
+		return
+	}
+	token, view, err := h.svc.RotateToken(r.Context(), auth.PrincipalFrom(r.Context()), id)
+	if err != nil {
+		h.writeErr(w, "rotate token", err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"token": token, "connection": view})
 }
 
 // Protected: GET /api/integrations/connections/{id}/activity?before=&limit=.

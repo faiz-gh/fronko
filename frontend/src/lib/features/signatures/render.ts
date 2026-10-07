@@ -37,6 +37,8 @@ export interface RenderOptions {
 	template?: SignatureTemplateKey;
 	logoSize?: ImageSize | null;
 	bannerSize?: ImageSize | null;
+	/** The card's booking page (from Integrations), for the "Book a meeting" link. */
+	bookingUrl?: string | null;
 }
 
 export interface RenderedSignature {
@@ -117,7 +119,7 @@ function collect(
 	const website = safeUrl(card.website);
 	if (s.show_website && website) contacts.push({ text: displayUrl(website), href: website });
 	if (s.show_location && card.location.trim()) contacts.push({ text: card.location.trim(), href: null });
-	const booking = safeUrl(card.calendar_url);
+	const booking = safeUrl(opts.bookingUrl ?? '');
 	if (s.show_booking && booking) contacts.push({ text: 'Book a meeting', href: booking });
 
 	const socials: Item[] = s.show_socials

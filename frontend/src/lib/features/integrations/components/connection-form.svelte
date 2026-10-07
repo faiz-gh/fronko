@@ -66,6 +66,8 @@
 						aria-invalid={problem ? true : undefined}
 						{disabled}
 						rows={4}
+						maxlength={f.max_length}
+						class="max-h-64 font-mono text-xs"
 					/>
 				{:else if f.type === 'select'}
 					{@const current = f.options?.find((o) => o.value === values.config[f.key])}

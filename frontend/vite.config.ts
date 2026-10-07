@@ -28,7 +28,8 @@ export default defineConfig({
 		// Keep the browser's Host header so the backend's same-origin check matches Origin.
 		proxy: {
 			'/api': { target: 'http://localhost:8080', changeOrigin: false },
-			'/auth': { target: 'http://localhost:8080', changeOrigin: false }
+			'/auth': { target: 'http://localhost:8080', changeOrigin: false },
+			'/scim': { target: 'http://localhost:8080', changeOrigin: false }
 		}
 	}
 });

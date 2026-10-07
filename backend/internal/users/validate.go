@@ -36,3 +36,19 @@ func ValidPassword(w http.ResponseWriter, password string) bool {
 	}
 	return true
 }
+
+var usernameStrip = regexp.MustCompile(`[^a-z0-9._-]+`)
+
+// UsernameFromEmail makes a username from an email's local part, for
+// accounts an identity provider creates. It may be taken; see FreeUsername.
+func UsernameFromEmail(email string) string {
+	local, _, _ := strings.Cut(strings.ToLower(email), "@")
+	name := strings.Trim(usernameStrip.ReplaceAllString(local, "-"), "-._")
+	if len(name) > 28 {
+		name = strings.Trim(name[:28], "-._")
+	}
+	for len(name) < 3 {
+		name += "x"
+	}
+	return name
+}

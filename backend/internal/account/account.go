@@ -47,6 +47,14 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		log.Printf("forgot password lookup: %v", err)
 	case user.EmailVerifiedAt != nil:
+		// People who must use single sign-on get no code: a password
+		// wouldn't let them in.
+		if _, blocked, err := h.sso.PasswordBlocked(r.Context(), user); err != nil || blocked {
+			if err != nil {
+				log.Printf("forgot password sso policy: %v", err)
+			}
+			break
+		}
 		// Inside the cooldown we quietly skip sending; the earlier code still works.
 		if _, err := h.codes.Issue(r.Context(), user, auth.PurposeResetPassword, false); err != nil {
 			log.Printf("issue reset code: %v", err)
@@ -88,6 +96,15 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if path, blocked, err := h.sso.PasswordBlocked(r.Context(), user); err != nil || blocked {
+		if err != nil {
+			log.Printf("reset password sso policy: %v", err)
+			httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		writeSSORequired(w, path)
+		return
+	}
 	valid, err := h.codes.Consume(r.Context(), user.ID, auth.PurposeResetPassword, req.Code)
 	if err != nil {
 		log.Printf("check reset code: %v", err)

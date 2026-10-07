@@ -15,6 +15,7 @@ function entry(over: Partial<CatalogEntry> = {}): CatalogEntry {
 		fields: [],
 		keywords: ['zapier'],
 		unavailable: '',
+		testable: true,
 		connections: [],
 		...over
 	};

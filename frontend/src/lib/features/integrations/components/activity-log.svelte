@@ -45,7 +45,13 @@
 		}
 	}
 
-	const KIND: Record<Activity['kind'], string> = { push_lead: 'Lead', test: 'Test', setup: 'Setup' };
+	const KIND: Record<Activity['kind'], string> = {
+		push_lead: 'Lead',
+		test: 'Test',
+		setup: 'Setup',
+		provision: 'Directory',
+		sign_in: 'Sign-in'
+	};
 </script>
 
 {#if error && !items}

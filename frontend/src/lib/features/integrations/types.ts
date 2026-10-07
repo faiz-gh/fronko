@@ -26,6 +26,8 @@ export interface Field {
 	default?: unknown;
 	/** Offer to generate a random value (a secret both sides need to know). */
 	generate?: boolean;
+	/** Overrides the default length limit of a text or textarea field. */
+	max_length?: number;
 }
 
 export interface Manifest {
@@ -54,6 +56,8 @@ export interface ConnectionSummary {
 export interface CatalogEntry extends Manifest {
 	/** Why it can't be connected on this server, or ''. */
 	unavailable: string;
+	/** Connections have a Test (or "Send test lead") action. */
+	testable: boolean;
 	connections: ConnectionSummary[];
 }
 
@@ -61,6 +65,8 @@ export interface CategoryInfo {
 	id: Category;
 	label: string;
 	description: string;
+	/** One connection per owner across the category's providers. */
+	single: boolean;
 }
 
 export interface Catalog {
@@ -89,6 +95,10 @@ export interface Connection {
 	authorized: boolean;
 	/** Labels of required settings still to fill in. */
 	missing: string[];
+	/** Values to enter in the provider's own settings (callback URLs, a SCIM base URL). */
+	endpoints: Endpoint[];
+	/** The token the provider calls Fronko with (scim_token providers); null until generated. */
+	token: TokenInfo | null;
 	last_error: string | null;
 	last_error_at: string | null;
 	failure_count: number;
@@ -98,11 +108,36 @@ export interface Connection {
 	updated_at: string;
 }
 
+export interface Endpoint {
+	key: string;
+	label: string;
+	value: string;
+	help?: string;
+}
+
+export interface TokenInfo {
+	/** The token's last characters. */
+	hint: string;
+	created_at: string;
+	last_used_at: string | null;
+}
+
+/** An email domain the organisation claims, for single sign-on. */
+export interface OrgDomain {
+	id: number;
+	domain: string;
+	verified_at: string | null;
+	created_at: string;
+	/** The DNS TXT record that proves ownership. */
+	txt_name: string;
+	txt_value: string;
+}
+
 export type ActivityOutcome = 'success' | 'retrying' | 'failed';
 
 export interface Activity {
 	id: number;
-	kind: 'push_lead' | 'test' | 'setup';
+	kind: 'push_lead' | 'test' | 'setup' | 'provision' | 'sign_in';
 	outcome: ActivityOutcome;
 	summary: string;
 	detail?: Record<string, unknown>;

@@ -65,7 +65,9 @@
 <form onsubmit={create} novalidate class="bg-card flex flex-col gap-5 rounded-xl border p-4 sm:p-5">
 	<div class="flex flex-col gap-1">
 		<h3 class="font-semibold">New {entry.name} connection</h3>
-		<p class="text-muted-foreground text-sm">Secrets are encrypted before they're stored and never shown again.</p>
+		{#if entry.fields.some((f) => f.type === 'secret')}
+			<p class="text-muted-foreground text-sm">Secrets are encrypted before they're stored and never shown again.</p>
+		{/if}
 	</div>
 
 	{#if scopes.length > 1}

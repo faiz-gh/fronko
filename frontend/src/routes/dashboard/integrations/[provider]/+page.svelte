@@ -13,6 +13,7 @@
 	import { session } from '$lib/core/session.svelte';
 	import { listConnections } from '$lib/features/integrations/api';
 	import ConnectionPanel from '$lib/features/integrations/components/connection-panel.svelte';
+	import DomainsPanel from '$lib/features/integrations/components/domains-panel.svelte';
 	import NewConnection from '$lib/features/integrations/components/new-connection.svelte';
 	import ProviderLogo from '$lib/features/integrations/components/provider-logo.svelte';
 	import { canConnect } from '$lib/features/integrations/fields';
@@ -42,14 +43,33 @@
 			.catch((e) => (loadError = e instanceof Error ? e.message : 'Failed to load connections'));
 	});
 
+	// In categories with one connection per owner (booking pages, directory,
+	// single sign-on), a connection to another provider takes the place.
+	const takenBy = $derived.by((): Partial<Record<Scope, string>> => {
+		const catalog = integrations.catalog;
+		if (!entry || !catalog?.categories.find((c) => c.id === entry.category)?.single) return {};
+		const out: Partial<Record<Scope, string>> = {};
+		for (const p of catalog.providers) {
+			if (p.category !== entry.category || p.id === entry.id) continue;
+			for (const c of p.connections) out[c.scope] ??= p.name;
+		}
+		return out;
+	});
+
 	// Scopes this user may still add: each owner gets one connection unless
 	// the provider allows more.
 	const addableScopes = $derived.by((): Scope[] => {
 		if (!entry || !connections || entry.status === 'coming_soon' || entry.unavailable) return [];
 		return entry.scopes.filter(
-			(s) => canConnect(entry, s, session.isAdmin) && (entry.multiple || !connections!.some((c) => c.scope === s))
+			(s) =>
+				canConnect(entry, s, session.isAdmin) &&
+				!takenBy[s] &&
+				(entry.multiple || !connections!.some((c) => c.scope === s))
 		);
 	});
+	const blockedScopes = $derived(
+		entry ? entry.scopes.filter((s) => takenBy[s] && canConnect(entry, s, session.isAdmin)) : []
+	);
 
 	let adding = $state(false);
 	const showNew = $derived(adding || (connections?.length === 0 && addableScopes.length > 0));
@@ -173,6 +193,20 @@
 							/>
 						{/each}
 
+						{#each blockedScopes as s (s)}
+							<Alert.Root>
+								<CircleAlertIcon />
+								<Alert.Title>
+									{s === 'user' ? 'You already use' : 'Your organisation already uses'}
+									{takenBy[s]} for this
+								</Alert.Title>
+								<Alert.Description>
+									Only one {category?.label.toLowerCase()} connection is allowed{s === 'user' ? ' per person' : ''}. To
+									switch to {entry.name}, remove the {takenBy[s]} connection first.
+								</Alert.Description>
+							</Alert.Root>
+						{/each}
+
 						{#if showNew}
 							<NewConnection
 								{entry}
@@ -185,6 +219,10 @@
 								<PlusIcon data-icon="inline-start" />
 								Add another connection
 							</Button>
+						{/if}
+
+						{#if entry.category === 'sso' && session.isAdmin}
+							<DomainsPanel />
 						{/if}
 					{/if}
 				</div>

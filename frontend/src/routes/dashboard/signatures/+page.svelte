@@ -73,7 +73,11 @@
 
 	const rendered = $derived(
 		card && profile
-			? renderSignature(card, publicUrl(session.orgHandle, profile.slug), org, { logoSize, bannerSize })
+			? renderSignature(card, publicUrl(session.orgHandle, profile.slug), org, {
+					logoSize,
+					bannerSize,
+					bookingUrl: profile.booking?.url
+				})
 			: null
 	);
 	const template = $derived(rendered?.template ?? 'classic');
@@ -194,7 +198,8 @@
 		return renderSignature(card, publicUrl(session.orgHandle, profile.slug), org, {
 			template: key,
 			logoSize,
-			bannerSize
+			bannerSize,
+			bookingUrl: profile.booking?.url
 		}).html;
 	}
 </script>

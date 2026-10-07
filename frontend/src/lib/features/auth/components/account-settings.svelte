@@ -86,67 +86,75 @@
 	{/if}
 </FormSection>
 
-<FormSection
-	id="password"
-	title="Password"
-	description="Changing it signs you out on every other device. You stay signed in here."
->
-	<form onsubmit={submitPassword} class="flex flex-col gap-6">
-		<Field.Group class="grid gap-5 sm:grid-cols-2">
-			<Field.Field class="sm:col-span-2 sm:max-w-[calc(50%-0.625rem)]">
-				<Field.Label for="current-password">Current password</Field.Label>
-				<Input
-					id="current-password"
-					type="password"
-					autocomplete="current-password"
-					bind:value={currentPassword}
-					disabled={changingPassword}
-				/>
-			</Field.Field>
-			<Field.Field data-invalid={!!newPasswordError || undefined}>
-				<Field.Label for="new-password">New password</Field.Label>
-				<Input
-					id="new-password"
-					type="password"
-					autocomplete="new-password"
-					bind:value={newPassword}
-					disabled={changingPassword}
-					aria-invalid={!!newPasswordError || undefined}
-				/>
-				{#if newPasswordError}
-					<Field.Error>{newPasswordError}</Field.Error>
-				{:else}
-					<Field.Description>At least 8 characters.</Field.Description>
-				{/if}
-			</Field.Field>
-			<Field.Field data-invalid={!!confirmPasswordError || undefined}>
-				<Field.Label for="confirm-password">Confirm new password</Field.Label>
-				<Input
-					id="confirm-password"
-					type="password"
-					autocomplete="new-password"
-					bind:value={confirmPassword}
-					disabled={changingPassword}
-					aria-invalid={!!confirmPasswordError || undefined}
-				/>
-				{#if confirmPasswordError}
-					<Field.Error>{confirmPasswordError}</Field.Error>
-				{/if}
-			</Field.Field>
-		</Field.Group>
+{#if session.hasPassword}
+	<FormSection
+		id="password"
+		title="Password"
+		description="Changing it signs you out on every other device. You stay signed in here."
+	>
+		<form onsubmit={submitPassword} class="flex flex-col gap-6">
+			<Field.Group class="grid gap-5 sm:grid-cols-2">
+				<Field.Field class="sm:col-span-2 sm:max-w-[calc(50%-0.625rem)]">
+					<Field.Label for="current-password">Current password</Field.Label>
+					<Input
+						id="current-password"
+						type="password"
+						autocomplete="current-password"
+						bind:value={currentPassword}
+						disabled={changingPassword}
+					/>
+				</Field.Field>
+				<Field.Field data-invalid={!!newPasswordError || undefined}>
+					<Field.Label for="new-password">New password</Field.Label>
+					<Input
+						id="new-password"
+						type="password"
+						autocomplete="new-password"
+						bind:value={newPassword}
+						disabled={changingPassword}
+						aria-invalid={!!newPasswordError || undefined}
+					/>
+					{#if newPasswordError}
+						<Field.Error>{newPasswordError}</Field.Error>
+					{:else}
+						<Field.Description>At least 8 characters.</Field.Description>
+					{/if}
+				</Field.Field>
+				<Field.Field data-invalid={!!confirmPasswordError || undefined}>
+					<Field.Label for="confirm-password">Confirm new password</Field.Label>
+					<Input
+						id="confirm-password"
+						type="password"
+						autocomplete="new-password"
+						bind:value={confirmPassword}
+						disabled={changingPassword}
+						aria-invalid={!!confirmPasswordError || undefined}
+					/>
+					{#if confirmPasswordError}
+						<Field.Error>{confirmPasswordError}</Field.Error>
+					{/if}
+				</Field.Field>
+			</Field.Group>
 
-		{#if passwordMessage}
-			<Alert.Root variant="destructive">
-				<CircleAlertIcon />
-				<Alert.Title>{passwordMessage}</Alert.Title>
-			</Alert.Root>
-		{/if}
+			{#if passwordMessage}
+				<Alert.Root variant="destructive">
+					<CircleAlertIcon />
+					<Alert.Title>{passwordMessage}</Alert.Title>
+				</Alert.Root>
+			{/if}
 
-		<div>
-			<Button type="submit" disabled={!canChangePassword}>
-				{#if changingPassword}<Spinner data-icon="inline-start" />{/if}
-				Change password
-			</Button>
-		</div>
-	</form>
-</FormSection>
+			<div>
+				<Button type="submit" disabled={!canChangePassword}>
+					{#if changingPassword}<Spinner data-icon="inline-start" />{/if}
+					Change password
+				</Button>
+			</div>
+		</form>
+	</FormSection>
+{:else}
+	<FormSection id="password" title="Password" description="How you sign in.">
+		<p class="text-muted-foreground text-sm">
+			You sign in with your organisation's single sign-on, so your Fronko account has no password.
+		</p>
+	</FormSection>
+{/if}

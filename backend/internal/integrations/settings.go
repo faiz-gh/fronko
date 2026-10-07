@@ -1,6 +1,7 @@
 package integrations
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -109,12 +110,14 @@ func checkValue(f Field, raw any, allowPrivate bool) (any, error) {
 	}
 	switch f.Type {
 	case FieldText:
-		if utf8.RuneCountInString(s) > maxTextLen || strings.ContainsAny(s, "\r\n") {
-			return nil, fieldErr(f.Key, fmt.Sprintf("%s must be one line of at most %d characters", f.Label, maxTextLen))
+		limit := cmp.Or(f.MaxLength, maxTextLen)
+		if utf8.RuneCountInString(s) > limit || strings.ContainsAny(s, "\r\n") {
+			return nil, fieldErr(f.Key, fmt.Sprintf("%s must be one line of at most %d characters", f.Label, limit))
 		}
 	case FieldTextarea:
-		if utf8.RuneCountInString(s) > maxTextareaLen {
-			return nil, fieldErr(f.Key, fmt.Sprintf("%s must be at most %d characters", f.Label, maxTextareaLen))
+		limit := cmp.Or(f.MaxLength, maxTextareaLen)
+		if utf8.RuneCountInString(s) > limit {
+			return nil, fieldErr(f.Key, fmt.Sprintf("%s must be at most %d characters", f.Label, limit))
 		}
 	case FieldURL:
 		if len(s) > maxURLLen {

@@ -2,8 +2,8 @@
 	import type { Snippet } from 'svelte';
 	import { fileUrl, type PublicFile } from '$lib/features/files/api';
 	import { showsOrgLogo } from '$lib/features/orgs/api';
-	import type { PublicOrg } from '$lib/features/cards/api';
-	import { ACCENTS, type CardData } from '$lib/features/cards/card';
+	import type { Booking as BookingPage, PublicOrg } from '$lib/features/cards/api';
+	import { ACCENTS, type CardData, type Visitor } from '$lib/features/cards/card';
 	import { cn } from '$lib/utils';
 	import Header from '$lib/features/cards/components/blocks/header.svelte';
 	import Bio from '$lib/features/cards/components/blocks/bio.svelte';
@@ -20,6 +20,8 @@
 		actions,
 		files,
 		org,
+		booking,
+		visitor,
 		class: className
 	}: {
 		card: CardData;
@@ -33,6 +35,10 @@
 		actions?: Snippet;
 		/** The card's organisation; its logo shows when required or when the card opts in. */
 		org?: PublicOrg | null;
+		/** The "Book a meeting" page, from the holder's (or the organisation's) Integrations. */
+		booking?: BookingPage | null;
+		/** What the visitor gave the lead form, to fill in the booking page. */
+		visitor?: Visitor | null;
 		class?: string;
 	} = $props();
 
@@ -63,7 +69,7 @@
 				{:else if block.type === 'quick_actions'}
 					<QuickActions {card} {align} />
 				{:else if block.type === 'booking'}
-					<Booking {card} />
+					<Booking {booking} {visitor} />
 				{:else if block.type === 'actions'}
 					{#if actions}
 						<div class="flex flex-col gap-2">{@render actions()}</div>

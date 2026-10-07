@@ -1,5 +1,5 @@
 import { apiClient, apiUrl } from '$lib/core/api';
-import type { Activity, Catalog, Connection, Scope, SettingsChange, TestResult } from './types';
+import type { Activity, Catalog, Connection, OrgDomain, Scope, SettingsChange, TestResult } from './types';
 
 export function getCatalog(): Promise<Catalog> {
 	return apiClient<Catalog>('/api/integrations/catalog');
@@ -45,4 +45,26 @@ export function listActivity(id: number, before?: number, limit = 20): Promise<A
 /** Where the browser goes to authorise an OAuth connection; the server redirects on. */
 export function oauthStartUrl(id: number): string {
 	return apiUrl(`/api/integrations/connections/${id}/oauth/start`);
+}
+
+/** Generates the token a provider calls Fronko with, revoking the previous one. Shown only now. */
+export function rotateToken(id: number): Promise<{ token: string; connection: Connection }> {
+	return apiClient(`/api/integrations/connections/${id}/tokens`, { method: 'POST' });
+}
+
+export function listDomains(): Promise<OrgDomain[]> {
+	return apiClient<OrgDomain[]>('/api/org/domains');
+}
+
+export function addDomain(domain: string): Promise<OrgDomain> {
+	return apiClient<OrgDomain>('/api/org/domains', { method: 'POST', body: JSON.stringify({ domain }) });
+}
+
+/** Checks the TXT record; fails with a message when it isn't there yet. */
+export function verifyDomain(id: number): Promise<OrgDomain> {
+	return apiClient<OrgDomain>(`/api/org/domains/${id}/verify`, { method: 'POST' });
+}
+
+export function deleteDomain(id: number): Promise<void> {
+	return apiClient<void>(`/api/org/domains/${id}`, { method: 'DELETE' });
 }

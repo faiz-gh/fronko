@@ -18,6 +18,8 @@ class Session {
 	/** The organisation's part of every card link, /p/{orgHandle}/{slug}. */
 	orgHandle = $state('');
 	mustChangePassword = $state(false);
+	/** False for accounts that only sign in with single sign-on. */
+	hasPassword = $state(true);
 	/** Teams the user is in, with their role in each. */
 	teams = $state<TeamRef[]>([]);
 	/** Set when the platform suspended the organisation; the login page shows it. */
@@ -85,6 +87,7 @@ class Session {
 		this.orgName = user.org_name;
 		this.orgHandle = user.org_handle;
 		this.mustChangePassword = user.must_change_password;
+		this.hasPassword = user.has_password ?? true;
 		this.teams = user.teams ?? [];
 		this.status = 'authenticated';
 	}
@@ -97,6 +100,7 @@ class Session {
 		this.orgName = '';
 		this.orgHandle = '';
 		this.mustChangePassword = false;
+		this.hasPassword = true;
 		this.teams = [];
 		this.status = 'anonymous';
 	}

@@ -179,7 +179,7 @@ func (s *Service) FinishOAuth(ctx context.Context, p auth.Principal, rawState, c
 	if c.sealed, err = s.seal(c.ID, v); err != nil {
 		return c.Provider, err
 	}
-	if ready(prov.Manifest(), settings, v) {
+	if ready(prov.Manifest(), settings, v, c) {
 		c.Status, c.FailureCount, c.LastError, c.LastErrorAt = StatusActive, 0, nil, nil
 	}
 	if err := s.store.UpdateConnection(ctx, c); err != nil {

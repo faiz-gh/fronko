@@ -5,6 +5,7 @@
 	import { session } from '$lib/core/session.svelte';
 	import { branding } from '$lib/features/branding/store.svelte';
 	import type { PublicFile } from '$lib/features/files/api';
+	import type { Booking } from '../api';
 	import { cn } from '$lib/utils';
 	import { tapUrl, type CardData } from '../card';
 	import ProfileCard from '../components/profile-card.svelte';
@@ -16,6 +17,7 @@
 		savedSlug,
 		slug,
 		files,
+		booking,
 		mode: previewMode = $bindable('card')
 	}: {
 		card: CardData;
@@ -24,6 +26,7 @@
 		/** The link being edited, to warn when the QR code doesn't match it yet. */
 		slug: string;
 		files: Record<string, PublicFile>;
+		booking?: Booking | null;
 		mode?: 'card' | 'qr';
 	} = $props();
 
@@ -60,7 +63,7 @@
 		<div class="-mx-2 flex min-h-0 flex-1 justify-center overflow-y-auto px-2 py-2">
 			{#if previewMode === 'card'}
 				<div class="my-auto w-full max-w-[380px]">
-					<ProfileCard {card} slug={savedSlug} {files} org={branding.value} />
+					<ProfileCard {card} slug={savedSlug} {files} org={branding.value} {booking} />
 				</div>
 			{:else}
 				<div class="my-auto flex w-full max-w-[300px] flex-col items-center gap-4">

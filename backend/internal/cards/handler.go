@@ -2,6 +2,7 @@ package cards
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -39,10 +40,13 @@ type ProfileHandler struct {
 	frontendOrigins []string
 	// events counts contact saves; nil records nothing.
 	events *analytics.EventRecorder
+	// bookings finds cards' booking pages; nil shows none.
+	bookings BookingFinder
 }
 
-func NewProfileHandler(store *Store, fileStore *files.Store, brandingStore *branding.Store, userStore *users.Store, frontendOrigins []string, events *analytics.EventRecorder) *ProfileHandler {
+func NewProfileHandler(store *Store, fileStore *files.Store, brandingStore *branding.Store, userStore *users.Store, frontendOrigins []string, events *analytics.EventRecorder, bookings BookingFinder) *ProfileHandler {
 	return &ProfileHandler{
+		bookings:        bookings,
 		store:           store,
 		files:           fileStore,
 		branding:        brandingStore,
@@ -110,6 +114,7 @@ func (h *ProfileHandler) GetPublicProfile(w http.ResponseWriter, r *http.Request
 	} else {
 		public.Org = &branding.PublicOrg{Name: b.Name, LogoFile: b.LogoFile, LogoPolicy: b.LogoPolicy}
 	}
+	public.Booking = h.bookingsFor(r.Context(), profile.OrgID)(profile.holderID())
 	used, err := h.files.GetOrgFilesByPublicIDs(r.Context(), profile.OrgID, files.ReferencedIDs(profile.Data))
 	if err != nil {
 		log.Printf("profile files: %v", err)
@@ -133,7 +138,23 @@ func (h *ProfileHandler) getProfile(w http.ResponseWriter, r *http.Request, prof
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return nil, false
 	}
+	profile.Booking = h.bookingsFor(r.Context(), profile.OrgID)(profile.holderID())
 	return profile, true
+}
+
+// bookingsFor returns the lookup of the organisation's booking pages. A
+// failure is logged and shows no booking button rather than failing the card.
+func (h *ProfileHandler) bookingsFor(ctx context.Context, orgID int64) func(int64) *Booking {
+	none := func(int64) *Booking { return nil }
+	if h.bookings == nil {
+		return none
+	}
+	find, err := h.bookings(ctx, orgID)
+	if err != nil {
+		log.Printf("card bookings: %v", err)
+		return none
+	}
+	return find
 }
 
 // checkFiles makes sure every file a card newly points at is one the signed-in
@@ -166,11 +187,16 @@ func (h *ProfileHandler) checkFiles(w http.ResponseWriter, r *http.Request, data
 // Protected: GET /api/me/profiles. Admins get every card in the organisation;
 // members only the cards assigned to them.
 func (h *ProfileHandler) GetMyProfiles(w http.ResponseWriter, r *http.Request) {
-	profiles, err := h.store.ListProfiles(r.Context(), auth.ScopeOf(r))
+	scope := auth.ScopeOf(r)
+	profiles, err := h.store.ListProfiles(r.Context(), scope)
 	if err != nil {
 		log.Printf("list profiles: %v", err)
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+	booking := h.bookingsFor(r.Context(), scope.OrgID)
+	for _, p := range profiles {
+		p.Booking = booking(p.holderID())
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, profiles)

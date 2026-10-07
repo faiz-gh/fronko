@@ -93,8 +93,6 @@ export interface CardData {
 	/** National number, digits only ("9876543210"). */
 	phone_number: string;
 	website: string;
-	/** Booking page (Calendly, Cal.com, …), shown as a "Book a meeting" button. */
-	calendar_url: string;
 	location: string;
 	links: CardLink[];
 	/** PDF brochures from the file library, shown as downloads. */
@@ -229,7 +227,6 @@ export function emptyCard(name = ''): CardData {
 		phone_country_code: '',
 		phone_number: '',
 		website: '',
-		calendar_url: '',
 		location: '',
 		links: [],
 		documents: [],
@@ -302,7 +299,6 @@ export function normalizeCard(raw: unknown): CardData {
 		phone_country_code: phone.code,
 		phone_number: phone.number,
 		website: str(d.website),
-		calendar_url: str(d.calendar_url),
 		location: str(d.location),
 		links,
 		documents,
@@ -516,6 +512,37 @@ const CALENDAR_PROVIDERS: Brand[] = [
 
 export function detectCalendar(url: string): Brand | null {
 	return matchHost(url, CALENDAR_PROVIDERS);
+}
+
+/** What a visitor told the card's lead form, for filling in a booking page. */
+export interface Visitor {
+	name: string;
+	email: string;
+}
+
+/**
+ * The booking page's link, with the visitor's details filled in where the
+ * page supports it. Returns null for a link that isn't http(s).
+ */
+export function bookingHref(
+	booking: { url: string; prefill?: Record<string, string> },
+	visitor?: Visitor | null
+): string | null {
+	const safe = safeUrl(booking.url);
+	if (!safe) return null;
+	if (!visitor || !booking.prefill) return safe;
+	const [first, ...rest] = visitor.name.trim().split(/\s+/);
+	const values: Record<string, string> = {
+		name: visitor.name.trim(),
+		first_name: first ?? '',
+		last_name: rest.join(' '),
+		email: visitor.email.trim()
+	};
+	const url = new URL(safe);
+	for (const [param, from] of Object.entries(booking.prefill)) {
+		if (values[from]) url.searchParams.set(param, values[from]);
+	}
+	return url.toString();
 }
 
 export function linkLabel(link: CardLink): string {

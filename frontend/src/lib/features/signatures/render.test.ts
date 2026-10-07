@@ -72,11 +72,11 @@ describe('renderSignature', () => {
 	});
 
 	it('shows the booking link only when asked', () => {
-		const booked = { calendar_url: 'calendly.com/ada' };
-		expect(renderSignature(card(booked), CARD_URL, null).html).not.toContain('calendly.com');
-		expect(renderSignature(card({ ...booked, signature: { show_booking: true } }), CARD_URL, null).html).toContain(
-			'https://calendly.com/ada'
-		);
+		const booked = { bookingUrl: 'calendly.com/ada' };
+		expect(renderSignature(card(), CARD_URL, null, booked).html).not.toContain('calendly.com');
+		const shown = card({ signature: { show_booking: true } });
+		expect(renderSignature(shown, CARD_URL, null, booked).html).toContain('https://calendly.com/ada');
+		expect(renderSignature(shown, CARD_URL, null).html).not.toContain('Book a meeting');
 	});
 
 	it('uses the card accent, or the organisation’s brand colour', () => {

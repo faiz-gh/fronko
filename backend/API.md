@@ -3,10 +3,10 @@
 Every endpoint is served by the Go backend. By default the browser reaches them through the frontend's nginx (or the Vite dev proxy) on the **same origin** as the SPA. If the API is served on its own domain, list the frontend's origin in `CORS_ALLOWED_ORIGINS`; those origins get credentialed CORS responses (see the [configuration reference](README.md#configuration)).
 
 - **Content type.** Requests and responses use `application/json`.
-- **Auth.** Protected endpoints (`/api/me/*` and `/api/org/*`) need the `fronko_session` cookie, which login or register sets. Browsers send it automatically. With `curl`, use a cookie jar (`-c`/`-b`).
+- **Auth.** Protected endpoints (`/api/me/*`, `/api/org/*` and `/api/integrations/*`) need the `fronko_session` cookie, which login, register or a single sign-on sets. Browsers send it automatically. With `curl`, use a cookie jar (`-c`/`-b`).
 - **Organisations and roles.** Every account belongs to an organisation. Registering creates one, with the new account as its **owner**. The owner and **admins** see and manage everything in the organisation. **Members**, whom the organisation creates, see only the cards assigned to them, the leads those cards collected while they held them, their own files, the shared area and files granted to them. The [Organisation](#organisation--) endpoints manage users.
 - **Platform admin.** The [Platform admin](#platform-admin-) endpoints (`/auth/admin/*`, `/api/admin/*`) are for whoever runs the server. They use a separate account and cookie, `fronko_admin`; the user cookie is never accepted there, and the admin cookie never works on user routes.
-- **Errors.** Every error body has the shape `{"error": "<message>"}`, and the message is safe to show to users.
+- **Errors.** Every error body has the shape `{"error": "<message>"}`, and the message is safe to show to users. Some add a machine-readable `code`, or a `field` naming the setting at fault. [SCIM](#scim-20) uses SCIM error bodies instead.
 - **Timestamps.** RFC 3339 strings, for example `"2026-10-03T12:34:56.789Z"`.
 - **IDs.** 64-bit integers.
 
@@ -20,13 +20,13 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `POST`   | [`/auth/logout`](#post-authlogout) | | | Clear the session cookie |
 | `POST`   | [`/auth/password/forgot`](#post-authpasswordforgot) | | ✅ auth | Email a password-reset code |
 | `POST`   | [`/auth/password/reset`](#post-authpasswordreset) | | ✅ auth | Set a new password with the code |
-| `GET`    | [`/api/me/user`](#get-apimeuser) | ✅ ✉️ | | Current user |
-| `PUT`    | [`/api/me/email`](#put-apimeemail) | ✅ ✉️ | ✅ auth | Add or correct an unverified email |
-| `POST`   | [`/api/me/email/verify`](#post-apimeemailverify) | ✅ ✉️ | ✅ auth | Verify the email with its code |
-| `POST`   | [`/api/me/email/resend`](#post-apimeemailresend) | ✅ ✉️ | ✅ auth | Send a new verification code |
-| `POST`   | [`/api/me/email/change`](#post-apimeemailchange) | ✅ | ✅ auth | Start changing a verified email (password + code to the new address) |
-| `POST`   | [`/api/me/email/change/confirm`](#post-apimeemailchangeconfirm) | ✅ | ✅ auth | Confirm the new email with its code |
-| `PUT`    | [`/api/me/password`](#put-apimepassword) | ✅ 🔑 | ✅ auth | Change password (or replace a temporary one); signs out other sessions |
+| `GET`    | [`/api/me/user`](#get-apimeuser--) | ✅ ✉️ | | Current user |
+| `PUT`    | [`/api/me/email`](#put-apimeemail--) | ✅ ✉️ | ✅ auth | Add or correct an unverified email |
+| `POST`   | [`/api/me/email/verify`](#post-apimeemailverify--) | ✅ ✉️ | ✅ auth | Verify the email with its code |
+| `POST`   | [`/api/me/email/resend`](#post-apimeemailresend--) | ✅ ✉️ | ✅ auth | Send a new verification code |
+| `POST`   | [`/api/me/email/change`](#post-apimeemailchange-) | ✅ | ✅ auth | Start changing a verified email (password + code to the new address) |
+| `POST`   | [`/api/me/email/change/confirm`](#post-apimeemailchangeconfirm-) | ✅ | ✅ auth | Confirm the new email with its code |
+| `PUT`    | [`/api/me/password`](#put-apimepassword-) | ✅ 🔑 | ✅ auth | Change password (or replace a temporary one); signs out other sessions |
 | `GET`    | [`/api/me/profiles`](#get-apimeprofiles) | ✅ | | Cards I can see |
 | `POST`   | [`/api/me/profiles`](#post-apimeprofiles) | 🛡️ | | Create a card, optionally assigned to a user |
 | `GET`    | [`/api/me/profiles/{id}`](#get-apimeprofilesid) | ✅ | | Get a card |
@@ -75,6 +75,26 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `PUT`    | [`/api/org/profiles/{id}/assignee`](#put-apiorgprofilesidassignee) | 🛡️ | | Assign a card to a user, or back to the organisation |
 | `GET`    | [`/api/org/files/{id}/grants`](#get-apiorgfilesidgrants) | 🛡️ | | Who a file has been granted to |
 | `PUT`    | [`/api/org/files/{id}/grants`](#put-apiorgfilesidgrants) | 🛡️ | | Replace who a file is granted to |
+| `GET`    | [`/api/integrations/catalog`](#get-apiintegrationscatalog) | ✅ | | Providers the user may connect, with their connections |
+| `GET`    | [`/api/integrations/connections`](#get-apiintegrationsconnections) | ✅ | | Connections the user manages |
+| `POST`   | [`/api/integrations/connections`](#post-apiintegrationsconnections) | ✅ | | Connect a provider (organisation: 🛡️) |
+| `GET`    | [`/api/integrations/connections/{id}`](#get-apiintegrationsconnectionsid) | ✅ | | One connection |
+| `PATCH`  | [`/api/integrations/connections/{id}`](#patch-apiintegrationsconnectionsid) | ✅ | | Rename, pause, or change settings |
+| `DELETE` | [`/api/integrations/connections/{id}`](#delete-apiintegrationsconnectionsid) | ✅ | | Remove a connection and its log |
+| `POST`   | [`/api/integrations/connections/{id}/test`](#post-apiintegrationsconnectionsidtest) | ✅ | ✅ test | Send a test lead, or check the connection |
+| `GET`    | [`/api/integrations/connections/{id}/activity`](#get-apiintegrationsconnectionsidactivity) | ✅ | | The connection's activity log |
+| `POST`   | [`/api/integrations/connections/{id}/tokens`](#post-apiintegrationsconnectionsidtokens) | ✅ | ✅ auth | Generate a SCIM token |
+| `GET`    | [`/api/integrations/connections/{id}/oauth/start`](#get-apiintegrationsconnectionsidoauthstart) | ✅ | | Start authorising an OAuth connection (browser navigation) |
+| `GET`    | [`/api/integrations/oauth/callback`](#get-apiintegrationsoauthcallback) | ✅ | | OAuth return address |
+| `GET`    | [`/api/org/domains`](#get-apiorgdomains-) | 🛡️ | | Email domains for single sign-on |
+| `POST`   | [`/api/org/domains`](#post-apiorgdomains-) | 🛡️ | | Add a domain |
+| `POST`   | [`/api/org/domains/{id}/verify`](#post-apiorgdomainsidverify-) | 🛡️ | ✅ auth | Check its DNS TXT record |
+| `DELETE` | [`/api/org/domains/{id}`](#delete-apiorgdomainsid-) | 🛡️ | | Remove a domain |
+| `POST`   | [`/auth/sso/discover`](#post-authssodiscover) | | ✅ auth | Find an organisation's single sign-on by email or handle |
+| `GET`    | [`/auth/sso/{handle}`](#get-authssohandle) | | | Start signing in with the organisation's identity provider |
+| `GET`    | [`/auth/saml/{id}/metadata`](#get-authsamlconnection-idmetadata) | | | Service provider metadata |
+| `POST`   | [`/auth/saml/{id}/acs`](#post-authsamlconnection-idacs) | | ✅ auth | The identity provider's sign-in response |
+| | [`/scim/v2/*`](#scim-20) | 🎫 | ✅ scim | SCIM 2.0: users and groups (teams) |
 | `POST`   | [`/api/me/feedback`](#post-apimefeedback) | ✅ | ✅ feedback | Send product feedback to the platform admins |
 | `POST`   | [`/auth/admin/login`](#post-authadminlogin) | | ✅ auth | Platform admin sign-in |
 | `POST`   | [`/auth/admin/logout`](#post-authadminlogout) | | | Clear the admin cookie |
@@ -97,7 +117,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `POST`   | [`/api/profiles/{id}/leads`](#post-apiprofilesidleads) | | ✅ lead | Submit a lead to a profile |
 | `POST`   | [`/api/profiles/{org}/{slug}/events`](#post-apiprofilesorgslugevents) | | ✅ events | Record what a visitor did on a public card |
 
-✉️ = works before the email is verified. 🔑 = works while the user still has a temporary password. Every other signed-in route needs a verified email and a password the user chose. 🛡️ = owner and admins only. 👑 = owner only. Others get `403`. 🖥️ = platform admins only (`fronko_admin` cookie); anything else gets `401`.
+✉️ = works before the email is verified. 🔑 = works while the user still has a temporary password. Every other signed-in route needs a verified email and a password the user chose. 🛡️ = owner and admins only. 👑 = owner only. Others get `403`. 🖥️ = platform admins only (`fronko_admin` cookie); anything else gets `401`. 🎫 = a SCIM bearer token, not a session.
 
 ## Cross-cutting behaviour
 
@@ -110,7 +130,8 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `403` | Signed-in routes (except the ✉️ routes) while the email isn't verified: `{"error":"verify your email to continue","code":"email_unverified"}` |
 | `403` | Signed-in routes (except ✉️ and 🔑) while the user still has the temporary password their organisation set: `{"error":"choose a new password to continue","code":"password_change_required"}` |
 | `403` | A 🛡️ or 👑 route called by someone without that role: `"only your organisation's admins can do this"` or `"only your organisation's owner can do this"` |
-| `403` | A `POST`/`PUT`/`DELETE` whose `Origin` header names a different host (`"cross-origin request rejected"`). Requests without `Origin`, such as curl, are allowed |
+| `403` | Password sign-in or reset for someone who must use single sign-on: `{"error":"your organisation signs in with single sign-on","code":"sso_required","sso_url":"/auth/sso/acme"}`. Send them to `sso_url` |
+| `403` | A `POST`/`PUT`/`PATCH`/`DELETE` whose `Origin` header names a different host (`"cross-origin request rejected"`). Requests without `Origin`, such as curl, are allowed. [SCIM](#scim-20) and the SAML ACS skip this check |
 | `429` | Rate limit exceeded (`"too many requests, please try again shortly"`), with a `Retry-After: <seconds>` header |
 | `500` | Unexpected server error (`"internal error"` or a specific "failed to …" message) |
 
@@ -120,6 +141,8 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 - **lead**: burst of 5, then 1 request per 15s.
 - **events**: burst of 30, then 1 request per 2s. A visit sends a handful of beacons a few seconds apart.
 - **feedback**: burst of 5, then 1 request per 12 minutes.
+- **test**: burst of 5, then 1 request per 10s (integration tests).
+- **scim**: burst of 200, then 1 request per 20ms.
 
 ## Objects
 
@@ -135,13 +158,14 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
   "org_name": "Acme",
   "org_handle": "acme",
   "must_change_password": false,
+  "has_password": true,
   "teams": [{ "id": 3, "name": "Sales", "color": "#e11d48", "role": "lead" }]
 }
 ```
 
 `email` is `null` only for accounts created before emails were required; they must add and verify one before using the app. `role` is `owner`, `admin` or `member`. `teams` lists the teams the user is in; their `role` in each is `lead` or `member`.
 
-**Teams.** An organisation can group its people into teams, and anyone can be in several. Being in a team lets you see the team's files. A team's **leads** also add, change and delete the team's files, and they see and edit the cards of the people in their teams, along with those people's leads. Creating, deleting and reassigning cards stays with admins. Org users (`GET /api/org/users`) carry the same `teams` list. `must_change_password` is `true` while the user still has a temporary password their organisation set.
+**Teams.** An organisation can group its people into teams, and anyone can be in several. Being in a team lets you see the team's files. A team's **leads** also add, change and delete the team's files, and they see and edit the cards of the people in their teams, along with those people's leads. Creating, deleting and reassigning cards stays with admins. Org users (`GET /api/org/users`) carry the same `teams` list. `must_change_password` is `true` while the user still has a temporary password their organisation set. `has_password` is `false` for accounts that only sign in with single sign-on (created by SSO or SCIM); they can't change a password they don't have.
 
 **Email codes.** Verification and password-reset codes are 6 digits, valid for 15 minutes, and allow 5 guesses, after which a new code is needed. A new code can be requested once every 60 seconds; requesting one replaces the previous code. Codes are stored only as an HMAC.
 
@@ -156,11 +180,12 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
   "data": { "name": "Faiz", "title": "Engineer", "links": [] },
   "created_at": "2026-10-03T12:00:00Z",
   "updated_at": "2026-10-03T12:00:00Z",
-  "lead_count": 3
+  "lead_count": 3,
+  "booking": null
 }
 ```
 
-`user_id` is the account that created the card. `assigned_user` is the one user who works on it, or `null` when the organisation holds it. `lead_count` counts every lead for admins, and only the member's own leads for members.
+`user_id` is the account that created the card. `assigned_user` is the one user who works on it, or `null` when the organisation holds it. `lead_count` counts every lead for admins, and only the member's own leads for members. `booking` is the booking page the card shows, as on the [public profile](#publicprofile-visitor-view).
 
 ### PublicProfile (visitor view)
 
@@ -171,9 +196,18 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
   "org_handle": "acme",
   "data": { "name": "Faiz", "avatar_file": "90meIH31WrEH0xe9ymyzDA", "documents": [] },
   "files": [{ "id": "90meIH31WrEH0xe9ymyzDA", "kind": "image", "name": "me.png", "size_bytes": 48211 }],
-  "org": { "name": "Acme", "logo_file": "tt24UJovNZgYmyTuoygXhg", "logo_policy": "optional" }
+  "org": { "name": "Acme", "logo_file": "tt24UJovNZgYmyTuoygXhg", "logo_policy": "optional" },
+  "booking": {
+    "provider": "calendly",
+    "name": "Calendly",
+    "url": "https://calendly.com/faiz/30min",
+    "prefill": { "name": "name", "email": "email" },
+    "scope": "user"
+  }
 }
 ```
+
+`booking` is the card's "Book a meeting" page, connected in [Integrations](#integrations-) (Calendar Booking): the card holder's own (`scope: "user"`), or else the organisation's default (`scope: "org"`); `null` when there's neither. `prefill`, when present, maps the page's query parameters to what a visitor gave the lead form (`name`, `first_name`, `last_name`, `email`), so the page can open with them filled in. This replaces the card's old `data.calendar_url`, which is no longer read.
 
 `org_handle` and `slug` make up the card's link, `/p/{org_handle}/{slug}`. `org` is the card's organisation: its name, its logo (a public file id, served by [`GET /api/files/{id}`](#get-apifilesid), or `null`) and `logo_policy`. The card shows the logo when the policy is `"required"`, or when it's `"optional"` and `data.show_org_logo` isn't `false`. The organisation's signature settings are not exposed here.
 
@@ -299,6 +333,7 @@ Creates an organisation with this account as its owner, emails a verification co
 | `401` | `"invalid username or password"`. The same message and similar timing whether or not the user exists |
 | `403` | `{"error":"this account is suspended; contact your organisation","code":"account_suspended"}`, only after a correct password |
 | `403` | `{"error":"your organisation has been suspended","code":"org_suspended","reason":"…"}`, only after a correct password |
+| `403` | `{"error":"your organisation signs in with single sign-on","code":"sso_required","sso_url":"/auth/sso/acme"}`: the account has no password, or the organisation requires single sign-on and this isn't the owner. For accounts with a password, only after a correct password |
 
 The first sign-in of a user the organisation created emails them a verification code (subject to the 60-second resend cooldown).
 
@@ -314,7 +349,7 @@ Clears the session cookie. It works without a session. The JWT isn't revoked ser
 { "email": "faiz@example.com" }
 ```
 
-Emails a reset code if a **verified** account uses this address and the 60-second cooldown has passed. It always answers the same way, so it can't reveal which emails have accounts.
+Emails a reset code if a **verified** account uses this address, the 60-second cooldown has passed, and the account isn't one that must use single sign-on. It always answers the same way, so it can't reveal which emails have accounts.
 
 | Status | Body |
 | ------ | ---- |
@@ -333,6 +368,7 @@ Sets the new password and **signs out every session** (including the one asking,
 | ------ | ---- |
 | `204` | Password changed |
 | `400` | `"invalid or expired code"` (wrong, expired, used up, or never issued; each wrong guess counts) or `"password must be 8-72 characters"` |
+| `403` | `sso_required`, as for login |
 
 ### `GET /api/me/user` 🔒 ✉️
 
@@ -349,7 +385,7 @@ Returns the signed-in user. The SPA calls this at startup to restore the session
 { "email": "faiz@example.com" }
 ```
 
-Adds an email to an older account, or corrects a typo before verification, and sends a verification code to it. A new address always gets a fresh code; re-sending the same address respects the cooldown. A verified email is changed with [`POST /api/me/email/change`](#post-apimeemailchange) instead.
+Adds an email to an older account, or corrects a typo before verification, and sends a verification code to it. A new address always gets a fresh code; re-sending the same address respects the cooldown. A verified email is changed with [`POST /api/me/email/change`](#post-apimeemailchange-) instead.
 
 | Status | Body |
 | ------ | ---- |
@@ -1008,6 +1044,306 @@ Deletes the team (`204`). Its files move to the `org` area so cards using them k
 `{"user_ids": [24, 31], "team_ids": [3]}` replaces either list (`[]` revokes all; a list that isn't sent is left alone). IDs outside the organisation are ignored. Returns the new lists. A card that already uses a file keeps showing it after access is revoked, until someone removes it from the card.
 
 ---
+
+## Integrations 🔒
+
+Connections to outside services: lead sync, booking pages, SCIM and SAML. The [integrations overview](../docs/integrations/overview.md) explains how they behave; this section is the API the Integrations page uses. Everything here needs a session, a verified email and a chosen password. Members manage only their own (personal) connections; owners and admins also manage the organisation's. A connection someone can't manage answers `404`, as if it didn't exist.
+
+**Errors** in this section:
+
+| Status | When |
+| ------ | ---- |
+| `400` | Invalid settings: `{"error":"Payload URL: the URL must use https","field":"url"}`. `field` names the setting at fault, when there is one. Also other mistakes the user can fix (`"fill in Client ID first"`) |
+| `403` | `"you can't manage this connection"`: a member creating an organisation connection, or listing `?scope=org` |
+| `404` | `"connection not found"`, or `"unknown integration"` for a provider id the server doesn't have |
+| `409` | `"you already have a connection to this integration"`, or the category's own message (one booking page per person, one directory and one SSO connection per organisation) |
+| `422` | `"this integration isn't available on this server"` (coming soon, or `PUBLIC_URL` / `SECRETS_KEY` missing), `"finish setting up this connection first"` (testing a pending connection), or `"SECRETS_KEY isn't set on this server, so secrets can't be stored"` |
+
+### Manifest
+
+How a provider describes itself. The catalog serves it, and the page builds the settings form from `fields`.
+
+```json
+{
+  "id": "webhook",
+  "name": "Webhook",
+  "category": "lead_sync",
+  "description": "Send each new lead as JSON to any URL …",
+  "scopes": ["org", "user"],
+  "auth": "none",
+  "status": "available",
+  "multiple": true,
+  "fields": [
+    { "key": "url", "label": "Payload URL", "type": "url", "required": true, "placeholder": "https://example.com/hooks/fronko", "help": "…" },
+    { "key": "signing_secret", "label": "Signing secret", "type": "secret", "generate": true, "help": "…" }
+  ],
+  "setup_steps": ["…"],
+  "docs_url": "https://github.com/faiz-gh/fronko/blob/master/docs/integrations/webhook-zapier.md",
+  "requires": ["secrets_key"],
+  "keywords": ["zapier", "make", "n8n"]
+}
+```
+
+| Field | Values |
+| ----- | ------ |
+| `category` | `lead_sync`, `calendar`, `directory`, `sso` |
+| `scopes` | Who may connect it: `org` (admins, for the organisation) and/or `user` (anyone, for themselves). The first is the default |
+| `auth` | `none`, `api_key`, `oauth2` (the organisation's own OAuth app), `link`, `saml`, `scim_token` |
+| `status` | `available`, `beta`, `coming_soon` |
+| `multiple` | More than one connection per owner. Categories `calendar`, `directory` and `sso` allow one per owner regardless |
+| `fields[].type` | `text`, `url` (absolute `https`, public host), `secret` (write-only), `select` (with `options: [{value, label}]`), `textarea`, `bool`. Optional: `required`, `help`, `placeholder`, `default`, `generate` (offer a random value), `max_length` |
+| `requires` | `public_url`, `secrets_key`: server settings it needs |
+
+### Connection
+
+```json
+{
+  "id": 7,
+  "provider": "webhook",
+  "category": "lead_sync",
+  "scope": "org",
+  "name": "Webhook",
+  "enabled": true,
+  "status": "active",
+  "config": { "url": "https://example.com/hooks/fronko" },
+  "secrets": { "signing_secret": true },
+  "authorized": false,
+  "missing": [],
+  "endpoints": [],
+  "token": null,
+  "last_error": null,
+  "last_error_at": null,
+  "failure_count": 0,
+  "last_synced_at": "2026-10-08T09:20:03Z",
+  "created_by": { "id": 1, "username": "faiz" },
+  "created_at": "2026-10-07T18:02:11Z",
+  "updated_at": "2026-10-08T09:20:03Z"
+}
+```
+
+| Field | Meaning |
+| ----- | ------- |
+| `scope` | `org` or `user` (a personal connection, belonging to whoever created it) |
+| `status` | `pending` (a required setting is missing, an OAuth connection isn't authorised, or a SCIM connection has no token), `active`, or `error` (three final failures in a row; saving settings or switching it off and on resets it) |
+| `enabled` | `false` while paused. Paused and `error` connections get no leads, and missed leads aren't replayed |
+| `config` | The non-secret settings |
+| `secrets` | For each `secret` field, whether it has a value. Secret values are never returned |
+| `authorized` | OAuth connections: whether there's a token |
+| `missing` | Keys of required settings still empty |
+| `endpoints` | Values to enter in the provider: `[{key, label, value, help?}]`, such as SAML's ACS URL or SCIM's tenant URL. Empty without `PUBLIC_URL` |
+| `token` | `scim_token` connections: `{hint, created_at, last_used_at}` for the current token (its last 4 characters), or `null` |
+| `last_error`, `failure_count`, `last_synced_at` | Health: the latest failure that retrying didn't fix, failures in a row, and the last successful delivery |
+
+### `GET /api/integrations/catalog`
+
+Every provider the user may connect, grouped by category, with their connections for the status badges. Members only get providers with the `user` scope.
+
+```json
+{
+  "categories": [
+    { "id": "lead_sync", "label": "Lead Sync", "description": "…", "single": false },
+    { "id": "calendar", "label": "Calendar Booking", "description": "…", "single": true }
+  ],
+  "providers": [
+    {
+      "id": "webhook", "name": "Webhook", "category": "lead_sync", "…": "the rest of the Manifest",
+      "unavailable": "",
+      "testable": true,
+      "connections": [{ "id": 7, "name": "Webhook", "scope": "org", "status": "active", "enabled": true }]
+    }
+  ],
+  "oauth_redirect_url": "https://cards.example.com/api/integrations/oauth/callback"
+}
+```
+
+`unavailable` says why a provider can't be connected here (`"Coming soon"`, `"Needs PUBLIC_URL to be set on the server"`, `"Needs SECRETS_KEY to be set on the server"`), or is empty. `testable` means its connections have a Test or Send test lead action. `oauth_redirect_url` is what to register in an OAuth app, or `""` without `PUBLIC_URL`.
+
+### `GET /api/integrations/connections`
+
+The connections the user manages: the organisation's (admins) and their own. Optional query: `scope=org|me` and `provider=<id>`. Returns an array of [`Connection`](#connection).
+
+### `POST /api/integrations/connections`
+
+```json
+{
+  "provider": "webhook",
+  "scope": "user",
+  "name": "My Zap",
+  "config": { "url": "https://hooks.zapier.com/hooks/catch/123/abc/" },
+  "secrets": { "signing_secret": "…" }
+}
+```
+
+`scope` defaults to the manifest's first scope; `org` needs an admin. `name` defaults to the provider's name (at most 80 characters). Settings are checked against the manifest's fields, then by the provider. Some providers prepare the connection here (SAML makes its key pair). The connection starts `pending` until it has everything it needs.
+
+| Status | Body |
+| ------ | ---- |
+| `201` | [`Connection`](#connection) |
+| `400`, `403`, `404`, `409`, `422` | See the error table above |
+
+### `GET /api/integrations/connections/{id}`
+
+One [`Connection`](#connection).
+
+### `PATCH /api/integrations/connections/{id}`
+
+```json
+{ "name": "Sales Zap", "enabled": false, "config": { "url": "…" }, "secrets": { "signing_secret": "…" } }
+```
+
+Every field is optional. `config` and `secrets` change only the keys given; a secret sent as `""` (or left out) keeps its value. Changing an OAuth app's `client_id` or `client_secret` drops its token, so it has to be authorised again. Saving settings or switching a connection back on gives one in `error` a fresh start. Returns the [`Connection`](#connection).
+
+### `DELETE /api/integrations/connections/{id}`
+
+Deletes the connection, its secrets, its tokens and its activity log. `204 No Content`.
+
+### `POST /api/integrations/connections/{id}/test`
+
+Lead sync connections receive a sample lead (Test Lead, `test.lead@example.com`, `"test": true` in webhook payloads) through the real delivery path. Other providers run their own check (a booking page opens; SAML metadata loads). The outcome is logged. Rate limited: 5 at once per IP, then 1 every 10 seconds.
+
+| Status | Body |
+| ------ | ---- |
+| `200` | `{"ok": true, "summary": "Delivered to example.com (200)", "detail": {"status": 200, "delivery": "test-…", "duration_ms": 182}}`. A failed test is still `200`, with `"ok": false` and the reason in `summary` |
+| `400` | `"this integration has nothing to test"` |
+| `422` | `"finish setting up this connection first"` |
+
+### `GET /api/integrations/connections/{id}/activity`
+
+The connection's log, newest first. Query: `limit` (1–100, default 25) and `before` (an activity id, for the next page). Entries are kept for 90 days.
+
+```json
+[
+  {
+    "id": 412,
+    "kind": "push_lead",
+    "outcome": "retrying",
+    "summary": "the receiver at example.com answered 503",
+    "detail": { "status": 503, "delivery": "lead-1042-7", "response": "Service Unavailable" },
+    "lead_id": 1042,
+    "attempt": 1,
+    "user": null,
+    "created_at": "2026-10-08T09:20:01Z"
+  }
+]
+```
+
+`kind` is `push_lead`, `test`, `setup` (created, settings changed, authorised, token generated), `provision` (SCIM) or `sign_in` (SSO). `outcome` is `success`, `retrying` (will be tried again) or `failed`. `user` is who did it, for actions people take.
+
+### `POST /api/integrations/connections/{id}/tokens`
+
+For `scim_token` connections: generates the bearer token the identity provider calls [SCIM](#scim-20) with, revoking any earlier one at once. The response (`Cache-Control: no-store`) is the only time the token is shown. Shares the auth rate limit.
+
+```json
+{ "token": "fronko_scim_…", "connection": { "…": "the Connection, with its new token hint" } }
+```
+
+### `GET /api/integrations/connections/{id}/oauth/start`
+
+For `oauth2` connections. The browser **navigates** here (it's not an XHR): Fronko sets a short-lived `fronko_oauth` cookie and redirects to the provider's authorisation page with a signed `state`. The connection needs its client ID and secret first, and the server needs `PUBLIC_URL`. On a problem it redirects back to the provider's page with `?oauth_error=<message>`.
+
+### `GET /api/integrations/oauth/callback`
+
+Where providers send the browser back (`state`, and `code` or `error`). Fronko checks the state's signature, expiry, user and the cookie's nonce, exchanges the code with the connection's own client ID and secret, and seals the token. It then redirects to `/dashboard/integrations/{provider}?connection={id}` with `&oauth=connected` or `&oauth_error=<message>`. Register `<PUBLIC_URL>/api/integrations/oauth/callback` as the redirect URL in the OAuth app.
+
+### `GET /api/org/domains` 🛡️
+
+The organisation's email domains:
+
+```json
+[
+  {
+    "id": 3,
+    "domain": "acme.com",
+    "verified_at": null,
+    "created_at": "2026-10-08T10:00:00Z",
+    "txt_name": "acme.com",
+    "txt_value": "fronko-verification=k3j5…"
+  }
+]
+```
+
+A verified domain sends sign-ins by email to the organisation's single sign-on, and lets SSO and SCIM mark addresses on it as verified.
+
+### `POST /api/org/domains` 🛡️
+
+`{"domain": "acme.com"}`. An email address or URL is accepted too; the domain is taken from it. At most 20 per organisation.
+
+| Status | Body |
+| ------ | ---- |
+| `201` | The domain, with the TXT record to create |
+| `400` | `"enter a domain such as example.com"`, `"an organisation can have at most 20 domains"` |
+| `409` | `"you've already added this domain"` |
+
+### `POST /api/org/domains/{id}/verify` 🛡️
+
+Looks up the TXT record. Shares the auth rate limit.
+
+| Status | Body |
+| ------ | ---- |
+| `200` | The domain, now with `verified_at` |
+| `400` | `"the TXT record wasn't found yet; DNS changes can take a while to appear, so try again later"` |
+| `409` | `"another organisation has already verified this domain"` |
+
+### `DELETE /api/org/domains/{id}` 🛡️
+
+`204 No Content`.
+
+## Single sign-on
+
+SAML 2.0 sign-in, with Fronko as the service provider. See [SAML single sign-on](../docs/integrations/saml.md) for the behaviour. These routes only work for organisations with an enabled, active SSO connection.
+
+### `POST /auth/sso/discover`
+
+```json
+{ "identifier": "ada@acme.com" }
+```
+
+Finds where to sign in: `identifier` is an email on a verified domain, or an organisation handle. Shares the auth rate limit.
+
+| Status | Body |
+| ------ | ---- |
+| `200` | `{"url": "/auth/sso/acme", "handle": "acme"}` |
+| `404` | `"we couldn't find single sign-on for that; check the spelling, or sign in with your password"` |
+
+### `GET /auth/sso/{handle}`
+
+The browser navigates here to start signing in. Optional `return_to` (a path on this site; default `/dashboard`). Fronko sets a signed `fronko_sso` cookie naming the request (10 minutes) and redirects to the identity provider (or auto-posts to it, for POST-only providers). Problems redirect to `/login?sso_error=<message>`.
+
+### `GET /auth/saml/{connection id}/metadata`
+
+Fronko's service provider metadata for that connection (`application/samlmetadata+xml`): entity ID, ACS URL and certificate. Its URL is also the entity ID.
+
+### `POST /auth/saml/{connection id}/acs`
+
+The identity provider posts its response here (`SAMLResponse`, form-encoded, up to 1 MiB). It skips the same-origin check, since the identity provider posts from its own origin, and shares the auth rate limit. Fronko checks the signature, audience, destination and timing, and for SP-initiated sign-in that it answers the request in the cookie. It then finds the person by email (creating them if allowed), sets the `fronko_session` cookie and redirects to `return_to`. Refusals redirect to `/login?sso_error=<message>` and are logged on the connection.
+
+## SCIM 2.0
+
+A SCIM 2.0 server ([RFC 7643](https://www.rfc-editor.org/rfc/rfc7643), [RFC 7644](https://www.rfc-editor.org/rfc/rfc7644)) for identity providers to provision people and teams. Setup: [Microsoft Entra ID](../docs/integrations/entra-scim.md).
+
+- **Base URL:** `<PUBLIC_URL>/scim/v2`.
+- **Auth:** `Authorization: Bearer fronko_scim_…`, the token of the organisation's directory connection ([`POST …/tokens`](#post-apiintegrationsconnectionsidtokens)). A missing, revoked or paused token gets `401`; a suspended organisation `403`.
+- **Content type:** `application/scim+json` (plain `application/json` is accepted).
+- **Errors:** SCIM error bodies, `{"schemas":["urn:ietf:params:scim:api:messages:2.0:Error"],"status":"409","scimType":"uniqueness","detail":"…"}`. Refused writes are logged on the connection.
+- **Rate limit:** 200 at once per IP, then 1 every 20 ms.
+
+| Method | Path | Notes |
+| ------ | ---- | ----- |
+| `GET` | `/ServiceProviderConfig`, `/ResourceTypes`, `/Schemas` | Discovery. PATCH and filtering supported; bulk, sort, ETags and password changes aren't |
+| `GET` | `/Users` | `filter` with `eq` on `userName`, `externalId`, `emails`, `emails.value` or `id`; `startIndex`, `count` (up to 200) |
+| `POST` | `/Users` | Creates a member. Needs `userName` and an email (`emails`, or a `userName` that is an email). The email must not belong to another organisation. Emails a temporary password, or an SSO invitation when the organisation has SSO (then there's no password). `active: false` creates them suspended |
+| `GET` | `/Users/{id}` | |
+| `PUT` | `/Users/{id}` | Replaces `userName`, emails, names, `externalId` and `active` |
+| `PATCH` | `/Users/{id}` | `add`, `replace`, `remove` operations, with or without paths (Entra's and Okta's styles). Unknown attributes are ignored |
+| `DELETE` | `/Users/{id}` | Deletes the account, keeping their cards, files and leads (as when an admin deletes someone) |
+| `GET` | `/Groups` | `filter` with `eq` on `displayName`, `externalId` or `id`; `excludedAttributes=members` |
+| `POST` | `/Groups` | Creates a team, with `members: [{value: <user id>}]` |
+| `GET` | `/Groups/{id}` | |
+| `PUT` | `/Groups/{id}` | Replaces the name and members |
+| `PATCH` | `/Groups/{id}` | Renames, and adds or removes members |
+| `DELETE` | `/Groups/{id}` | Deletes the team; its files move to the organisation |
+
+`active: false` suspends a person (signing them out); `true` restores them. The organisation's owner can't be deactivated or deleted (`400`, `scimType: "mutability"`). Addresses on a [verified domain](#get-apiorgdomains-) are marked verified. User and group `id`s are Fronko's numeric ids, as strings.
 
 ## Public
 

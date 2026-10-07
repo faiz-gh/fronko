@@ -98,6 +98,8 @@
 	let submitting = $state(false);
 	let submitError = $state('');
 	let submitted = $state(false);
+	// What the visitor gave the lead form, kept to fill in the booking page.
+	let visitor = $state<{ name: string; email: string } | null>(null);
 	// The number is optional, but if one is typed it must be valid.
 	const leadPhoneInvalid = $derived(!!leadPhone && !isValidPhone(leadPhoneCode, leadPhone));
 
@@ -117,6 +119,7 @@
 				session: tracker.session
 			});
 			submitted = true;
+			visitor = { name: leadName.trim(), email: leadEmail.trim() };
 		} catch (e) {
 			submitError = e instanceof Error ? e.message : 'Failed to send';
 		} finally {
@@ -203,7 +206,7 @@
 			{:else if !card || !profile}
 				<Skeleton class="h-[520px] w-full rounded-3xl" />
 			{:else}
-				<ProfileCard {card} slug={profile.slug} {files} org={profile.org}>
+				<ProfileCard {card} slug={profile.slug} {files} org={profile.org} booking={profile.booking} {visitor}>
 					{#snippet actions()}
 						<Button
 							size="lg"

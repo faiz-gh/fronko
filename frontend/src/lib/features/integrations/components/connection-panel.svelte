@@ -3,7 +3,6 @@
 	import { toast } from 'svelte-sonner';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
-	import CopyIcon from '@lucide/svelte/icons/copy';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import SendIcon from '@lucide/svelte/icons/send';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
@@ -23,7 +22,9 @@
 	import type { CatalogEntry, Connection, TestResult } from '../types';
 	import ActivityLog from './activity-log.svelte';
 	import ConnectionForm from './connection-form.svelte';
+	import CopyField from './copy-field.svelte';
 	import StatusBadge from './status-badge.svelte';
+	import TokenPanel from './token-panel.svelte';
 
 	let {
 		entry,
@@ -43,6 +44,12 @@
 	const fields = $derived(entry.fields);
 	const isOAuth = $derived(entry.auth === 'oauth2');
 	const isLeadSync = $derived(entry.category === 'lead_sync');
+	/** What last_synced_at means for this kind of integration. */
+	const SYNCED_LABEL: Record<string, string> = {
+		lead_sync: 'Last lead sent',
+		directory: 'Last change from the directory',
+		sso: 'Last sign-in'
+	};
 
 	// The form starts from the saved settings, and again after each save.
 	let values = $state<FormValues>(untrack(() => initialValues(entry.fields, connection)));
@@ -146,15 +153,6 @@
 			deleting = false;
 		}
 	}
-
-	async function copyRedirect() {
-		try {
-			await navigator.clipboard.writeText(redirectUrl);
-			toast.success('Copied');
-		} catch {
-			toast.error("Couldn't copy");
-		}
-	}
 </script>
 
 <article id="connection-{connection.id}" class="bg-card scroll-mt-6 rounded-xl border">
@@ -166,26 +164,27 @@
 				<StatusBadge tone={badge.tone} label={badge.label} />
 			</div>
 			<p class="text-muted-foreground text-xs">
-				{#if connection.last_synced_at}
-					Last lead sent <time title={formatDateTime(connection.last_synced_at)}
-						>{timeAgo(connection.last_synced_at)}</time
-					>
+				{#if connection.last_synced_at && SYNCED_LABEL[entry.category]}
+					{SYNCED_LABEL[entry.category]}
+					<time title={formatDateTime(connection.last_synced_at)}>{timeAgo(connection.last_synced_at)}</time>
 				{:else}
 					Added {timeAgo(connection.created_at)}{connection.created_by ? ` by ${connection.created_by.username}` : ''}
 				{/if}
 			</p>
 		</div>
 		<div class="flex items-center gap-2">
-			<Button
-				variant="outline"
-				size="sm"
-				onclick={runTest}
-				disabled={testing || connection.status === 'pending' || dirty}
-				title={dirty ? 'Save your changes first' : undefined}
-			>
-				{#if testing}<Spinner data-icon="inline-start" />{:else}<SendIcon data-icon="inline-start" />{/if}
-				{isLeadSync ? 'Send test lead' : 'Test'}
-			</Button>
+			{#if entry.testable}
+				<Button
+					variant="outline"
+					size="sm"
+					onclick={runTest}
+					disabled={testing || connection.status === 'pending' || dirty}
+					title={dirty ? 'Save your changes first' : undefined}
+				>
+					{#if testing}<Spinner data-icon="inline-start" />{:else}<SendIcon data-icon="inline-start" />{/if}
+					{isLeadSync ? 'Send test lead' : 'Test'}
+				</Button>
+			{/if}
 			<label class="text-muted-foreground flex items-center gap-2 text-sm">
 				<Switch checked={connection.enabled} onCheckedChange={setEnabled} disabled={toggling} aria-label="Enabled" />
 				<span class="hidden sm:inline">{connection.enabled ? 'On' : 'Off'}</span>
@@ -214,6 +213,9 @@
 					{#if isOAuth && !connection.authorized}
 						Then authorise Fronko to use your {entry.name} account.
 					{/if}
+					{#if entry.auth === 'scim_token' && !connection.token}
+						Generate a secret token below and enter it in {entry.name}.
+					{/if}
 				</Alert.Description>
 			</Alert.Root>
 		{/if}
@@ -232,6 +234,24 @@
 				<Tabs.Trigger value="activity" class="flex-none px-0.5">Activity</Tabs.Trigger>
 			</Tabs.List>
 			<Tabs.Content value="settings" class="pt-4">
+				{#if connection.endpoints.length > 0 || entry.auth === 'scim_token'}
+					<div class="mb-5 flex flex-col gap-4">
+						{#if connection.endpoints.length > 0}
+							<div class="bg-muted/40 flex flex-col gap-4 rounded-lg border p-4">
+								<div class="flex flex-col gap-1">
+									<p class="text-sm font-medium">Enter these in {entry.name}</p>
+									<p class="text-muted-foreground text-sm">Fronko's side of the connection.</p>
+								</div>
+								{#each connection.endpoints as ep (ep.key)}
+									<CopyField id="conn-{connection.id}-{ep.key}" label={ep.label} value={ep.value} help={ep.help} />
+								{/each}
+							</div>
+						{/if}
+						{#if entry.auth === 'scim_token'}
+							<TokenPanel {connection} providerName={entry.name} {onchange} />
+						{/if}
+					</div>
+				{/if}
 				<form onsubmit={save} novalidate class="flex flex-col gap-5">
 					<Field.Field>
 						<Field.Label for="conn-{connection.id}-name">Name</Field.Label>
@@ -261,21 +281,7 @@
 								</p>
 							</div>
 							{#if redirectUrl}
-								<Field.Field>
-									<Field.Label for="conn-{connection.id}-redirect">Redirect URL for your app</Field.Label>
-									<div class="flex gap-2">
-										<Input id="conn-{connection.id}-redirect" value={redirectUrl} readonly class="font-mono text-xs" />
-										<Button
-											type="button"
-											variant="outline"
-											size="icon"
-											onclick={copyRedirect}
-											aria-label="Copy redirect URL"
-										>
-											<CopyIcon />
-										</Button>
-									</div>
-								</Field.Field>
+								<CopyField id="conn-{connection.id}-redirect" label="Redirect URL for your app" value={redirectUrl} />
 							{/if}
 							<Button
 								type="button"

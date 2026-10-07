@@ -15,6 +15,20 @@ import (
 	"github.com/faiz-gh/fronko/backend/internal/users"
 )
 
+// SSOPolicy says when single sign-on replaces passwords (the sso package).
+type SSOPolicy interface {
+	// PasswordBlocked reports whether u must sign in with single sign-on
+	// instead of a password, and the path to start it at.
+	PasswordBlocked(ctx context.Context, u *users.User) (signInPath string, blocked bool, err error)
+}
+
+// noSSO is the policy when single sign-on isn't wired in (tests).
+type noSSO struct{}
+
+func (noSSO) PasswordBlocked(context.Context, *users.User) (string, bool, error) {
+	return "", false, nil
+}
+
 // AuthHandler signs people in and out, registers organisations, and runs the
 // self-service account flows (email verification and change, passwords).
 type AuthHandler struct {
@@ -23,6 +37,7 @@ type AuthHandler struct {
 	teams       *teams.Store
 	codes       *users.Codes
 	authService *auth.Service
+	sso         SSOPolicy
 	// cookieSecure sets the Secure flag on the session cookie.
 	cookieSecure bool
 	// dummyHash is compared against when a username doesn't exist, so login
@@ -30,7 +45,10 @@ type AuthHandler struct {
 	dummyHash string
 }
 
-func NewAuthHandler(userStore *users.Store, orgStore *orgs.Store, teamStore *teams.Store, codes *users.Codes, authService *auth.Service, cookieSecure bool) *AuthHandler {
+func NewAuthHandler(userStore *users.Store, orgStore *orgs.Store, teamStore *teams.Store, codes *users.Codes, authService *auth.Service, sso SSOPolicy, cookieSecure bool) *AuthHandler {
+	if sso == nil {
+		sso = noSSO{}
+	}
 	dummy, err := authService.HashPassword("fronko-timing-equalizer")
 	if err != nil {
 		log.Fatalf("hashing dummy password: %v", err)
@@ -41,6 +59,7 @@ func NewAuthHandler(userStore *users.Store, orgStore *orgs.Store, teamStore *tea
 		teams:        teamStore,
 		codes:        codes,
 		authService:  authService,
+		sso:          sso,
 		cookieSecure: cookieSecure,
 		dummyHash:    dummy,
 	}
@@ -66,15 +85,26 @@ type AuthResponse struct {
 	// OrgHandle is the organisation's part of every card link, /p/{org_handle}/{slug}.
 	OrgHandle          string `json:"org_handle"`
 	MustChangePassword bool   `json:"must_change_password"`
+	// HasPassword is false for accounts that only sign in with single sign-on.
+	HasPassword bool `json:"has_password"`
 	// Teams the user is in, with their role in each.
 	Teams []auth.TeamRef `json:"teams"`
+}
+
+// writeSSORequired tells the SPA to send the user to single sign-on.
+func writeSSORequired(w http.ResponseWriter, signInPath string) {
+	httpx.WriteJSON(w, http.StatusForbidden, map[string]string{
+		"error":   "your organisation signs in with single sign-on",
+		"code":    auth.CodeSSORequired,
+		"sso_url": signInPath,
+	})
 }
 
 // authResponse describes the signed-in user, including their organisation's name.
 func (h *AuthHandler) authResponse(ctx context.Context, u *users.User) AuthResponse {
 	res := AuthResponse{
 		ID: u.ID, Username: u.Username, Email: u.Email, EmailVerified: u.EmailVerifiedAt != nil,
-		Role: u.Role, MustChangePassword: u.MustChangePassword,
+		Role: u.Role, MustChangePassword: u.MustChangePassword, HasPassword: u.HasPassword(),
 	}
 	if org, err := h.orgs.GetOrganization(ctx, u.OrgID); err == nil {
 		res.OrgName = org.Name
@@ -137,11 +167,31 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Accounts without a password exist only through single sign-on, so
+	// saying so reveals nothing a password guess would.
+	if !user.HasPassword() {
+		h.authService.CheckPasswordHash(req.Password, h.dummyHash)
+		if path, blocked, err := h.sso.PasswordBlocked(r.Context(), user); err == nil && blocked {
+			writeSSORequired(w, path)
+			return
+		}
+		httpx.WriteError(w, http.StatusUnauthorized, "invalid username or password")
+		return
+	}
 	if !h.authService.CheckPasswordHash(req.Password, user.PasswordHash) {
 		httpx.WriteError(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
 	// Only said after the password checks out, so it doesn't reveal accounts.
+	switch path, blocked, err := h.sso.PasswordBlocked(r.Context(), user); {
+	case err != nil:
+		log.Printf("login sso policy: %v", err)
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	case blocked:
+		writeSSORequired(w, path)
+		return
+	}
 	if user.SuspendedAt != nil {
 		httpx.WriteJSON(w, http.StatusForbidden, map[string]string{
 			"error": "this account is suspended; contact your organisation",

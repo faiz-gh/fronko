@@ -152,3 +152,53 @@ func fieldErr(field, msg string) *FieldError { return &FieldError{Field: field, 
 
 // NewFieldError returns a validation error about one setting.
 func NewFieldError(field, msg string) error { return fieldErr(field, msg) }
+
+// Initializer prepares a new connection before it's first saved, for
+// example by generating a key pair. It may add internal secrets (keys that
+// aren't manifest fields) to settings.Secrets: they're sealed with the rest
+// and never shown.
+type Initializer interface {
+	Init(ctx context.Context, settings *Settings) error
+}
+
+// Env is what a provider may need to know about where it runs.
+type Env struct {
+	// PublicURL is PUBLIC_URL, or "".
+	PublicURL string
+	// OrgHandle is the connection's organisation's handle.
+	OrgHandle string
+}
+
+// Endpoint is a value people copy into the provider's own settings, such
+// as a callback URL or a SCIM base URL.
+type Endpoint struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Value string `json:"value"`
+	Help  string `json:"help,omitempty"`
+}
+
+// Describer is implemented by providers that need values from Fronko
+// entered on their side.
+type Describer interface {
+	Endpoints(conn *Connection, env Env) []Endpoint
+}
+
+// Booking is a booking page shown on a card.
+type Booking struct {
+	// Provider is the provider's id, Name its display name.
+	Provider string `json:"provider"`
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	// Prefill maps the booking page's query parameters to what a visitor
+	// may have told the card: "name", "first_name", "last_name" or "email".
+	Prefill map[string]string `json:"prefill,omitempty"`
+	// Scope says whose page it is: the card holder's own, or the
+	// organisation's default. Set by the core.
+	Scope Scope `json:"scope"`
+}
+
+// BookingLinker is implemented by calendar providers.
+type BookingLinker interface {
+	Booking(settings Settings) *Booking
+}
