@@ -112,6 +112,63 @@ export interface CardData {
 	show_org_logo: boolean;
 	/** How this card's email signature looks. */
 	signature: SignatureSettings;
+	/** How this card's QR code looks. */
+	qr: QrStyle;
+}
+
+export type QrDots = 'square' | 'rounded' | 'dots';
+export type QrCorners = 'square' | 'rounded' | 'dot';
+/** What sits in the middle of the QR code: nothing, the organisation's logo, or an image from Files. */
+export type QrImage = 'none' | 'org_logo' | 'custom';
+
+export interface QrStyle {
+	/** Module colour, #rrggbb. */
+	fg: string;
+	/** Background colour, #rrggbb. */
+	bg: string;
+	dots: QrDots;
+	corners: QrCorners;
+	image: QrImage;
+	/** Public file id of the custom centre image. */
+	image_file: string;
+	/** Width of the centre image as a share of the code (0.15–0.25). */
+	image_scale: number;
+}
+
+export const QR_IMAGE_SCALE = { min: 0.15, max: 0.25, default: 0.2 } as const;
+
+export function defaultQrStyle(): QrStyle {
+	return {
+		fg: '#0a0a0a',
+		bg: '#ffffff',
+		dots: 'square',
+		corners: 'square',
+		image: 'none',
+		image_file: '',
+		image_scale: QR_IMAGE_SCALE.default
+	};
+}
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+export function normalizeQrStyle(raw: unknown): QrStyle {
+	const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+	const base = defaultQrStyle();
+	const pick = <T extends string>(v: unknown, options: readonly T[], fallback: T): T =>
+		typeof v === 'string' && (options as readonly string[]).includes(v) ? (v as T) : fallback;
+	const scale = typeof d.image_scale === 'number' && Number.isFinite(d.image_scale) ? d.image_scale : base.image_scale;
+	const image = pick(d.image, ['none', 'org_logo', 'custom'] as const, 'none');
+	const file = typeof d.image_file === 'string' ? d.image_file : '';
+	return {
+		fg: typeof d.fg === 'string' && HEX.test(d.fg) ? d.fg.toLowerCase() : base.fg,
+		bg: typeof d.bg === 'string' && HEX.test(d.bg) ? d.bg.toLowerCase() : base.bg,
+		dots: pick(d.dots, ['square', 'rounded', 'dots'] as const, 'square'),
+		corners: pick(d.corners, ['square', 'rounded', 'dot'] as const, 'square'),
+		// A custom image with no file falls back to none.
+		image: image === 'custom' && !file ? 'none' : image,
+		image_file: file,
+		image_scale: Math.min(QR_IMAGE_SCALE.max, Math.max(QR_IMAGE_SCALE.min, scale))
+	};
 }
 
 /** Where a visit came from, as marked on the URL written to the tag or QR code. */
@@ -180,7 +237,8 @@ export function emptyCard(name = ''): CardData {
 		blocks: templateBlocks('classic'),
 		tap: { nfc: 'profile', qr: 'profile' },
 		show_org_logo: true,
-		signature: defaultSignature()
+		signature: defaultSignature(),
+		qr: defaultQrStyle()
 	};
 }
 
@@ -253,7 +311,8 @@ export function normalizeCard(raw: unknown): CardData {
 			qr: tapAction((d.tap as Record<string, unknown> | undefined)?.qr)
 		},
 		show_org_logo: typeof d.show_org_logo === 'boolean' ? d.show_org_logo : true,
-		signature: normalizeSignature(d.signature)
+		signature: normalizeSignature(d.signature),
+		qr: normalizeQrStyle(d.qr)
 	};
 }
 
@@ -457,9 +516,14 @@ export function downloadBlob(blob: Blob, filename: string) {
 	URL.revokeObjectURL(url);
 }
 
-/** The card's contact file, built by the server; opening it shows the phone's "Add contact" sheet. */
-export function vcardUrl(slug: string): string {
-	return apiUrl(`/api/profiles/${encodeURIComponent(slug)}/vcard`);
+/**
+ * The card's contact file, built by the server; opening it shows the phone's
+ * "Add contact" sheet. On the public card, `visit` ties the save to the visit
+ * for analytics.
+ */
+export function vcardUrl(slug: string, visit?: { via: string; session: string }): string {
+	const base = apiUrl(`/api/profiles/${encodeURIComponent(slug)}/vcard`);
+	return visit ? `${base}?${new URLSearchParams({ via: visit.via, s: visit.session })}` : base;
 }
 
 export function publicUrl(slug: string): string {

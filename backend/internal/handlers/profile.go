@@ -28,12 +28,15 @@ type ProfileHandler struct {
 	// frontendOrigins are where the app is served when it isn't proxied
 	// same-origin (the CORS allow list); used to link back to a card.
 	frontendOrigins []string
+	// events counts contact saves; nil records nothing.
+	events *EventRecorder
 }
 
-func NewProfileHandler(repo *repository.Repository, frontendOrigins []string) *ProfileHandler {
+func NewProfileHandler(repo *repository.Repository, frontendOrigins []string, events *EventRecorder) *ProfileHandler {
 	return &ProfileHandler{
 		repo:            repo,
 		frontendOrigins: frontendOrigins,
+		events:          events,
 	}
 }
 

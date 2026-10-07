@@ -313,10 +313,12 @@ type Lead struct {
 	Email     string `json:"email"`
 	// Optional; both set or both empty. Dial code with "+" ("+91") and the
 	// national number, digits only.
-	PhoneCountryCode string    `json:"phone_country_code,omitempty"`
-	PhoneNumber      string    `json:"phone_number,omitempty"`
-	Notes            string    `json:"notes"`
-	CreatedAt        time.Time `json:"created_at"`
+	PhoneCountryCode string `json:"phone_country_code,omitempty"`
+	PhoneNumber      string `json:"phone_number,omitempty"`
+	Notes            string `json:"notes"`
+	// Source is how the visitor reached the card: nfc, qr or link ("" for older leads).
+	Source    string    `json:"source,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 	// AssignedUser held the card when the lead arrived; nil means the organisation did.
 	AssignedUser *UserRef `json:"assigned_user"`
 }

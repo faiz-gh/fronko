@@ -29,8 +29,11 @@ import (
 const (
 	leadBurst    = 5
 	leadInterval = 15 * time.Second // one more lead per interval after the burst
-	authBurst    = 10
-	authInterval = 10 * time.Second
+	// Card analytics beacons: a visit sends a handful, a few seconds apart.
+	eventBurst    = 30
+	eventInterval = 2 * time.Second
+	authBurst     = 10
+	authInterval  = 10 * time.Second
 	// Uploads are authenticated, but each one costs bandwidth and a bucket write.
 	uploadBurst    = 10
 	uploadInterval = 6 * time.Second
@@ -97,9 +100,19 @@ func run() error {
 		log.Println("SMTP_HOST not set: emails (verification and reset codes) are logged, not sent")
 	}
 
+	sessions := middleware.SessionCheckerFunc(func(ctx context.Context, userID int64) (models.SessionState, error) {
+		state, err := repo.GetSessionState(ctx, userID)
+		if errors.Is(err, repository.ErrNotFound) {
+			err = middleware.ErrSessionUserNotFound
+		}
+		return state, err
+	})
+
+	events := handlers.NewEventRecorder(repo, authService, sessions, cfg.TrustProxy)
 	authHandler := handlers.NewAuthHandler(repo, authService, mailer, cfg.CookieSecure)
-	profileHandler := handlers.NewProfileHandler(repo, cfg.CORSAllowedOrigins)
-	leadHandler := handlers.NewLeadHandler(repo)
+	profileHandler := handlers.NewProfileHandler(repo, cfg.CORSAllowedOrigins, events)
+	leadHandler := handlers.NewLeadHandler(repo, events)
+	analyticsHandler := handlers.NewAnalyticsHandler(repo, events)
 
 	// File storage needs SECRETS_KEY to encrypt users' bucket keys; without it the feature is off.
 	var box *secrets.Box
@@ -121,15 +134,9 @@ func run() error {
 	teamHandler := handlers.NewTeamHandler(repo)
 	adminHandler := handlers.NewAdminHandler(repo, authService, mailer, cfg.FeedbackNotifyEmail, cfg.CookieSecure)
 
-	sessions := middleware.SessionCheckerFunc(func(ctx context.Context, userID int64) (models.SessionState, error) {
-		state, err := repo.GetSessionState(ctx, userID)
-		if errors.Is(err, repository.ErrNotFound) {
-			err = middleware.ErrSessionUserNotFound
-		}
-		return state, err
-	})
 	jwtMiddleware := middleware.JWTMiddleware(authService, sessions)
 	leadLimiter := middleware.NewRateLimiter(ctx, rate.Every(leadInterval), leadBurst, cfg.TrustProxy)
+	eventLimiter := middleware.NewRateLimiter(ctx, rate.Every(eventInterval), eventBurst, cfg.TrustProxy)
 	authLimiter := middleware.NewRateLimiter(ctx, rate.Every(authInterval), authBurst, cfg.TrustProxy)
 	uploadLimiter := middleware.NewRateLimiter(ctx, rate.Every(uploadInterval), uploadBurst, cfg.TrustProxy)
 	feedbackLimiter := middleware.NewRateLimiter(ctx, rate.Every(feedbackInterval), feedbackBurst, cfg.TrustProxy)
@@ -150,6 +157,7 @@ func run() error {
 	mux.HandleFunc("GET /api/profiles/{slug}", profileHandler.GetProfileBySlug)
 	mux.HandleFunc("GET /api/profiles/{slug}/vcard", profileHandler.VCard)
 	mux.HandleFunc("POST /api/profiles/{id}/leads", leadLimiter.Limit(leadHandler.SubmitLead))
+	mux.HandleFunc("POST /api/profiles/{slug}/events", eventLimiter.Limit(analyticsHandler.Collect))
 	mux.HandleFunc("GET /api/files/{id}", fileHandler.Serve)
 
 	// Signed-in routes that still work before the email is verified, so the
@@ -179,6 +187,13 @@ func run() error {
 	protected.HandleFunc("DELETE /api/me/profiles/{id}", admin(profileHandler.DeleteProfile))
 	protected.HandleFunc("GET /api/me/profiles/{id}/leads", leadHandler.GetLeads)
 	protected.HandleFunc("GET /api/me/leads", leadHandler.ListLeads)
+	protected.HandleFunc("GET /api/me/analytics/summary", analyticsHandler.Summary)
+	protected.HandleFunc("GET /api/me/analytics/timeseries", analyticsHandler.Timeseries)
+	protected.HandleFunc("GET /api/me/analytics/content", analyticsHandler.Content)
+	protected.HandleFunc("GET /api/me/analytics/cards", analyticsHandler.Cards)
+	protected.HandleFunc("GET /api/me/analytics/teams", analyticsHandler.Teams)
+	protected.HandleFunc("GET /api/me/analytics/members", analyticsHandler.Members)
+	protected.HandleFunc("GET /api/me/analytics/activity", analyticsHandler.Activity)
 	protected.HandleFunc("GET /api/me/storage", storageHandler.Get)
 	protected.HandleFunc("PUT /api/me/storage", owner(storageHandler.Put))
 	protected.HandleFunc("POST /api/me/storage/test", owner(storageHandler.Test))
@@ -191,6 +206,7 @@ func run() error {
 	protected.HandleFunc("DELETE /api/me/files/{id}", fileHandler.Delete)
 	protected.HandleFunc("GET /api/me/files/{id}/usage", fileHandler.Usage)
 	protected.HandleFunc("GET /api/me/files/{id}/content", fileHandler.Content)
+	protected.HandleFunc("GET /api/me/files/{id}/image", fileHandler.Image)
 	protected.HandleFunc("POST /api/me/feedback", feedbackLimiter.Limit(feedbackHandler.Create))
 
 	protected.HandleFunc("GET /api/org", admin(orgHandler.Get))
@@ -247,8 +263,9 @@ func run() error {
 	}
 	mux.Handle("/api/admin/", middleware.AdminMiddleware(authService, adminLookup)(adminMux))
 
-	// Daily usage counts for the admin panel's trends.
-	go snapshots.Run(ctx, repo, snapshotInterval)
+	// Daily usage counts for the admin panel's trends, and the analytics
+	// retention sweep on the same schedule.
+	go snapshots.Run(ctx, snapshots.WithAnalyticsRetention(repo, cfg.AnalyticsRetention), snapshotInterval)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,

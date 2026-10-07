@@ -14,6 +14,9 @@
 		href={calendar}
 		target="_blank"
 		rel="noopener noreferrer"
+		data-track="click"
+		data-track-target="booking"
+		data-track-label={calendarName ? `Book a meeting (${calendarName})` : 'Book a meeting'}
 		class="group flex h-12 items-center gap-3 rounded-xl border-2 border-(--card-accent) px-4 text-sm font-semibold transition-colors hover:bg-(--card-accent) hover:text-white"
 	>
 		<span class="text-(--card-accent) transition-colors group-hover:text-white">

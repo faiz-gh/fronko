@@ -21,6 +21,9 @@
 					href={link.href}
 					target="_blank"
 					rel="noopener noreferrer"
+					data-track="click"
+					data-track-target={link.href}
+					data-track-label={link.text}
 					class="bg-muted/60 hover:bg-muted group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors"
 				>
 					<span class="text-(--card-accent)">

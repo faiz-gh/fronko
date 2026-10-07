@@ -1,0 +1,3 @@
+ALTER TABLE leads DROP COLUMN IF EXISTS source;
+DROP TABLE IF EXISTS analytics_salts;
+DROP TABLE IF EXISTS card_events;

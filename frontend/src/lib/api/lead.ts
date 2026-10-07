@@ -10,6 +10,8 @@ export interface Lead {
 	/** National number, digits only. */
 	phone_number?: string;
 	notes: string;
+	/** How the visitor reached the card; absent for leads from before analytics. */
+	source?: 'nfc' | 'qr' | 'link';
 	created_at: string;
 	/** Who held the card when the lead arrived; null means the organisation did. */
 	assigned_user: { id: number; username: string } | null;
@@ -22,6 +24,9 @@ export interface NewLead {
 	phone_country_code: string;
 	phone_number: string;
 	notes: string;
+	/** How the visitor reached the card, and their visit id, for analytics. */
+	source?: 'nfc' | 'qr' | 'link';
+	session?: string;
 }
 
 export interface LeadPage {

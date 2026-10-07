@@ -46,6 +46,14 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `POST`   | [`/api/me/files/bulk`](#post-apimefilesbulk) | ✅ | | Delete or update many files at once |
 | `GET`    | [`/api/me/files/{id}/usage`](#get-apimefilesidusage) | ✅ | | Where a file is used |
 | `GET`    | [`/api/me/files/{id}/content`](#get-apimefilesidcontent) | ✅ | | A file's bytes, from this origin |
+| `GET`    | [`/api/me/files/{id}/image`](#get-apimefilesidimage) | ✅ | | Any image in my organisation, from this origin (QR centre images) |
+| `GET`    | [`/api/me/analytics/summary`](#get-apimeanalyticssummary) | ✅ | | Card analytics totals, previous period and breakdowns |
+| `GET`    | [`/api/me/analytics/timeseries`](#get-apimeanalyticstimeseries) | ✅ | | Views, visitors, saves and leads per day |
+| `GET`    | [`/api/me/analytics/content`](#get-apimeanalyticscontent) | ✅ | | Most used links, quick actions, brochures and images |
+| `GET`    | [`/api/me/analytics/cards`](#get-apimeanalyticscards) | ✅ | | Activity per card |
+| `GET`    | [`/api/me/analytics/teams`](#get-apimeanalyticsteams) | 🛡️ or team lead | | Teams compared, with the previous period |
+| `GET`    | [`/api/me/analytics/members`](#get-apimeanalyticsmembers) | ✅ | | People ranked by their cards' activity |
+| `GET`    | [`/api/me/analytics/activity`](#get-apimeanalyticsactivity) | ✅ | | Latest visits, saves, sent forms and brochure opens |
 | `GET`    | [`/api/org`](#get-apiorg) | 🛡️ | | The organisation |
 | `PUT`    | [`/api/org`](#put-apiorg) | 👑 | | Rename it, set the default storage limit |
 | `GET`    | [`/api/org/branding`](#get-apiorgbranding) | ✅ | | Logo, logo policy and email signature settings |
@@ -86,6 +94,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `GET`    | [`/api/profiles/{slug}/vcard`](#get-apiprofilesslugvcard) | | | The card as a contact file (`.vcf`) |
 | `GET`    | [`/api/files/{id}`](#get-apifilesid) | | | Redirect to a file (short-lived signed URL) |
 | `POST`   | [`/api/profiles/{id}/leads`](#post-apiprofilesidleads) | | ✅ lead | Submit a lead to a profile |
+| `POST`   | [`/api/profiles/{slug}/events`](#post-apiprofilesslugevents) | | ✅ events | Record what a visitor did on a public card |
 
 ✉️ = works before the email is verified. 🔑 = works while the user still has a temporary password. Every other signed-in route needs a verified email and a password the user chose. 🛡️ = owner and admins only. 👑 = owner only. Others get `403`. 🖥️ = platform admins only (`fronko_admin` cookie); anything else gets `401`.
 
@@ -108,6 +117,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 
 - **auth**: burst of 10, then 1 request per 10s. Every route marked "auth" shares one bucket.
 - **lead**: burst of 5, then 1 request per 15s.
+- **events**: burst of 30, then 1 request per 2s. A visit sends a handful of beacons a few seconds apart.
 - **feedback**: burst of 5, then 1 request per 12 minutes.
 
 ## Objects
@@ -215,10 +225,13 @@ The owner's ID and the timestamps are left out on purpose. `files` lists only th
   "phone_country_code": "+91",
   "phone_number": "9876543210",
   "notes": "Great talk!",
+  "source": "qr",
   "created_at": "2026-10-03T12:10:00Z",
   "assigned_user": { "id": 24, "username": "jane" }
 }
 ```
+
+`source` is how the visitor reached the card when they sent the form: `nfc`, `qr` or `link`. It is left out for leads from before analytics (migration 012).
 
 `assigned_user` is who held the card when the lead arrived (`null`: the organisation). Leads stay with that person when the card is reassigned.
 
@@ -226,7 +239,7 @@ The owner's ID and the timestamps are left out on purpose. `files` lists only th
 
 ### `data`
 
-`data` is a free-form JSON **object** that the frontend owns. The backend only checks that it is an object, and stores `{}` when it's missing or `null`. It does read a few keys: `avatar_file`, `cover_file`, `documents[].file` and `blocks[].images[].file` name library files, which must be visible to the editor when newly added, and which `GET /api/profiles/{slug}` resolves (up to 64 per card). The vCard endpoint reads the contact fields. `show_org_logo` (boolean) and `signature` (the card's email signature choices) are frontend-only keys the backend just stores. For the shape the web app uses, see [`CardData` in the frontend docs](../frontend/README.md#card-data-model).
+`data` is a free-form JSON **object** that the frontend owns. The backend only checks that it is an object, and stores `{}` when it's missing or `null`. It does read a few keys: `avatar_file`, `cover_file`, `documents[].file` and `blocks[].images[].file` name library files, which must be visible to the editor when newly added, and which `GET /api/profiles/{slug}` resolves (up to 64 per card). The vCard endpoint reads the contact fields. `show_org_logo` (boolean), `signature` (the card's email signature choices) and `qr` (the QR code's colours, dot and corner style and centre image) are frontend-only keys the backend just stores. For the shape the web app uses, see [`CardData` in the frontend docs](../frontend/README.md#card-data-model).
 
 ---
 
@@ -696,6 +709,104 @@ Where a file the caller can see is used:
 
 The bytes of a file the caller can see, served as an attachment with `Cache-Control: private, no-store`. The app uses this to crop an existing image into a new copy, because the bucket usually doesn't allow the browser to read objects cross-origin. Returns `404` for a file the caller can't see, and `502` if storage can't be read.
 
+### `GET /api/me/files/{id}/image`
+
+The bytes of **any image in the caller's organisation**, served inline from this origin with `Cache-Control: private, no-store`. The app draws a card's QR code with the organisation logo or a chosen image in the middle, and needs the image's bytes to embed it in the SVG and PNG downloads. The bucket usually blocks cross-origin reads, and members can't always see the organisation's own files, so `/content` won't do. Images on cards are public through [`GET /api/files/{id}`](#get-apifilesid) anyway; this only removes the cross-origin step. PDFs, unknown ids and other organisations' files return `404`; unreadable storage returns `502`.
+
+---
+
+## Analytics 🔒
+
+What visitors do on public cards. The public card page reports events to [`POST /api/profiles/{slug}/events`](#post-apiprofilesslugevents), and the server records contact saves and sent forms itself. These endpoints only return aggregates; no response includes a visitor hash or visit id.
+
+**Who sees what.** The same rules as leads apply: an event belongs to whoever held the card when it happened. Members see their own cards' activity, team leads also see their teammates', and owners and admins see the whole organisation.
+
+**Shared query parameters** (all optional):
+
+| Parameter | Meaning |
+| --------- | ------- |
+| `from`, `to` | RFC 3339 timestamps. Defaults to the last 30 days. The period must be longer than zero and at most 366 days. |
+| `tz` | IANA time zone that days and hours are counted in (default `UTC`). A legacy name the database doesn't know, such as `Asia/Calcutta`, falls back to that zone's current UTC offset. |
+| `profile_id` | One card. Cards the caller can't see simply match nothing. |
+| `user_id` | Activity while this person held the card. |
+| `team_id` | Activity while someone in this team held the card. Admins, or that team's lead; others get `403`. |
+
+Invalid values return `400` (`"from must be an RFC 3339 timestamp"`, `"invalid tz"`, `"invalid team_id"` and so on).
+
+**Definitions.**
+- A **visit** is one page load of the card (the `session` the tracker sends). **Views** count visits.
+- **Unique visitors** are distinct visitor hashes. The hash salt changes every day, so this counts distinct visitors per day, summed over the period.
+- An **engaged** visit clicked something, opened a brochure or image, saved the contact, opened the form, shared the card, or scrolled at least half way.
+- An **action** visit saved the contact or opened the form.
+- **Scroll depth** is each visit's deepest 25 / 50 / 75 / 100 % mark. It is only measured once the visitor scrolls, so cards shorter than the screen record none.
+- **Time on card** is how long the card was on screen in a visit, capped at an hour.
+
+### `GET /api/me/analytics/summary`
+
+```json
+{
+  "from": "2026-09-07T11:02:40Z",
+  "to": "2026-10-07T11:02:40Z",
+  "current": {
+    "views": 247, "unique_visitors": 247, "sessions": 247,
+    "nfc_views": 90, "qr_views": 82, "link_views": 75,
+    "saves": 52, "form_opens": 21, "leads": 68,
+    "doc_opens": 40, "clicks": 98, "gallery_opens": 0, "shares": 15,
+    "engaged_sessions": 192, "action_sessions": 73, "repeat_visitors": 0,
+    "avg_scroll_depth": 55.2, "median_time_ms": 73000
+  },
+  "previous": { "views": 133, "...": "same fields, for the same-length period just before" },
+  "devices": { "mobile": 167, "tablet": 47, "desktop": 33 },
+  "lead_sources": { "nfc": 3, "qr": 5, "link": 1, "unknown": 59 },
+  "heatmap": [[0, 0, 1, "… 24 hours"], "… 7 days, Sunday first"],
+  "scroll_depths": [39, 49, 54, 37, 68],
+  "time_buckets": [14, 35, 46, 152, 0]
+}
+```
+
+- `leads` comes from the leads table, so it includes leads from before analytics.
+- `repeat_visitors` counts visitors who came back for another visit on the same day.
+- `scroll_depths` counts visits by their deepest scroll: under 25 %, 25 %, 50 %, 75 % and 100 %.
+- `time_buckets` counts visits by time on card: under 10 s, 10–30 s, 30 s–1 min, 1–3 min, and 3 min or more.
+- `heatmap` counts views by weekday (`0` = Sunday) and hour, in `tz`.
+
+### `GET /api/me/analytics/timeseries`
+
+`{"points": [...]}`: one point per day of the period in `tz`, oldest first, including empty days. Each point is `{date, views, nfc_views, qr_views, link_views, unique_visitors, saves, leads}`, with `date` as `YYYY-MM-DD`.
+
+### `GET /api/me/analytics/content`
+
+`{"items": [...]}`: the 100 most used targets, busiest first. Each item is `{type, target, label, count, unique}`:
+
+| `type` | `target` |
+| ------ | -------- |
+| `click` | A link's URL, or a quick action: `email`, `call`, `website` or `booking` |
+| `doc_open` | The brochure's file id. The same brochure on several cards adds up. |
+| `gallery_open` | The image's file id |
+
+`label` is the latest label seen (the link or brochure title), and `unique` counts distinct visitors.
+
+### `GET /api/me/analytics/cards`
+
+`{"cards": [...]}`: every card the caller can see that matches the filters, busiest first, including cards with no views. Each card is `{profile_id, slug, name, assigned_user, views, unique_visitors, nfc_views, qr_views, link_views, saves, form_opens, leads, doc_opens, last_viewed_at}`. `last_viewed_at` is the card's latest view ever, not just in the period, or `null` if it has never been viewed.
+
+### `GET /api/me/analytics/teams`
+
+Owners and admins get every team; team leads get the teams they lead; anyone else gets `403`. `team_id` narrows it to one team. `profile_id` and `user_id` are ignored.
+
+`{"teams": [...]}`, busiest first. Each team is `{id, name, color, members, cards, active_cards, views, unique_visitors, sessions, engaged_sessions, saves, form_opens, leads, prev_views, prev_saves, prev_leads}`.
+- `cards` counts the cards held by the team's people right now.
+- `active_cards` counts those viewed in the period.
+- The `prev_*` fields cover the same-length period just before.
+
+### `GET /api/me/analytics/members`
+
+`{"members": [...]}`: the people the caller can see (members see only themselves), optionally only those in `team_id`. They are ranked by views, at most 200. Each person is `{user_id, username, cards, views, unique_visitors, saves, form_opens, doc_opens, leads}`.
+
+### `GET /api/me/analytics/activity`
+
+`{"items": [...]}`: the latest visits, contact saves, sent forms and brochure opens, newest first. `limit` is 1–50 (default 15). Each item is `{type, source, label, profile_id, card_name, slug, assigned_user, created_at}`, where `type` is `view`, `vcard`, `form_submit` or `doc_open`.
+
 ---
 
 ## Organisation 🔒 🛡️
@@ -898,6 +1009,8 @@ Looks up a profile for the public card page (`/p/{slug}`). The slug match is cas
 
 ### `GET /api/profiles/{slug}/vcard`
 
+Optional query: `via` (`nfc`, `qr` or `link`) and `s` (the visit's id from the public page's tracker). Each download counts as a contact save in [analytics](#analytics-), tied to that visit. Bots, and people signed in to the card's own organisation, aren't counted.
+
 The card as a vCard 3.0 file (`text/vcard; charset=utf-8`, `Content-Disposition: inline; filename="{slug}.vcf"`, not cached). Opening it in a phone browser shows the "Add contact" sheet: the public page's **Save contact** button links here, and the page navigates here itself when an NFC tap or QR scan is set to save the contact.
 
 It includes the name (split into given and family name on the last space), company, title, email, mobile (`phone_country_code` + `phone_number`), website (only if it's a valid http(s) URL), location as the work address, bio as the note, and a link back to the card. That link uses the page's origin when the `Referer` is one of `CORS_ALLOWED_ORIGINS`, and otherwise this request's own origin (`X-Forwarded-Proto` and `Host` from the proxy).
@@ -931,7 +1044,9 @@ A visitor shares their details with the profile owner. The path takes the numeri
   "email": "jane@example.com",
   "phone_country_code": "+91",
   "phone_number": "98765 43210",
-  "notes": "Great talk!"
+  "notes": "Great talk!",
+  "source": "qr",
+  "session": "5f0c…uuid"
 }
 ```
 
@@ -941,6 +1056,7 @@ A visitor shares their details with the profile owner. The path takes the numeri
 | `email` | Required, at most 254 bytes. Must be a bare address: `Jane <jane@x.com>` is rejected |
 | `phone_country_code`, `phone_number` | Optional, but both or neither. Spaces, `-`, `.` and parentheses are stripped. The dial code must be `+` and 1–3 digits (`+` is added if missing). The number must be 4–14 digits, with at most 15 digits in total (E.164). They are stored without separators |
 | `notes` | Optional, at most 2000 bytes |
+| `source`, `session` | Optional. How the visitor reached the card (`nfc`, `qr`, anything else counts as `link`), stored on the lead. The visit id puts the send on that visit's timeline in analytics |
 
 | Status | Body |
 | ------ | ---- |
@@ -950,6 +1066,46 @@ A visitor shares their details with the profile owner. The path takes the numeri
 | `429` | Rate limited |
 
 The server accepts leads even when the card's `data.collect_leads` is `false`. That flag only hides the form in the UI.
+
+### `POST /api/profiles/{slug}/events`
+
+The public card's tracker reports what a visitor does. It sends batches with `navigator.sendBeacon`, so the body is JSON sent as `text/plain` (any content type is accepted). The session cookie, if any, comes along because the request is same-origin.
+
+```json
+{
+  "session": "5f0c2b4e-8d1a-4c3e-9b7f-2a6d1e0c9f11",
+  "source": "qr",
+  "events": [
+    { "type": "view" },
+    { "type": "scroll", "value": 50 },
+    { "type": "click", "target": "https://linkedin.com/in/jane", "label": "LinkedIn" },
+    { "type": "doc_open", "target": "k3j9x2m4p8q1", "label": "Company brochure" },
+    { "type": "leave", "value": 42000 }
+  ]
+}
+```
+
+| Field | Rules |
+| ----- | ----- |
+| `session` | A UUID made for this page load and kept only in the tab's memory. Anything else is stored as no session |
+| `source` | `nfc` or `qr` (from the `?via=` marker); anything else is `link` |
+| `events` | Up to 20; extra events are dropped. `type` is `view`, `click`, `scroll`, `doc_open`, `gallery_open`, `form_open`, `share` or `leave`. Other types are dropped, including `vcard` and `form_submit`, which only the server records |
+| `target`, `label` | Trimmed and cut to 300 and 120 characters |
+| `value` | `scroll`: must be 25, 50, 75 or 100. `leave`: time on card in ms, clamped to 0–3,600,000. Ignored for other types |
+
+It always answers **`204`** with no body, whether or not anything was stored, so it reveals nothing about the card. The only exception is `400` for a body that isn't JSON. Nothing is stored when:
+- the slug is unknown or the organisation is suspended;
+- the user agent is empty or looks like a bot, crawler, link previewer or script;
+- the request carries a valid session for a user in the card's own organisation, so previews don't count;
+- no events are valid.
+
+**Privacy.** No IP address is stored. Each event gets `device` (`mobile`, `tablet` or `desktop`, from the user agent), the referring site's host when it's another site, and a visitor hash: SHA-256 of a random daily salt, the client IP, the user agent and the card id. Salts live in `analytics_salts` and are deleted after a day, so a hash can't be linked back to an address, to the same person on another day, or to the same person on another card. Events are deleted after `ANALYTICS_RETENTION_DAYS` (default 395).
+
+| Status | Body |
+| ------ | ---- |
+| `204` | Nothing |
+| `400` | `"invalid request body"` |
+| `429` | Rate limited (`events` budget) |
 
 ---
 

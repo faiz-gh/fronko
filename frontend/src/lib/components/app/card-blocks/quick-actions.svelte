@@ -10,9 +10,14 @@
 
 	const quick = $derived(
 		[
-			card.email.trim() && { label: 'Email', href: `mailto:${card.email.trim()}`, icon: MailIcon },
-			card.phone_number && { label: 'Call', href: `tel:${e164(card.phone_country_code, card.phone_number)}`, icon: PhoneIcon },
-			safeUrl(card.website) && { label: 'Website', href: safeUrl(card.website)!, icon: GlobeIcon }
+			card.email.trim() && { kind: 'email', label: 'Email', href: `mailto:${card.email.trim()}`, icon: MailIcon },
+			card.phone_number && {
+				kind: 'call',
+				label: 'Call',
+				href: `tel:${e164(card.phone_country_code, card.phone_number)}`,
+				icon: PhoneIcon
+			},
+			safeUrl(card.website) && { kind: 'website', label: 'Website', href: safeUrl(card.website)!, icon: GlobeIcon }
 		].filter((q) => !!q)
 	);
 </script>
@@ -24,6 +29,9 @@
 				href={q.href}
 				target={q.label === 'Website' ? '_blank' : undefined}
 				rel="noopener noreferrer"
+				data-track="click"
+				data-track-target={q.kind}
+				data-track-label={q.label}
 				class="group flex w-16 flex-col items-center gap-1.5"
 			>
 				<span

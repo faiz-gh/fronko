@@ -67,11 +67,14 @@ type LeadPage struct {
 
 type LeadHandler struct {
 	repo *repository.Repository
+	// events counts sent contact forms; nil records nothing.
+	events *EventRecorder
 }
 
-func NewLeadHandler(repo *repository.Repository) *LeadHandler {
+func NewLeadHandler(repo *repository.Repository, events *EventRecorder) *LeadHandler {
 	return &LeadHandler{
-		repo: repo,
+		repo:   repo,
+		events: events,
 	}
 }
 
@@ -88,6 +91,9 @@ func (h *LeadHandler) SubmitLead(w http.ResponseWriter, r *http.Request) {
 		PhoneCountryCode string `json:"phone_country_code"`
 		PhoneNumber      string `json:"phone_number"`
 		Notes            string `json:"notes"`
+		// How the visitor reached the card (nfc, qr or link) and their visit's id, for analytics.
+		Source  string `json:"source"`
+		Session string `json:"session"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -122,6 +128,7 @@ func (h *LeadHandler) SubmitLead(w http.ResponseWriter, r *http.Request) {
 		PhoneCountryCode: phoneCode,
 		PhoneNumber:      phoneNumber,
 		Notes:            req.Notes,
+		Source:           normalizeSource(req.Source),
 	}
 
 	// A missing profile surfaces as a foreign key violation, mapped to ErrNotFound.
@@ -134,6 +141,8 @@ func (h *LeadHandler) SubmitLead(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to submit lead")
 		return
 	}
+	// The lead is the record; the event only puts the send on the visit's timeline.
+	h.events.Record(r, profileID, 0, lead.Source, req.Session, repository.CardEvent{Type: models.EventFormSubmit})
 
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "ok"})
 }

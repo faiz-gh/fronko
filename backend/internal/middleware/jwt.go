@@ -88,6 +88,12 @@ func PrincipalFrom(ctx context.Context) Principal {
 	return p
 }
 
+// WithPrincipal returns ctx carrying p, as JWTMiddleware does. For tests and
+// handlers that authenticate some other way.
+func WithPrincipal(ctx context.Context, p Principal) context.Context {
+	return context.WithValue(ctx, principalKey, p)
+}
+
 // SessionCookieName is the HttpOnly cookie that carries the JWT.
 const SessionCookieName = "fronko_session"
 

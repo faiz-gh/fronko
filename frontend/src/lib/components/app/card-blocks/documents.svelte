@@ -26,6 +26,9 @@
 						href={doc.href}
 						target="_blank"
 						rel="noopener noreferrer"
+						data-track="doc_open"
+						data-track-target={doc.file}
+						data-track-label={doc.title}
 						class="bg-muted/60 hover:bg-muted group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors"
 					>
 						<span class="text-(--card-accent)"><FileTextIcon class="size-[18px]" /></span>

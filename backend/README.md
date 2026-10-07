@@ -23,6 +23,7 @@ For the full endpoint reference, see [API.md](./API.md).
 - [Request pipeline](#request-pipeline)
 - [Authentication & sessions](#authentication--sessions)
 - [Platform admin](#platform-admin)
+- [Card analytics](#card-analytics)
 - [Security measures](#security-measures)
 - [Error handling conventions](#error-handling-conventions)
 - [Testing](#testing)
@@ -61,12 +62,13 @@ backend/
 │   │   ├── feedback.go           # POST /api/me/feedback (users sending product feedback)
 │   │   ├── branding.go           # GET/PUT /api/org/branding: logo, logo policy, signature settings
 │   │   ├── account.go            # Email verification and change, forgot/reset password, change password
-│   │   ├── files.go              # File library: upload (type sniffing, previews), list/search/counts, update/move, bulk, usage, content, public redirect, grants
+│   │   ├── files.go              # File library: upload (type sniffing, previews), list/search/counts, update/move, bulk, usage, content, same-origin image, public redirect, grants
 │   │   ├── teams.go              # /api/org/teams: team CRUD, members, a user's teams
 │   │   ├── storage.go            # StorageService (decrypt keys → bucket client) and /api/me/storage
 │   │   ├── profile.go            # Profile CRUD and public slug lookup
 │   │   ├── vcard.go              # GET /api/profiles/{slug}/vcard: the card as a vCard 3.0 file
 │   │   ├── lead.go               # Lead submission (public), paginated listing and per-profile listing (owner)
+│   │   ├── analytics.go          # EventRecorder (visitor hash, bot and same-org filtering), POST /api/profiles/{slug}/events, /api/me/analytics/*
 │   │   ├── respond.go            # JSON encode/decode helpers, body size cap
 │   │   └── session.go            # Session cookie set/clear
 │   ├── middleware/
@@ -78,13 +80,16 @@ backend/
 │   ├── mail/                     # SMTP sender (implicit TLS / STARTTLS), log fallback, code and notice templates
 │   ├── models/models.go          # Organization, OrgBranding, User, Team, TeamMember, EmailCode, Profile, PublicProfile, Lead, StorageSettings, File, FileUsage
 │   ├── models/admin.go           # PlatformAdmin, OrgUsage, PlatformSummary, UsagePoint, Feedback, AuditEntry
+│   ├── models/analytics.go       # Event types and sources; AnalyticsSummary, AnalyticsPoint, ContentStat, CardStat, TeamStat, MemberStat, ActivityItem
 │   ├── repository/repository.go  # Users, profiles, leads, storage settings; Scope and visibleTo(); maps pg errors to ErrNotFound / ErrConflict
 │   ├── repository/files.go       # Files: visibility rules, listing/search/counts, updates, usage, grants; card file refs (CardFileRefs, file_refs sync)
 │   ├── repository/teams.go       # Teams and memberships
 │   ├── repository/org.go         # Organisation settings, org users, branding
 │   ├── repository/admin.go       # Platform admins, org usage aggregates, snapshots, suspension, audit log
 │   ├── repository/feedback.go    # Feedback and replies
+│   ├── repository/analytics.go   # Recording card events, daily salts, retention purge, and the scoped analytics queries
 │   ├── snapshots/scheduler.go    # Hourly usage snapshot for the admin trends
+│   ├── snapshots/retention.go    # Wraps the snapshot run to also delete expired analytics events and salts
 │   ├── secrets/secrets.go        # AES-256-GCM sealing for storage keys at rest
 │   └── storage/storage.go        # S3 client (aws-sdk-go-v2), endpoint validation, SSRF-safe dialer
 ├── migrations/                   # golang-migrate SQL files (up/down)
@@ -161,6 +166,7 @@ All configuration comes from environment variables and is read once at startup b
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | | none | SMTP credentials. Auth is skipped when the username is empty. Credentials are never sent over an unencrypted connection (except to localhost). |
 | `SMTP_FROM`     | with `SMTP_HOST` | none | Sender, e.g. `Fronko <no-reply@fronko.app>`. Must be an address your provider lets you send from. |
 | `FEEDBACK_NOTIFY_EMAIL` | | none | Address emailed for each piece of product feedback (with the sender as Reply-To). Also the Reply-To on admin replies and on suspension emails to owners. Unset: feedback only shows up in the admin panel. A malformed value stops startup. |
+| `ANALYTICS_RETENTION_DAYS` | | `395` | Days of card analytics events to keep (1–3650). Older events, and visitor-hash salts older than yesterday, are deleted on every hourly snapshot run. A value outside the range stops startup. |
 | `STORAGE_ALLOW_PRIVATE_ENDPOINTS` | | `false` | `true` lets storage endpoints use `http` and private or loopback addresses, e.g. a local MinIO. **Development only**: in production it would let users make the server connect to internal hosts. |
 
 ### Server and pool settings
@@ -177,7 +183,8 @@ These are hard-coded:
 
 ## Database
 
-The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`, 006 changing a verified email, 007 organisations and users, 008 platform admin, 009 organisation branding, 010 teams and file purposes, 011 team and branding usage snapshots).
+The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`, 006 changing a verified email, 007 organisations and users, 008 platform admin, 009 organisation branding, 010 teams and file purposes, 011 team and branding usage snapshots, 012 card analytics).
+- **Card analytics (012).** `card_events`: one row per thing a visitor did on a public card. Columns: `org_id`, `profile_id` (both cascade), `assigned_user_id` (who held the card then; `SET NULL`), `session_id` (the visit), `visitor_hash`, `type` (`view`, `click`, `scroll`, `doc_open`, `gallery_open`, `vcard`, `form_open`, `form_submit`, `share`, `leave`), `source` (`nfc`, `qr`, `link`), `target`, `label`, `value` (scroll % or time on card in ms), `device`, `referrer_host`, `created_at`. It is indexed on `(profile_id, created_at)`, `(org_id, created_at)` and `(org_id, assigned_user_id, created_at)`. `analytics_salts` holds one random salt per UTC day. `leads.source` records how the visitor arrived (`NULL` for older leads).
 - **Usage snapshots (011).** `org_usage_snapshots.team_count`, and `platform_usage_snapshots.team_count`, `orgs_with_teams` and `orgs_with_logo` (all default 0, so days before 011 read as zero).
 - **Teams and file purposes (010).** `teams` (per org; names unique ignoring case) and `team_members` (`role` `lead` or `member`; a user can be in many teams; both FKs cascade). `files` gains a fourth `area`, `team` (with `team_id`, enforced by `files_team_area_check`), a `purpose` (`logo`, `banner`, `avatar`, `cover`, `gallery`, `brochure`, `other`), the `width`/`height`/`pages` the browser reported, an optional `thumb_key` (a small preview next to the original) and `updated_at`. `file_team_grants` gives an org or shared file to a whole team. `file_refs` (`file_id`, `profile_id`, `slot`) records which card slot uses which file; `CreateProfile`/`UpdateProfile` rewrite a card's rows in the same transaction (`syncFileRefs`), and it drives `use_count` and `GET /api/me/files/{id}/usage`. The migration backfilled `file_refs` from `profiles.data` and guessed each file's purpose (PDFs → brochure, the org logo and banner, then card slots). `DeleteTeam` moves the team's files to `org` before deleting it.
 - **Branding (009).** `organizations.logo_file` (public id of an org or shared image, `NULL`: no logo), `logo_policy` (`required` or `optional`, checked by `organizations_logo_policy_check`), and `signature` JSONB (`locked_template`, `brand_color`, `disclaimer`, `banner_file`, `banner_url`; see `models.OrgSignature`). `DeleteFile` clears `logo_file` or `signature.banner_file` in the same statement when they name the deleted file. Email signatures themselves are built in the browser; per-card signature choices live in `profiles.data`.
@@ -355,6 +362,25 @@ There's no sign-up page. Accounts are made from the command line, which reads `D
 
 **Audit log.** Admin sign-ins, suspensions, reinstatements, feedback replies and status changes each add an `admin_audit_log` row.
 
+## Card analytics
+
+**Recording.** The public card page batches events and sends them with `navigator.sendBeacon` to `POST /api/profiles/{slug}/events` (`eventLimiter`). `AnalyticsHandler.Collect` keeps only the types a browser may report: contact saves (`vcard`) and sent forms (`form_submit`) are recorded by the server in `VCard` and `SubmitLead`, so they can't be faked or double-counted. It cleans each event (`cleanEvent`) and hands the batch to `EventRecorder.Record`, which:
+
+1. Drops the request if it comes from a bot (empty or bot-like user agent).
+2. Drops it if it carries a valid session for someone in the card's own organisation (`viewerOrg`), so owners previewing cards don't count.
+3. Hashes the visitor: `SHA-256(daily salt ‖ client IP ‖ user agent ‖ profile id)`. The salt is cached in memory per day and created in the database on first use (`AnalyticsSalt`), so several replicas agree.
+4. Inserts the batch in one statement (`RecordCardEvents`). It takes the org and current assignee from `profiles`, and records nothing for suspended organisations.
+
+Raw IP addresses are never stored. Because each salt is deleted after a day, a hash can't be linked to an address later, to the same person on another day, or to the same person on another card. Failures are logged, never shown to visitors, and `Collect` always answers `204`.
+
+**Retention.** `snapshots.WithAnalyticsRetention` wraps the hourly snapshot run. It first calls `PurgeAnalytics`, which deletes events older than `ANALYTICS_RETENTION_DAYS` and every salt but today's and yesterday's.
+
+**Reporting.** `/api/me/analytics/*` goes through `analyticsFilter` (period, `tz`, card, person and team filters; a team filter needs an admin or that team's lead) and then the repository queries.
+- `eventScope(alias)` limits events exactly like leads: `visibleTo(assigned_user_id)` in the caller's org, plus the filters.
+- Visit-level numbers (engaged, action, scroll depth, time on card, repeat visitors) group events by `session_id` (`sessionStats`).
+- Days and hours are computed in Postgres with `AT TIME ZONE`. Legacy zone names Postgres doesn't know (`Asia/Calcutta`) fall back to the zone's current offset in POSIX form (`posixZone`); the result is cached per name.
+- `AnalyticsTeams` attributes events, leads and cards to each team through `team_members`. Leads only see the teams they lead.
+
 ## Security measures
 
 | Threat | Mitigation | Where |
@@ -385,6 +411,8 @@ There's no sign-up page. Accounts are made from the command line, which reads `D
 | IDOR on profiles and leads | Ownership enforced in the SQL `WHERE` clause; foreign profiles return 404 | `repository/repository.go` |
 | Leaking owner info publicly | Public lookups return `PublicProfile` (id, slug, data), with no `user_id` or timestamps | `models/models.go` |
 | SQL injection | All queries are parameterized | `repository/repository.go` |
+| Tracking card visitors | No cookies and no stored IPs. The visitor hash uses a daily random salt that is deleted after a day. Analytics endpoints return aggregates only, scoped like leads. Events expire after `ANALYTICS_RETENTION_DAYS` | `handlers/analytics.go`, `repository/analytics.go` |
+| Inflated or faked analytics | Bots and the card's own organisation are skipped. Contact saves and sent forms are only recorded server-side. Event types, lengths and values are validated, batches are capped at 20 and per-IP rate limited | `handlers/analytics.go` |
 
 ### Rate limits
 
@@ -394,6 +422,7 @@ Defined as constants in `cmd/fronko/main.go`:
 | ------- | ---------- | ----- | ------ |
 | `authLimiter` | `POST /auth/login`, `/auth/register`, `/auth/password/forgot`, `/auth/password/reset`, `PUT /api/me/email`, `POST /api/me/email/verify`, `POST /api/me/email/resend`, `POST /api/me/email/change`, `POST /api/me/email/change/confirm` and `PUT /api/me/password` (one shared bucket per IP) | 10 | 1 per 10s |
 | `leadLimiter` | `POST /api/profiles/{id}/leads` | 5 | 1 per 15s |
+| `eventLimiter` | `POST /api/profiles/{slug}/events` | 30 | 1 per 2s |
 | `uploadLimiter` | `POST /api/me/files` | 10 | 1 per 6s |
 | `feedbackLimiter` | `POST /api/me/feedback` | 5 | 1 per 12 min |
 
@@ -418,12 +447,12 @@ Unit tests cover:
 - `auth`: email code format, HMAC binding to user/purpose/key, session version in the JWT, and admin and user tokens not being interchangeable.
 - `mail`: message building (headers, multipart, Reply-To), header-injection rejection, the email-changed notice (no code, masked address), the member invite (sign-in details in text and escaped HTML), `MaskEmail`, and the feedback, reply and suspension messages (control characters stripped from subjects).
 - `middleware`: rate limiter, same-origin check, CORS, the principal and suspension checks in `JWTMiddleware` (including `org_suspended` and rejecting admin tokens), `RequirePasswordSet`, the role gates, and `AdminMiddleware` (user tokens, revoked and deleted admins).
-- `snapshots`: the scheduler runs at start and on each tick, and stops with its context.
+- `snapshots`: the scheduler runs at start and on each tick, and stops with its context. The analytics retention wrapper purges before each snapshot and doesn't block it on failure.
 - `secrets`: sealing round trip, tamper, wrong AAD and wrong key.
 - `storage`: endpoint validation, private-address dialing, the connection probe against a fake S3 server.
-- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals (avatar, cover, brochures, gallery images), vCard building (escaping, name split, phone, unsafe websites) and the origin of the card link inside it, lead phone normalization and validation, upload areas by role, the optional quota field, organisation-name validation, and feedback validation.
+- `handlers`: upload type sniffing and size limits, file-name cleaning, which file ids a public card reveals (avatar, cover, brochures, gallery images), vCard building (escaping, name split, phone, unsafe websites) and the origin of the card link inside it, lead phone normalization and validation, upload areas by role, the optional quota field, organisation-name validation, and feedback validation. For analytics: which event types a browser may send, scroll and time clamping, device classes, sources, the visitor hash (stable per day, different per salt and card), bot detection, `Collect` rejecting bad bodies, the filter parameters (period limits, time zones, team access) and the POSIX zone fallback.
 
-The integration tests (`internal/repository/repository_test.go` and `admin_test.go`) sit behind the `integration` build tag. They read **`TEST_DATABASE_URL`**, not `DATABASE_URL`, because they `TRUNCATE` every table. Point them at a disposable database that already has the migrations applied:
+The integration tests (`internal/repository/repository_test.go`, `admin_test.go` and `analytics_test.go`) sit behind the `integration` build tag. They read **`TEST_DATABASE_URL`**, not `DATABASE_URL`, because they `TRUNCATE` every table. Point them at a disposable database that already has the migrations applied:
 
 ```bash
 export TEST_DATABASE_URL='postgres://fronko:password@localhost:5432/fronko_test?sslmode=disable'
@@ -431,7 +460,7 @@ migrate -path migrations -database "$TEST_DATABASE_URL" up
 make test-integration
 ```
 
-They cover users (case-insensitive usernames and emails, which unique index a conflict came from), email verification and changes, session-version bumps, the email-code lifecycle (attempt cap, expiry, replacement, and the target address on `change_email` codes), organisations (one owner each, org creation), profiles and assignment, leads (including who keeps them after a reassignment, and the user filters), storage settings (the org's bucket is the owner's), files (visibility by area and grant, edit rights, quota under a lock), and user management (roles, suspension, temporary passwords, deleting a user without losing their work). `admin_test.go` covers the usage numbers for a busy and an empty org (and that nothing private appears in them), listing filters and sorting, snapshots and trends, suspending and reinstating an org, platform admins and the audit log, and feedback surviving its org's deletion.
+They cover users (case-insensitive usernames and emails, which unique index a conflict came from), email verification and changes, session-version bumps, the email-code lifecycle (attempt cap, expiry, replacement, and the target address on `change_email` codes), organisations (one owner each, org creation), profiles and assignment, leads (including who keeps them after a reassignment, and the user filters), storage settings (the org's bucket is the owner's), files (visibility by area and grant, edit rights, quota under a lock), and user management (roles, suspension, temporary passwords, deleting a user without losing their work). `admin_test.go` covers the usage numbers for a busy and an empty org (and that nothing private appears in them), listing filters and sorting, snapshots and trends, suspending and reinstating an org, platform admins and the audit log, and feedback surviving its org's deletion. `analytics_test.go` covers one salt per day, totals, sources, sessions (engaged, action, repeat visitors, median time, scroll depth), devices and lead sources, scoping (a member sees only their card, a lead their team, the team filter), daily points, content grouping, the cards list including unvisited cards, team comparison (only led teams for leads), the leaderboard, the activity feed and the retention purge.
 
 If `TEST_DATABASE_URL` is unset, the tests are skipped.
 
@@ -473,5 +502,7 @@ For the full stack (backend + nginx-served frontend), see `deploy/` and the [roo
 - **Anyone with a file's link can open it.** `/api/files/{id}` needs no sign-in, which is how public cards show photos and brochures. IDs are 128-bit random values and only appear on cards that use them, but a link that is shared stays usable until the file is deleted.
 - **Uploads are buffered in memory**, up to 20 MB per request, so they can be type-checked before writing to the bucket. The upload rate limit keeps this bounded per IP.
 - **Deleting a file doesn't edit cards.** Cards that referenced it simply stop showing it; the editor shows the stale entry until removed.
+- **Unique visitors are per day.** Visitor hashes rotate daily by design, so the same person on two days counts twice and "came back" is only detected within a day. Visitors on a shared network with the same browser version look like one person.
+- **Analytics are only as complete as the browser allows.** Ad blockers can block the beacon, and time on card for a visit is only sent when the tab is hidden or closed.
 - **Admin sign-in has no second factor yet.** Use a long, unique password; TOTP is a planned follow-up.
 - **Changing or losing `SECRETS_KEY` breaks saved storage keys.** Users have to re-enter them. Rotation isn't automated yet; the version byte in each ciphertext is there for it.

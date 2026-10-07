@@ -443,13 +443,13 @@ func (r *Repository) ListProfiles(ctx context.Context, scope Scope) ([]*models.P
 // assignee as u.
 const leadColumns = `l.lead_id, l.profile_id, l.name, l.email,
 	COALESCE(l.phone_country_code, ''), COALESCE(l.phone_number, ''),
-	COALESCE(l.notes, ''), l.created_at, l.assigned_user_id, u.username`
+	COALESCE(l.notes, ''), COALESCE(l.source, ''), l.created_at, l.assigned_user_id, u.username`
 
 func scanLead(rows pgx.Rows) (*models.Lead, error) {
 	var l models.Lead
 	var assigneeID *int64
 	var assignee *string
-	err := rows.Scan(&l.ID, &l.ProfileID, &l.Name, &l.Email, &l.PhoneCountryCode, &l.PhoneNumber, &l.Notes, &l.CreatedAt,
+	err := rows.Scan(&l.ID, &l.ProfileID, &l.Name, &l.Email, &l.PhoneCountryCode, &l.PhoneNumber, &l.Notes, &l.Source, &l.CreatedAt,
 		&assigneeID, &assignee)
 	if assigneeID != nil && assignee != nil {
 		l.AssignedUser = &models.UserRef{ID: *assigneeID, Username: *assignee}
@@ -462,13 +462,13 @@ func scanLead(rows pgx.Rows) (*models.Lead, error) {
 // the profile does not exist or its organisation is suspended.
 func (r *Repository) CreateLead(ctx context.Context, lead *models.Lead) error {
 	query := `
-		INSERT INTO leads (profile_id, name, email, phone_country_code, phone_number, notes, assigned_user_id)
-		SELECT p.profile_id, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6, p.assigned_user_id
+		INSERT INTO leads (profile_id, name, email, phone_country_code, phone_number, notes, source, assigned_user_id)
+		SELECT p.profile_id, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6, NULLIF($7, ''), p.assigned_user_id
 		FROM profiles p JOIN organizations o ON o.org_id = p.org_id
 		WHERE p.profile_id = $1 AND o.suspended_at IS NULL
 		RETURNING lead_id, created_at`
 	err := r.db.QueryRow(ctx, query,
-		lead.ProfileID, lead.Name, lead.Email, lead.PhoneCountryCode, lead.PhoneNumber, lead.Notes,
+		lead.ProfileID, lead.Name, lead.Email, lead.PhoneCountryCode, lead.PhoneNumber, lead.Notes, lead.Source,
 	).Scan(
 		&lead.ID, &lead.CreatedAt,
 	)
