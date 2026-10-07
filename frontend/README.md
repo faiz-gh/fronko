@@ -4,8 +4,9 @@ The Fronko web app is a Svelte 5 + SvelteKit single-page app that compiles to st
 
 - **Landing page** (`/`), with a live demo card.
 - **Auth** (`/login`, `/verify-email`, `/forgot-password`): sign in with a username or email, create an account, verify the email with a 6-digit code, and reset a forgotten password by emailed code.
-- **Dashboard** (`/dashboard`): an app shell with a sidebar (cards, theme toggle), and an overview with stats, cards and recent leads.
-- **Card editor** (`/dashboard/{id}`): edit a card with a live preview. Photo and brochures come from the file library. You can also view or export the card's leads.
+- **Dashboard** (`/dashboard`): an app shell with a sidebar (cards, theme toggle), and an overview of how the cards are doing: views, visitors, saves and leads against the previous period, views by source, top teams and people, a live activity feed, what needs attention and recent leads.
+- **Analytics** (`/dashboard/analytics`): card and team analytics. NFC, QR and link views, clicks, scroll depth, time on card, brochure opens, contact saves, contact forms, devices, peak hours, a visit-to-lead funnel, per-card stats, team comparison and a leaderboard.
+- **Card editor** (`/dashboard/{id}`): edit a card with a live preview, and style its QR code (colours, dots, corners, and the organisation logo or an image in the middle). Photo and brochures come from the file library. You can also view or export the card's leads.
 - **Leads** (`/dashboard/leads`): all leads across cards, filtered by card, searchable, paginated and exportable.
 - **Files** (`/dashboard/files`): the file manager for logos, banners, photos and brochures, stored in the organisation's own S3 bucket.
 - **Teams** (`/dashboard/teams`): group people into teams with leads; each team has its own files.
@@ -29,6 +30,7 @@ It talks to the [Go backend](../backend/README.md). The endpoints are listed in 
 - [Card data model](#card-data-model)
 - [Components](#components)
 - [Styling & theming](#styling--theming)
+- [Card analytics tracking](#card-analytics-tracking)
 - [Security notes](#security-notes)
 - [Build & deployment](#build--deployment)
 - [Conventions](#conventions)
@@ -48,7 +50,8 @@ It talks to the [Go backend](../backend/README.md). The endpoints are listed in 
 | Phone numbers | `libphonenumber-js`: country list, as-you-type formatting, validation |
 | Image cropping | `svelte-easy-crop`, plus canvas helpers in `$lib/image.ts` |
 | Toasts | `svelte-sonner` |
-| QR codes | `qrcode`, lazy-loaded |
+| QR codes | `qrcode` (module matrix only, lazy-loaded); styling drawn in `card/qr.ts` |
+| Charts | Hand-built SVG components in `components/app/charts/` (no chart library) |
 
 ## Getting started
 
@@ -95,10 +98,12 @@ frontend/
 │   │   │   ├── teams.ts           # teams, members, a user's teams, team colours
 │   │   │   ├── org.ts             # organisation, users, card assignment, file grants, branding, showsOrgLogo()
 │   │   │   ├── feedback.ts        # sendFeedback(), feedback categories
-│   │   │   └── admin.ts           # platform admin: sign-in, summary, trends, orgs, suspension, feedback inbox, audit
+│   │   │   ├── admin.ts           # platform admin: sign-in, summary, trends, orgs, suspension, feedback inbox, audit
+│   │   │   └── analytics.ts       # card analytics: summary, timeseries, content, cards, teams, members, activity; SOURCES, change(), rate()
 │   │   ├── card/card.ts           # CardData model, normalization, URL safety, tap/vCard URLs, brand detection
 │   │   ├── card/blocks.ts         # Card layout blocks, templates, normalizeBlocks()
-│   │   ├── card/qr.ts             # Lazy-loaded QR generation and PNG/SVG downloads
+│   │   ├── card/qr.ts             # Styled QR rendering (dots, eyes, centre image), contrast checks, PNG/SVG downloads
+│   │   ├── analytics/track.ts     # The public card's tracker: in-memory visit id, batched sendBeacon events
 │   │   ├── phone.ts               # Country list, dial codes, formatting, validation, legacy phone parsing
 │   │   ├── image.ts               # Canvas crop/rotate → WebP, PNG or JPEG File, used by ImageCropDialog
 │   │   ├── thumbnails.ts          # makeThumb(): upload previews (canvas for images, lazy pdf.js for a PDF's first page)
@@ -108,6 +113,7 @@ frontend/
 │   │   ├── components/
 │   │   │   ├── app/               # App-specific components (see below); app/admin/ holds the admin panel's,
 │   │   │   │                      #   app/card-blocks/ one component per ProfileCard block,
+│   │   │   │                      #   app/charts/ the analytics charts (SVG, no chart library),
 │   │   │   │                      #   app/files/ the file manager's grid, table, detail sheet and purpose chips
 │   │   │   └── ui/                # shadcn-svelte primitives (generated, see Conventions)
 │   │   ├── session.svelte.ts      # Global reactive session store
@@ -133,7 +139,8 @@ frontend/
 │       ├── set-password/+page.svelte    # Replace the organisation's temporary password (first sign-in)
 │       ├── dashboard/
 │       │   ├── +layout.svelte     # Auth guard + app shell (sidebar / mobile drawer)
-│       │   ├── +page.svelte       # Overview: org (setup, needs attention, team) or member (their cards), recent leads
+│       │   ├── +page.svelte       # Overview: card activity (KPIs, views by source), top teams/people or your cards, needs attention, live activity, recent leads
+│       │   ├── analytics/+page.svelte # Analytics: Engagement, Content, Cards and Teams tabs, filters in the URL
 │       │   ├── leads/+page.svelte # All leads: card, user and team filters, search, pagination, export
 │       │   ├── cards/+page.svelte # Admins and team leads: cards, assign (admins), filter by team or user
 │       │   ├── users/+page.svelte # Admins: the team, with status, totals and storage
@@ -175,7 +182,8 @@ frontend/
 | `/verify-email` | Signed in, unverified | Six-slot code input (paste fills it, submits when complete), resend with a countdown, "Change email", and sign out. Accounts without an email start with an "Add your email" form. Verified users are sent on to `next` |
 | `/forgot-password` | Public | Step 1: email → always "if an account exists, we've sent a code". Step 2: code, new password and confirmation → `/login?reset=1` |
 | `/set-password` | Signed in, on a temporary password | Replace the password the organisation set (temporary, new, confirm). Then on to `next` |
-| `/dashboard` | Signed in | Overview. **Admins:** stats (people, teams, cards, leads all time, last 7 days), a setup checklist until the organisation is set up, "Needs attention" (unassigned cards, people still setting up), the team by leads, and recent leads tagged with their user. **Members:** stats, their cards, and their recent leads; a waiting state until a card is assigned |
+| `/dashboard` | Signed in | Overview. A 7 or 30 day toggle drives the KPI tiles (views, unique visitors, contacts saved, leads with the share of visits that became one), each with the change from the previous period and a sparkline, and a views-by-source chart (NFC, QR, link) with the split underneath. **Admins and team leads** also see top teams (views, saves, leads) and top people. **Members and leads** see their own cards with 30-day stats under each. The side column has the setup checklist (admins, until done), "Needs attention" (unassigned cards and people still setting up for admins; for admins and leads, assigned cards with no views in 30 days; for anyone, QR codes whose colours may not scan), the live activity feed (taps, scans, link visits, contact saves, sent forms and brochure opens), and recent leads. Header actions: Add person and New card (admins), or Share (QR) and Edit card. Members still see a waiting state until a card is assigned |
+| `/dashboard/analytics` | Signed in | **Analytics**, scoped like leads (members: their cards; leads: also their teammates'; admins: everything). Period presets (7, 30 or 90 days, 12 months) and filters by team, person and card sit above the tabs, and all of it is kept in the URL (`?range=`, `?team=`, `?user=`, `?card=`, `?tab=`). **Engagement:** KPI tiles (views, unique visitors, saves, leads, engaged visits, median time on card), views by source over time, a visit → engaged → saved/opened form → lead funnel, source, device and lead-source splits, scroll depth and time-on-card distributions, a weekday × hour heatmap (in the browser's time zone), and saves and leads over time. **Content:** link clicks (with brand icons), quick actions (email, call, website, booking), brochures (opens, people, opens each) and gallery images. **Cards:** a sortable table per card (views, unique, NFC · QR · link, saves, brochures, forms, leads, conversion, last viewed) and a callout for cards not viewed in 30 days. **Teams** (admins and leads): teams compared (people, active cards, views with change, per person, engaged %, saves, leads, visit → lead) and a leaderboard ranked by views, saves or leads. Clicking a team or person filters the page |
 | `/dashboard/cards` | Admins, team leads | Admins: every card in the organisation, with an inline assignee picker on each. Team leads: their own and their teammates' cards (no create, delete or reassign). Team filter (`?team=ID`; leads get the teams they lead), user filter for admins (`?user=ID\|none`) and search |
 | `/dashboard/teams` | Admins, team members | Admins see every team and create them (name, description, colour); everyone else sees the teams they're in. Each card shows people, leads and files |
 | `/dashboard/teams/{id}` | Admins, the team's members | The team's people with their organisation role and team role. Admins add people (searchable), switch Member/Lead and remove people, edit or delete the team (its files move to the organisation's). Links to the team's files, and for admins and its leads, its cards and leads |
@@ -185,7 +193,7 @@ frontend/
 | `/dashboard/files` | Signed in | The **file manager**. A locations rail (a select on small screens): All files, Organisation, Shared, each team, people's files (admins) or My files, Shared, teams, Shared with me (others). Purpose chips with counts (Logos, Banners, Profile photos, Covers, Gallery, Brochures, Other), debounced search, sort, and a grid of previews or a list, all kept in the URL (`?loc=team:3&purpose=logo&q=…&sort=name`; the view is remembered per browser). Upload with the button, the dropzone, or by dropping files anywhere on the page; uploads go to the current location and take the selected purpose. Tick files (shift-click for a range) to re-purpose, move or delete them together. Clicking a file opens a sheet with a large preview, title, purpose and location, details, **Where it's used** (cards by slot, the org logo, the signature banner) and Open, Copy link, Crop a copy, Access (admins) and Delete. Shows a "Connect storage" state until a bucket is connected |
 | `/dashboard/signatures` | Signed in | **Email signatures.** Pick a card (`?card=ID`; admins see every card), then a template (Classic, Corporate, Compact, Bold, Minimal; gallery thumbnails are the real signature), and switch on what to include (photo, organisation logo, phone, email, website, location, booking link, social links, card link). Choices are saved on the card (`data.signature`). The preview is the exact HTML in a sandboxed iframe, with a dark-background toggle. **Copy signature** puts rich HTML (and plain text) on the clipboard for pasting into Gmail, Outlook or Apple Mail; **Copy HTML** and **Download .html** are there too, with step-by-step install tabs per mail app. When the organisation locks a template, only that one shows; a required logo shows its switch locked on; the organisation's banner and disclaimer are added under every signature |
 | `/dashboard/settings` | Signed in | Four tabs, kept in `?tab=` (`organisation`, `branding`, `storage`; Account is the default). Members see Account and Storage. **Organisation** (admins; the owner edits): name and default storage per user. **Branding** (admins): `BrandingSettings`, see Components. **Account**: username and email (with a Verified badge). **Change** opens `ChangeEmailForm`: new address + current password → a code sent to the new address → confirm; resend has a countdown, and the current email stays until confirmed. **Password**: current, new and confirm; changing it signs out every other session and keeps this one. **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
-| `/dashboard/{id}` | Signed in | Editor. The **Card** tab shows a `SectionRail` listing every section with a one-line summary (e.g. "1 of 5 filled", "2 links", "Classic · customised") and a red dot on sections with an invalid field; only the selected section is shown beside it, so the whole card is visible at a glance. The selected section is kept in the URL hash (`#contact`, `#sharing`, …), so links can open one; the save bar's "Show me" jumps to the first invalid section. The sections are Profile (with photo and 3:1 cover, both cropped before upload), Contact (email, mobile with country picker, website, booking link), Links (add, reorder, remove), Layout (template picker, then blocks to reorder, hide, add or remove, with inline settings for headings, text, galleries and events), Appearance (accent, light/dark theme, and the organisation-logo switch: hidden without a logo, locked on when required) and Sharing (public slug, lead collection, and what an NFC tap and a QR scan each do, with their links to copy or try, plus "Create signature"). A sticky preview pane on the right switches between the card and its QR code (which encodes the `?via=qr` link); below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
+| `/dashboard/{id}` | Signed in | Editor. The **Card** tab shows a `SectionRail` listing every section with a one-line summary (e.g. "1 of 5 filled", "2 links", "Classic · customised") and a red dot on sections with an invalid field; only the selected section is shown beside it, so the whole card is visible at a glance. The selected section is kept in the URL hash (`#contact`, `#sharing`, …), so links can open one; the save bar's "Show me" jumps to the first invalid section. The sections are Profile (with photo and 3:1 cover, both cropped before upload), Contact (email, mobile with country picker, website, booking link), Links (add, reorder, remove), Layout (template picker, then blocks to reorder, hide, add or remove, with inline settings for headings, text, galleries and events), Appearance (accent, light/dark theme, and the organisation-logo switch: hidden without a logo, locked on when required) QR code (see below) and Sharing (public slug, lead collection, and what an NFC tap and a QR scan each do, with their links to copy or try, plus "Create signature"). A sticky preview pane on the right switches between the card and its QR code (which encodes the `?via=qr` link); below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. **QR code** (`QrStyleEditor`): a centre image (none, the organisation logo, or an image from Files picked with a 1:1 crop) and its size (15–25 %), colour presets (including the organisation's brand colour) plus code and background pickers, dot style (square, rounded, dots) and corner style (square, rounded, circle). Opening this section switches the preview to the QR code. Colours with less than 3:1 contrast can't be saved; light-on-dark and low contrast get a warning. The header shows the card's last 30 days (views, saves, leads) linking to its analytics. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
 | `/admin/login` | Public | Platform admin sign-in (email and password). `next=/admin/...` sets where to go afterwards; `expired=1` shows a "session expired" notice |
 | `/admin` | Platform admin | Totals (organisations, active organisations, users, teams, cards and leads, storage used, organisations with a logo, new feedback) and trend charts (organisations, users, cards, leads, storage used, organisations with storage, teams, organisations with a logo) over 30 days, 90 days or a year |
 | `/admin/orgs` | Platform admin | Every organisation with owner email, users, teams, cards, leads, storage (connected, provider, used) and last activity. Debounced search, All/Active/Suspended filter, sort menu, pagination. Rows open the organisation |
@@ -193,7 +201,7 @@ frontend/
 | `/admin/feedback` | Platform admin | Feedback by status (New, Read, Resolved, All), with category, rating, sender, organisation and reply count |
 | `/admin/feedback/{id}` | Platform admin | The message and its context (sender, organisation, page, time), the status toggle, the reply thread and a reply box. Opening new feedback marks it read. Replies are emailed to the sender |
 | `/admin/audit` | Platform admin | Sign-ins, suspensions, replies and status changes, newest first |
-| `/p/{slug}` | Public | The visitor-facing card, laid out by its blocks. `?via=nfc` or `?via=qr` (written to the NFC tag and encoded in the QR code) runs the card's tap action: save contact navigates to the server-built `.vcf` with the card behind it, or the lead form opens. The parameter is then removed from the address, so reloading just shows the card. "Save contact" opens the same `.vcf`, plus share (Web Share API, falling back to the clipboard), a "Book a meeting" button when a booking link is set, and a lead form (name, email, optional mobile number, message) when `collect_leads` is on. While the card's organisation is suspended (`410`), it shows "This card is unavailable" |
+| `/p/{slug}` | Public | The visitor-facing card, laid out by its blocks. `?via=nfc` or `?via=qr` (written to the NFC tag and encoded in the QR code) runs the card's tap action: save contact navigates to the server-built `.vcf` with the card behind it, or the lead form opens. The parameter is then removed from the address, so reloading just shows the card. The page reports the visit to analytics (see [Card analytics tracking](#card-analytics-tracking)). "Save contact" opens the same `.vcf`, plus share (Web Share API, falling back to the clipboard), a "Book a meeting" button when a booking link is set, and a lead form (name, email, optional mobile number, message) when `collect_leads` is on. While the card's organisation is suspended (`410`), it shows "This card is unavailable" |
 
 ### Organisations and roles
 
@@ -201,7 +209,8 @@ Every account belongs to an organisation, and `session.role` is `owner`, `admin`
 
 | | Owner | Admin | Team lead (member) | Member |
 | - | :-: | :-: | :-: | :-: |
-| Sidebar | Overview, Leads, Cards, Users, Teams, Files, Signatures | same | Overview, Leads, Cards, Teams, Files, Signatures | Overview, Leads, Teams (if in one), Files, Signatures, plus their cards |
+| Sidebar | Overview, Analytics, Leads, Cards, Users, Teams, Files, Signatures | same | Overview, Analytics, Leads, Cards, Teams, Files, Signatures | Overview, Analytics, Leads, Teams (if in one), Files, Signatures, plus their cards |
+| Analytics | everything, every team | same | their own and their teammates' cards, teams they lead | their own cards; no Teams tab |
 | Cards | create, delete, assign, edit all | same | edit their own and their teammates' cards, except the slug | edit their assigned cards, except the slug |
 | Leads | all, filter by user (`?user=ID\|none`) or team | same | their own and their teammates', filter by team they lead | leads that arrived while they held the card |
 | Files | Organisation, Shared, every team, people's files; move anywhere but personal; manage access (people and teams) | same | their files, Shared, their teams' (manage the teams they lead), Shared with me | My files (with a storage meter), Shared, their teams' (read), Shared with me |
@@ -304,6 +313,7 @@ interface CardData {
   tap: { nfc: TapAction; qr: TapAction }; // 'profile' | 'save_contact' | 'lead_form'
   show_org_logo: boolean; // show the organisation's logo emblem; ignored when the org requires it
   signature: SignatureSettings; // this card's email signature (src/lib/signature/templates.ts)
+  qr: QrStyle; // { fg, bg (#rrggbb), dots: 'square'|'rounded'|'dots', corners: 'square'|'rounded'|'dot', image: 'none'|'org_logo'|'custom', image_file, image_scale (0.15–0.25) }
 }
 
 interface SignatureSettings {
@@ -335,7 +345,7 @@ interface SignatureSettings {
 
 Contact details stay on `CardData` because the vCard and the editor's sections use them; blocks only decide where they appear. `TEMPLATES` are presets (`templateBlocks(key)`), and `applyTemplate()` keeps the text, gallery and event content that the new layout also has room for. `normalizeBlocks()` drops unknown blocks and duplicates and keeps the header first; cards saved before layouts existed get the Classic preset.
 
-**Always read stored data through `normalizeCard(raw)`.** It turns anything (missing fields, wrong types, `null`) into a complete `CardData`, with these defaults: accent `indigo`, theme `light`, `collect_leads: true`, template `classic` with its blocks, and both tap actions `profile`. `show_org_logo` defaults to `true` and `signature` to `defaultSignature()`. It also upgrades links from older profiles that were saved as plain strings, and splits an old free-text `phone` into the dial code and number. A number without a leading `+` keeps its digits, and the editor asks for the country code. If you add a field, add it to `CardData`, `emptyCard()` and `normalizeCard()` so older profiles keep loading.
+**Always read stored data through `normalizeCard(raw)`.** It turns anything (missing fields, wrong types, `null`) into a complete `CardData`, with these defaults: accent `indigo`, theme `light`, `collect_leads: true`, template `classic` with its blocks, and both tap actions `profile`. `show_org_logo` defaults to `true`, `signature` to `defaultSignature()`, and `qr` to `defaultQrStyle()` (plain black on white, no image; `normalizeQrStyle` also turns a `custom` image without a file back into `none`). It also upgrades links from older profiles that were saved as plain strings, and splits an old free-text `phone` into the dial code and number. A number without a leading `+` keeps its digits, and the editor asks for the country code. If you add a field, add it to `CardData`, `emptyCard()` and `normalizeCard()` so older profiles keep loading.
 
 Other helpers in `card.ts`:
 
@@ -349,7 +359,7 @@ Other helpers in `card.ts`:
 | `displayUrl(input)` | Short form for display (`github.com/faiz`) |
 | `detectBrand(url)` / `linkLabel(link)` | Recognizes about 65 sites by hostname (LinkedIn, GitHub, Indeed, Figma, Behance, YouTube, Substack, WhatsApp, PayPal and more), for icons and default labels. Icons come from `simple-icons`, plus a bundled LinkedIn path |
 | `slugify(input)` / `isValidSlug(slug)` | Client-side copies of the backend's slug rules (3–48 chars, `^[a-z0-9]+(?:-[a-z0-9]+)*$`) |
-| `vcardUrl(slug)` | The server-built contact file, `GET /api/profiles/{slug}/vcard` |
+| `vcardUrl(slug, visit?)` | The server-built contact file, `GET /api/profiles/{slug}/vcard`. On the public page `visit` (`{via, session}`) adds `?via=&s=` so the save counts in analytics |
 | `downloadBlob(blob, filename)` | Generic client-side download |
 | `publicUrl(slug)` | `${location.origin}/p/${slug}`: the plain link, used for sharing |
 | `tapUrl(slug, via)` | `publicUrl(slug)` + `?via=nfc` or `?via=qr`: the link for the NFC tag or QR code, which runs the card's tap action |
@@ -388,8 +398,18 @@ App-specific components live in `src/lib/components/app/`:
 | `DeleteCardDialog` | `target` (bindable), `ondeleted?` | Confirms and deletes a card, then updates `cards` |
 | `FormSection` | `title`, `description?`, `id?`, `panel?` | A form section. The heading sits beside the fields at 1536px and wider, above them otherwise. With `panel`, it's the tab panel for the `SectionRail` item with the same `id` (`id="panel-<id>"`), heading above |
 | `CardAvatar` | `card`, `fallback`, `class?` | Avatar using the card's photo or initials on its accent colour |
-| `QrCode` | `url`, `svg` (bindable), `class?` | Renders a QR code. `qrcode` is loaded the first time one is shown. Codes are always dark-on-white so they scan reliably |
-| `QrDialog` | `open` (bindable), `slug`, `name`, `dark?` | `QrCode` in a dialog, with SVG and 1024px PNG downloads and copy link. Encodes `tapUrl(slug, 'qr')`, so scans run the card's QR tap action |
+| `QrCode` | `url`, `style?`, `svg` (bindable), `class?` | Renders a card's QR code in its `QrStyle` (plain black on white when omitted), regenerating after a short pause while colours change. `qrcode` is loaded the first time one is shown; `qr.ts` draws the modules, eyes and centre image itself, with the standard 4-module quiet zone. The organisation logo comes from the `branding` store, and the image is embedded as a data URL fetched from `GET /api/me/files/{id}/image`, so downloads are self-contained |
+| `QrDialog` | `open` (bindable), `slug`, `name`, `style?`, `dark?` | `QrCode` in a dialog, with SVG and 1024px PNG downloads and copy link. Encodes `tapUrl(slug, 'qr')`, so scans run the card's QR tap action |
+| `QrStyleEditor` | `style` (bindable), `url`, `orgLogo?`, `orgName?`, `brandColor?` | The editor's QR code section: centre image (with its own `FilePickerDialog`), size slider, colour presets and pickers with the contrast check, dots and corners, reset. Shows its own preview below 1280px |
+| `ActivityFeed` | `items`, `showUser?`, `empty?` | The overview's live feed of analytics activity, each line linking to that card's analytics |
+| `FilterSelect` | `value`, `options`, `onchange`, `allLabel`, `icon?`, `size?` | A dropdown filter over numeric ids ("Everyone", "All cards") |
+| `charts/SeriesChart` | `dates`, `series`, `label`, `height?`, `format?` | Multi-series line chart on one axis: legend that toggles series, crosshair tooltip, an `sr-only` table |
+| `charts/StatTile` | `label`, `value`, `delta?`, `periodLabel?`, `hint?`, `trend?` | KPI tile: value, change vs the previous period (arrow + %), sparkline |
+| `charts/SplitBar` | `parts`, `label`, `format?` | A 100 % bar with a legend (counts and shares), for sources and devices |
+| `charts/BarList` | `items`, `label`, `color?`, `format?`, `empty?`, `limit?`, `icon?` | Ranked horizontal bars with a value and sub-value |
+| `charts/Funnel` | `steps` | Stages with conversion from the previous one, on a one-hue ramp |
+| `charts/Heatmap` | `data` (7×24) | Weekday × hour grid, Monday first, with the busiest hour named |
+| `charts/Sparkline` | `values`, `color?`, `height?` | Decorative trend line |
 | `LeadsTable` | `profileId?`, `card?`, `oncardchange?`, `user?`, `onuserchange?`, `filename?` | Server-paginated leads table: card filter (unless locked with `profileId`), debounced search, a Refresh button (it also reloads the cards store so lead counts update), pagination and CSV export of every matching lead, including phone. A new filter or search goes back to page 1, and paging scrolls the table back into view. The Card column appears only when showing all cards. For admins it adds a user filter and a User column (who held the card when the lead arrived), also in the CSV |
 | `Pagination` | `page` (bindable), `pageSize` (bindable), `total`, `pageSizes?`, `disabled?` | "1–25 of 67", per-page menu, previous/next and page numbers with gaps (`1 … 4 5 6 … 12`) |
 | `CardFilter` | `value`, `onchange` | "All cards" or one card, with lead counts |
@@ -424,8 +444,23 @@ npx shadcn-svelte@latest add <component>
 - **Dashboard dark mode.** `$lib/theme.svelte.ts` stores a Light, Dark or System preference in localStorage (`fronko-theme`), and the sidebar's `ThemeToggle` sets it. The dashboard and admin layouts add `.dark` to `<html>` only while you're in `/dashboard` or `/admin`, so portalled dialogs, menus and toasts match, and the marketing and public pages stay light. An inline script in `app.html` applies the theme before first paint on dashboard and admin URLs. `ProfileCard` always scopes itself with `.dark` or `.light`, so a light card previews as light inside the dark dashboard. The `dark:` variant skips anything inside `.light` for the same reason.
 - **Utilities.** `bg-dots` draws the faint dot grid used behind previews, and `tabular` sets tabular numerals for counts.
 - **Layout widths.** App pages are full width (the overview caps at 1680px), and the sidebar is `w-68`. Breakpoints that change the structure: `lg` (1024px) shows the sidebar and turns the editor's section strip into a rail beside the panel, `xl` (1280px) shows the editor's preview pane, `2xl` (1536px) puts section headings beside the fields (outside the editor), shows the template picker in one row, and moves recent leads into their own column.
+- **Chart colours.** Analytics use `--viz-1`/`--viz-2`/`--viz-3` (blue, orange, aqua; stepped separately for dark mode) in that fixed order. They were checked as a set for colour-blind separation, so keep the order. Visit sources always map NFC → 1, QR → 2, link → 3. `--viz-seq-0…4` is a one-hue blue ramp for magnitude (heatmap, funnel). Every chart has a legend or direct labels, and series charts carry an `sr-only` table, so colour is never the only cue. Text never takes a series colour.
 - **Per-card theming.** `ProfileCard` sets `--card-accent` from `ACCENTS[card.accent]`. The public page wraps the card in a `.dark` element when `card.theme === 'dark'`, so a single card can be dark without switching the whole app.
 - Use `cn()` from `$lib/utils` to merge conditional classes. It resolves Tailwind conflicts.
+
+## Card analytics tracking
+
+`lib/analytics/track.ts` runs only on the public card page (`/p/{slug}`); previews in the editor and on the landing page send nothing.
+- **No storage.** `createTracker(slug, source)` makes a visit id with `crypto.randomUUID()` and keeps it in memory. No cookies, no localStorage. `source` comes from `?via=` before the page strips it (missing means `link`).
+- **What it sends.**
+  - `view`: once the card has loaded.
+  - `scroll`: at 25, 50, 75 and 100 %, each once, and only after the visitor actually scrolls.
+  - `click`, `doc_open`, `gallery_open`: from any element with `data-track`, `data-track-target` and `data-track-label`. The card blocks set these on quick actions, links, booking, brochures and gallery images; listening is delegated, so the blocks need no callbacks.
+  - `form_open` and `share`.
+  - `leave`: the visible time, sent when the tab is hidden or closed.
+  - Contact saves and sent forms are counted by the server. The Save contact link (`vcardUrl(slug, visit)`) and the lead form pass the source and visit id along.
+- **Batching.** Events are flushed every 5 seconds and on `visibilitychange`/`pagehide` with `navigator.sendBeacon` (as `text/plain`, so there's no preflight), falling back to `fetch(..., {keepalive: true})`.
+- **Signed-in previews.** Beacons carry the session cookie, so the backend skips people from the card's own organisation.
 
 ## Security notes
 
@@ -434,6 +469,7 @@ npx shadcn-svelte@latest add <component>
 - **Open-redirect protection.** `/login` and `/verify-email` only follow `next` values that start with `/` and not `//`. `/admin/login` only follows paths inside `/admin`.
 - **No account enumeration from the UI.** `/forgot-password` always shows the same "if an account exists" message.
 - **CSV injection.** Lead exports prefix cells starting with `=`, `+`, `-`, `@`, tab or CR with `'`, because lead content comes from anonymous visitors.
+- **Trusted QR markup.** `QrCode` uses `{@html}` for SVG built locally from our own URL and a `QrStyle` whose colours `normalizeQrStyle` restricts to `#rrggbb`; the only embedded image is a data URL of a file in the org's library.
 - **Validation is mirrored, not trusted.** Slug, username, password and email checks in the UI exist for quick feedback. The backend enforces the real rules.
 
 ## Build & deployment

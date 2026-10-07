@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import ChartLineIcon from '@lucide/svelte/icons/chart-line';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
 	import FolderIcon from '@lucide/svelte/icons/folder';
 	import IdCardIcon from '@lucide/svelte/icons/id-card';
@@ -41,6 +42,7 @@
 	// own page; members keep their (few) cards listed right here.
 	const nav = $derived([
 		{ href: '/dashboard', label: 'Overview', icon: LayoutGridIcon, active: path === '/dashboard' },
+		{ href: '/dashboard/analytics', label: 'Analytics', icon: ChartLineIcon, active: path === '/dashboard/analytics' },
 		{ href: '/dashboard/leads', label: 'Leads', icon: InboxIcon, active: path === '/dashboard/leads', count: totalLeads },
 		...(session.seesOthers
 			? [

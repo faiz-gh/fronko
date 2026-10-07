@@ -5,7 +5,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import QrCode from './qr-code.svelte';
-	import { tapUrl } from '$lib/card/card';
+	import { tapUrl, type QrStyle } from '$lib/card/card';
 	import { downloadQrPng, downloadQrSvg } from '$lib/card/qr';
 	import { cn } from '$lib/utils';
 
@@ -13,11 +13,14 @@
 		open = $bindable(false),
 		slug,
 		name,
+		style,
 		dark = false
 	}: {
 		open?: boolean;
 		slug: string;
 		name: string;
+		/** The card's QR style. */
+		style?: QrStyle;
 		/** Match a dark-themed card when shown on the public page. */
 		dark?: boolean;
 	} = $props();
@@ -44,7 +47,7 @@
 		</Dialog.Header>
 
 		{#if open && url}
-			<QrCode {url} bind:svg class="mx-auto w-full max-w-64" />
+			<QrCode {url} {style} bind:svg class="mx-auto w-full max-w-64" />
 		{/if}
 
 		<button
@@ -61,7 +64,7 @@
 				<DownloadIcon data-icon="inline-start" />
 				SVG
 			</Button>
-			<Button onclick={() => downloadQrPng(url, slug)} disabled={!svg}>
+			<Button onclick={() => downloadQrPng(svg, slug)} disabled={!svg}>
 				<DownloadIcon data-icon="inline-start" />
 				PNG
 			</Button>

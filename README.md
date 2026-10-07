@@ -56,14 +56,19 @@ Fronko is an open-source alternative to hosted platforms such as Popl and Mobilo
 - **Live-preview card editor.** A section rail lists every part of the card with a one-line summary, so you see the whole card at a glance and edit one section at a time. Edit profile details, contact information (with a country-code phone picker), a booking link (Calendly, Cal.com, Google Calendar and others), social links with brand icons, a cropped photo and cover banner, PDF brochures, an accent colour and a light or dark theme.
 - **Templates and blocks.** Start from a template (Classic, Event tag, Portfolio, Minimal), then reorder, hide or add blocks: headings, text, an image gallery, an event panel with a role ribbon, and dividers. Three header styles: banner, name badge or compact.
 - **Multiple cards.** Each card has its own link, an NFC link and a QR code you can download as SVG or PNG.
+- **Branded QR codes.** Put the organisation's logo or any image from Files in the middle of a card's QR code, and pick its colours, dot style (square, rounded, dots) and corner style. Error correction goes up automatically when there's an image, and colours that might not scan are flagged (too little contrast can't be saved).
+- **Card analytics.** See how each card is found and used: views split by NFC tap, QR scan or link, unique visitors, which links and quick actions get clicked, how far people scroll, how long they stay, how often each brochure is opened (and by how many people), contact saves, contact forms opened and sent, devices, and the busiest days and hours. Every number is compared with the previous period.
 - **Email signatures.** Turn any card into an email signature from one of five templates (Classic, Corporate, Compact, Bold, Minimal), choose what it includes, then copy it straight into Gmail, Outlook or Apple Mail, or download it as HTML. The HTML is built for mail clients: tables, inline styles and PNG/JPEG images only.
 - **Lead inbox.** Leads from every card land in one place, with card filters, search, pagination and CSV export.
+- **An overview that answers "how are my cards doing?".** The dashboard home shows views, unique visitors, contact saves and leads for the last 7 or 30 days, views by source, a live feed of taps, scans, saves and brochure opens, recent leads, and what needs attention.
 
 ### For organisations
 
 - **Organisation accounts.** Every sign-up creates an organisation. The owner, and any admins they promote, create accounts for the team. Each new user is emailed their username and a temporary password, then confirms their email and chooses their own password on first sign-in.
 - **Role-based access.** Admins assign cards to people. Each person can edit everything on their cards except the link, and sees only their own cards and the leads those cards collected while assigned to them. Admins see everything and can filter cards and leads by person or team.
 - **Teams.** Group people into teams such as Sales or Finance; one person can be in several. Each team has its own files that everyone in it can use. Team leads look after those files and can see and edit their teammates' cards and leads; creating, deleting and reassigning cards stays with admins.
+- **Team analytics.** Admins compare every team, and team leads their own: people, active cards, views (and per person), engaged visits, saves, leads and visit-to-lead conversion, each with the change from the previous period. A leaderboard ranks people by views, saves or leads, and cards nobody has viewed in 30 days are flagged.
+- **Private by design.** Visitors are never identified: no cookies, no stored IP addresses, only a visitor hash salted with a random value that's replaced and deleted every day. Bots and people signed in to the card's own organisation aren't counted, and events are deleted after 13 months (configurable).
 - **User management.** Admins can suspend users, reset their passwords, or delete them without losing their cards, files or leads.
 - **Branding.** Upload a square organisation logo, cropped on upload. It sits as an emblem on the lower right of every profile photo and appears in email signatures. Either require it on every card and signature, or let each person choose.
 - **Signature rules.** Optionally lock everyone to one signature template, set a brand colour, and add a disclaimer and a clickable banner (cropped to 4:1, 3:1 or 2:1) under every signature.
@@ -97,6 +102,8 @@ graph TD
     C -->|Save contact| F[vCard from /api/profiles/slug/vcard]
     E -->|card + org branding| SIG[Email signature HTML, copied into the mail app]
     C -->|Share your details| G[Lead form]
+    C -->|views, clicks, scrolls, beacons| AN[(Card analytics events)]
+    AN -->|overview, Analytics page| E
     G -->|stores lead| D
     D -->|lead inbox, CSV export| E
 ```
@@ -207,6 +214,7 @@ All settings are environment variables, set in `deploy/.env`.
 | `SMTP_PORT` | | Defaults to `587`. Port `465` uses implicit TLS; other ports upgrade with STARTTLS. |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | | SMTP credentials. |
 | `SMTP_FROM` | With `SMTP_HOST` | Sender address, such as `Fronko <no-reply@example.com>`. Must be an address your provider lets you send from. |
+| `ANALYTICS_RETENTION_DAYS` | | How long card analytics events are kept. Defaults to `395` (about 13 months, so a year can be compared with the one before). |
 | `FEEDBACK_NOTIFY_EMAIL` | | Gets an email for each piece of product feedback, and is the Reply-To on admins' replies and on suspension emails. Without it, feedback only appears in the admin panel. |
 
 The [backend configuration reference](backend/README.md#configuration) covers every option, including `PORT`, `TRUST_PROXY` and `STORAGE_ALLOW_PRIVATE_ENDPOINTS`, plus the fixed server and connection-pool settings.

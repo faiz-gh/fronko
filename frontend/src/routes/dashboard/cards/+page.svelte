@@ -176,5 +176,6 @@
 	bind:open={qrOpen}
 	slug={qrTarget?.slug ?? ''}
 	name={qrTarget ? normalizeCard(qrTarget.data).name : ''}
+	style={qrTarget ? normalizeCard(qrTarget.data).qr : undefined}
 />
 <DeleteCardDialog bind:target={deleteTarget} />

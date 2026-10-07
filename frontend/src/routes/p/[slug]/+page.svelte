@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
-	import { tick } from 'svelte';
+	import { onDestroy, tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
@@ -21,10 +21,16 @@
 	import ProfileCard from '$lib/components/app/profile-card.svelte';
 	import PhoneInput from '$lib/components/app/phone-input.svelte';
 	import { ACCENTS, normalizeCard, publicUrl, vcardUrl, type CardData, type TapSource } from '$lib/card/card';
+	import { createTracker, visitSource } from '$lib/analytics/track';
 	import { isValidPhone } from '$lib/phone';
 	import { cn } from '$lib/utils';
 
 	const slug = page.params.slug ?? '';
+	// Read before runTapAction strips it from the address bar.
+	const via = page.url.searchParams.get('via');
+	const tracker = createTracker(slug, visitSource(via));
+	const visit = { via: tracker.source, session: tracker.session };
+	onDestroy(() => tracker.stop());
 
 	let profile = $state<PublicProfile | null>(null);
 	let notFound = $state(false);
@@ -40,6 +46,7 @@
 		try {
 			profile = await getProfileBySlug(slug);
 			await tick();
+			tracker.start();
 			runTapAction(normalizeCard(profile.data));
 		} catch (e) {
 			if (e instanceof ApiError && e.status === 404) notFound = true;
@@ -54,8 +61,8 @@
 	let highlightSave = $state(false);
 
 	function runTapAction(c: CardData) {
-		const via = page.url.searchParams.get('via');
-		if (via !== 'nfc' && via !== 'qr') return;
+		// The marker is gone after the first run, so a retry doesn't repeat the action.
+		if ((via !== 'nfc' && via !== 'qr') || !page.url.searchParams.has('via')) return;
 		// Drop the marker so a reload, or a link copied from the address bar, just shows the card.
 		const url = new URL(page.url.href);
 		url.searchParams.delete('via');
@@ -65,17 +72,22 @@
 		if (action === 'save_contact') {
 			// Navigating to a text/vcard response opens the phone's "Add contact"
 			// sheet and leaves this page in place behind it.
-			location.href = vcardUrl(slug);
+			location.href = vcardUrl(slug, visit);
 			// If the browser ignored it, the button is right there.
 			highlightSave = true;
 			setTimeout(() => (highlightSave = false), 2400);
 		} else if (action === 'lead_form' && c.collect_leads) {
-			open = true;
+			openForm();
 		}
 	}
 
 	// ---- Lead form -------------------------------------------------------------
 	let open = $state(false);
+
+	function openForm() {
+		open = true;
+		tracker.track({ type: 'form_open' });
+	}
 	let leadName = $state('');
 	let leadEmail = $state('');
 	let leadNotes = $state('');
@@ -99,7 +111,9 @@
 				email: leadEmail,
 				phone_country_code: leadPhoneCode,
 				phone_number: leadPhone,
-				notes: leadNotes
+				notes: leadNotes,
+				source: tracker.source,
+				session: tracker.session
 			});
 			submitted = true;
 		} catch (e) {
@@ -122,6 +136,7 @@
 	}
 
 	async function share() {
+		tracker.track({ type: 'share' });
 		const url = publicUrl(slug);
 		if (navigator.share) {
 			try {
@@ -194,14 +209,14 @@
 								highlightSave && 'ring-offset-card animate-pulse ring-2 ring-(--card-accent) ring-offset-2'
 							)}
 							style="background: var(--card-accent)"
-							href={vcardUrl(slug)}
+							href={vcardUrl(slug, visit)}
 						>
 							<UserPlusIcon data-icon="inline-start" />
 							Save contact
 						</Button>
 						<div class="flex gap-2">
 							{#if card.collect_leads}
-								<Button size="lg" variant="outline" class="h-11 flex-1" onclick={() => (open = true)}>
+								<Button size="lg" variant="outline" class="h-11 flex-1" onclick={openForm}>
 									<SendIcon data-icon="inline-start" />
 									Share your contact
 								</Button>

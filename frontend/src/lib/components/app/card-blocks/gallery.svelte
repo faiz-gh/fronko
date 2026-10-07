@@ -17,6 +17,9 @@
 					href={fileUrl(img.file)}
 					target="_blank"
 					rel="noopener noreferrer"
+					data-track="gallery_open"
+					data-track-target={img.file}
+					data-track-label={img.caption.trim() || 'Image'}
 					class="bg-muted block overflow-hidden rounded-xl ring-1 ring-black/5"
 				>
 					<img

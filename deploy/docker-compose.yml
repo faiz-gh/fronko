@@ -30,6 +30,8 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       # Optional: where new product feedback is emailed, and the Reply-To on admin replies.
       FEEDBACK_NOTIFY_EMAIL: ${FEEDBACK_NOTIFY_EMAIL:-}
+      # How many days of card analytics events to keep (default 395, about 13 months).
+      ANALYTICS_RETENTION_DAYS: ${ANALYTICS_RETENTION_DAYS:-395}
     expose:
       - "8080"
     restart: unless-stopped

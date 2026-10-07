@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/faiz-gh/fronko/backend/internal/secrets"
 )
@@ -38,7 +39,13 @@ type Config struct {
 	// FeedbackNotifyEmail gets an email for each piece of product feedback,
 	// and is the Reply-To on admins' replies. Optional.
 	FeedbackNotifyEmail string
+
+	// AnalyticsRetention is how long card analytics events are kept (ANALYTICS_RETENTION_DAYS, default 395).
+	AnalyticsRetention time.Duration
 }
+
+// defaultAnalyticsRetentionDays is about 13 months, so a year can be compared with the one before.
+const defaultAnalyticsRetentionDays = 395
 
 // Load reads configuration from the environment. DATABASE_URL and JWT_SECRET
 // are required: an empty JWT secret would let anyone forge tokens.
@@ -66,6 +73,8 @@ func Load() (*Config, error) {
 		SMTPFrom:     os.Getenv("SMTP_FROM"),
 
 		FeedbackNotifyEmail: strings.TrimSpace(os.Getenv("FEEDBACK_NOTIFY_EMAIL")),
+
+		AnalyticsRetention: defaultAnalyticsRetentionDays * 24 * time.Hour,
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -92,6 +101,14 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("FEEDBACK_NOTIFY_EMAIL: %w", err)
 		}
 		cfg.FeedbackNotifyEmail = addr.Address
+	}
+
+	if raw := os.Getenv("ANALYTICS_RETENTION_DAYS"); raw != "" {
+		days, err := strconv.Atoi(raw)
+		if err != nil || days < 1 || days > 3650 {
+			return nil, fmt.Errorf("ANALYTICS_RETENTION_DAYS: must be a number of days between 1 and 3650, got %q", raw)
+		}
+		cfg.AnalyticsRetention = time.Duration(days) * 24 * time.Hour
 	}
 
 	// Optional: without it the app runs, but file storage is switched off.

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/faiz-gh/fronko/backend/internal/models"
 	"github.com/faiz-gh/fronko/backend/internal/repository"
 )
 
@@ -106,8 +107,10 @@ func requestOrigin(r *http.Request) string {
 	return scheme + "://" + r.Host
 }
 
-// Public: GET /api/profiles/{slug}/vcard. Opening it shows the phone's
-// "Add contact" sheet, which is how a card's "save contact" tap works.
+// Public: GET /api/profiles/{slug}/vcard[?via=nfc|qr|link&s=<session>].
+// Opening it shows the phone's "Add contact" sheet, which is how a card's
+// "save contact" tap works. Each download counts as a contact save; via and s
+// tie it to the visit that asked for it.
 func (h *ProfileHandler) VCard(w http.ResponseWriter, r *http.Request) {
 	profile, err := h.repo.GetProfileBySlug(r.Context(), r.PathValue("slug"))
 	if err != nil {
@@ -123,6 +126,9 @@ func (h *ProfileHandler) VCard(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusGone, "this card is unavailable")
 		return
 	}
+
+	q := r.URL.Query()
+	h.events.Record(r, profile.ID, profile.OrgID, q.Get("via"), q.Get("s"), repository.CardEvent{Type: models.EventVCard})
 
 	w.Header().Set("Content-Type", "text/vcard; charset=utf-8")
 	w.Header().Set("Content-Disposition", `inline; filename="`+profile.Slug+`.vcf"`)

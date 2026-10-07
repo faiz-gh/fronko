@@ -909,14 +909,43 @@ func (h *FileHandler) Content(w http.ResponseWriter, r *http.Request) {
 		internalError("get file", err).write(w)
 		return
 	}
-	store, err := h.svc.StoreFor(r.Context(), scope.OrgID, file.Bucket)
+	h.writeBytes(w, r, file, maxPDFBytes, "attachment")
+}
+
+// Protected: GET /api/me/files/{id}/image. Any image in the user's
+// organisation, served from this origin so the browser can draw it (the
+// organisation logo or a card's image in the middle of its QR code). Card
+// images are public through /api/files/{id} anyway; this only avoids the
+// bucket's cross-origin rules, and is limited to images in one's own organisation.
+func (h *FileHandler) Image(w http.ResponseWriter, r *http.Request) {
+	scope := scopeOf(r)
+	id := r.PathValue("id")
+	if !publicIDPattern.MatchString(id) {
+		errFileNotFound.write(w)
+		return
+	}
+	file, err := h.repo.GetFileByPublicID(r.Context(), id)
+	if err != nil || file.OrgID != scope.OrgID || file.Kind != "image" {
+		if err != nil && !errors.Is(err, repository.ErrNotFound) {
+			internalError("get file", err).write(w)
+			return
+		}
+		errFileNotFound.write(w)
+		return
+	}
+	h.writeBytes(w, r, file, maxImageBytes, "inline")
+}
+
+// writeBytes reads a file from the organisation's bucket and sends it.
+func (h *FileHandler) writeBytes(w http.ResponseWriter, r *http.Request, file *models.File, limit int64, disposition string) {
+	store, err := h.svc.StoreFor(r.Context(), file.OrgID, file.Bucket)
 	if err != nil {
 		h.writeStoreError(w, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), storageOpTimeout)
 	defer cancel()
-	data, err := store.Get(ctx, file.ObjectKey, maxPDFBytes)
+	data, err := store.Get(ctx, file.ObjectKey, limit)
 	if err != nil {
 		log.Printf("read object %s: %v", file.ObjectKey, err)
 		writeError(w, http.StatusBadGateway, "couldn't read from storage: "+storage.Describe(err))
@@ -926,7 +955,7 @@ func (h *FileHandler) Content(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": file.OriginalName}))
+	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": file.OriginalName}))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
 }

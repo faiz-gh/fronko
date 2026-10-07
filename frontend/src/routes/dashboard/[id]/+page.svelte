@@ -22,6 +22,7 @@
 	import ImagesIcon from '@lucide/svelte/icons/images';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import QrCodeIcon from '@lucide/svelte/icons/qr-code';
+	import ArrowUpRightIcon from '@lucide/svelte/icons/arrow-up-right';
 	import SignatureIcon from '@lucide/svelte/icons/signature';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import UploadIcon from '@lucide/svelte/icons/upload';
@@ -53,6 +54,8 @@
 	import PhoneInput from '$lib/components/app/phone-input.svelte';
 	import ProfileCard from '$lib/components/app/profile-card.svelte';
 	import QrCode from '$lib/components/app/qr-code.svelte';
+	import QrStyleEditor from '$lib/components/app/qr-style-editor.svelte';
+	import { getAnalyticsSummary, lastDays, type AnalyticsTotals } from '$lib/api/analytics';
 	import QrDialog from '$lib/components/app/qr-dialog.svelte';
 	import SectionRail, { type RailItem } from '$lib/components/app/section-rail.svelte';
 	import TemplatePicker from '$lib/components/app/template-picker.svelte';
@@ -75,7 +78,7 @@
 		type TapAction,
 		type TapSource
 	} from '$lib/card/card';
-	import { downloadQrPng, downloadQrSvg } from '$lib/card/qr';
+	import { downloadQrPng, downloadQrSvg, qrContrastIssue } from '$lib/card/qr';
 	import { cards } from '$lib/cards.svelte';
 	import { isValidPhone } from '$lib/phone';
 	import { storage } from '$lib/storage.svelte';
@@ -120,6 +123,8 @@
 	// A freshly picked image waiting in the crop dialog.
 	let cropPhoto = $state<File | null>(null);
 	let cropCover = $state<File | null>(null);
+	// Colours too close to scan can't be saved.
+	const qrInvalid = $derived(!!card && !!qrContrastIssue(card.qr)?.blocking);
 	const websiteInvalid = $derived(!!card?.website.trim() && !safeUrl(card.website));
 	const emailInvalid = $derived(!!card?.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(card.email.trim()));
 	const phoneInvalid = $derived(!!card?.phone_number && !isValidPhone(card.phone_country_code, card.phone_number));
@@ -127,9 +132,19 @@
 	const calendarProvider = $derived(card ? detectCalendar(card.calendar_url) : null);
 	const cover = $derived(card ? coverSrc(card) : null);
 	const invalid = $derived(
-		slugInvalid || avatarInvalid || websiteInvalid || emailInvalid || phoneInvalid || calendarInvalid
+		slugInvalid || avatarInvalid || websiteInvalid || emailInvalid || phoneInvalid || calendarInvalid || qrInvalid
 	);
 	const canSave = $derived(dirty && !saving && !invalid);
+
+	// The last 30 days at a glance, linking to the full analytics.
+	let recentStats = $state<AnalyticsTotals | null>(null);
+	$effect(() => {
+		const id = profileId;
+		recentStats = null;
+		getAnalyticsSummary({ ...lastDays(30), profileId: id })
+			.then((s) => id === profileId && (recentStats = s.current))
+			.catch(() => {});
+	});
 
 	// Kept current by the cards store (the single-card endpoint doesn't count leads).
 	const leadCount = $derived(cards.list?.find((p) => p.id === profileId)?.lead_count ?? 0);
@@ -224,7 +239,7 @@
 
 	// One section of the form shows at a time, picked from the rail. The URL
 	// hash (#contact) remembers it, so links can open a given section.
-	const SECTIONS = ['profile', 'contact', 'links', 'brochures', 'layout', 'appearance', 'sharing'] as const;
+	const SECTIONS = ['profile', 'contact', 'links', 'brochures', 'layout', 'appearance', 'qr', 'sharing'] as const;
 	type SectionId = (typeof SECTIONS)[number];
 
 	function sectionFrom(hash: string): SectionId {
@@ -235,6 +250,10 @@
 	let section = $state<SectionId>(sectionFrom(page.url.hash));
 	$effect(() => {
 		section = sectionFrom(page.url.hash);
+	});
+	// Styling the code is easier with the code in view.
+	$effect(() => {
+		if (section === 'qr') previewMode = 'qr';
 	});
 
 	function openSection(id: SectionId) {
@@ -249,6 +268,7 @@
 		brochures: false,
 		layout: false,
 		appearance: false,
+		qr: qrInvalid,
 		sharing: slugInvalid
 	});
 
@@ -285,6 +305,13 @@
 				label: 'Appearance',
 				icon: PaletteIcon,
 				summary: `${card.accent[0].toUpperCase()}${card.accent.slice(1)} · ${card.theme === 'dark' ? 'Dark' : 'Light'}`
+			},
+			{
+				id: 'qr',
+				label: 'QR code',
+				icon: QrCodeIcon,
+				summary:
+					card.qr.image === 'org_logo' ? 'With logo' : card.qr.image === 'custom' ? 'With image' : card.qr.dots === 'square' && card.qr.fg === '#0a0a0a' ? 'Plain' : 'Styled'
 			},
 			{ id: 'sharing', label: 'Sharing', icon: Share2Icon, summary: `/p/${slug}` }
 		];
@@ -539,7 +566,7 @@
 				</div>
 			</div>
 
-			<Tabs.List variant="line" class="mt-4 -mb-px h-10 gap-4 p-0">
+			<Tabs.List variant="line" class="mt-4 -mb-px h-10 w-full justify-start gap-4 p-0">
 				<Tabs.Trigger value="card" class="flex-none px-0.5">Card</Tabs.Trigger>
 				<Tabs.Trigger value="leads" class="flex-none px-0.5">
 					Leads
@@ -547,6 +574,18 @@
 						{leadCount}
 					</span>
 				</Tabs.Trigger>
+				<a
+					href="/dashboard/analytics?card={profile.id}"
+					class="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1.5 self-center text-sm"
+					title="Last 30 days"
+				>
+					{#if recentStats}
+						<span class="tabular">{recentStats.views} views · {recentStats.saves} saves · {recentStats.leads} leads</span>
+					{:else}
+						Analytics
+					{/if}
+					<ArrowUpRightIcon class="size-3.5" />
+				</a>
 			</Tabs.List>
 		</header>
 
@@ -1023,6 +1062,23 @@
 								</FormSection>
 							{/if}
 
+							{#if section === 'qr'}
+								<FormSection
+									panel
+									id="qr"
+									title="QR code"
+									description="Put your organisation's logo or an image in the middle, and match your colours."
+								>
+									<QrStyleEditor
+										bind:style={card.qr}
+										url={tapUrl(profile.slug, 'qr')}
+										orgLogo={branding.value?.logo_file}
+										orgName={branding.value?.name}
+										brandColor={branding.value?.signature?.brand_color}
+									/>
+								</FormSection>
+							{/if}
+
 							{#if section === 'sharing'}
 								<FormSection panel id="sharing" title="Sharing" description="Your public address and what visitors can do.">
 									<Field.Group class="gap-6">
@@ -1194,14 +1250,14 @@
 								</div>
 							{:else}
 								<div class="my-auto flex w-full max-w-[300px] flex-col items-center gap-4">
-									<QrCode url={tapUrl(profile.slug, 'qr')} bind:svg={qrMarkup} class="w-full" />
+									<QrCode url={tapUrl(profile.slug, 'qr')} style={card.qr} bind:svg={qrMarkup} class="w-full" />
 									<p class="text-muted-foreground max-w-full truncate font-mono text-xs">{tapUrl(profile.slug, 'qr')}</p>
 									<div class="grid w-full grid-cols-2 gap-2">
 										<Button variant="outline" onclick={() => downloadQrSvg(qrMarkup, profile!.slug)} disabled={!qrMarkup}>
 											<DownloadIcon data-icon="inline-start" />
 											SVG
 										</Button>
-										<Button onclick={() => downloadQrPng(tapUrl(profile!.slug, 'qr'), profile!.slug)} disabled={!qrMarkup}>
+										<Button onclick={() => downloadQrPng(qrMarkup, profile!.slug)} disabled={!qrMarkup}>
 											<DownloadIcon data-icon="inline-start" />
 											PNG
 										</Button>
@@ -1227,7 +1283,7 @@
 	</Tabs.Root>
 
 	<!-- Uses the saved slug: an unsaved edit isn't live yet, so its QR wouldn't resolve. -->
-	<QrDialog bind:open={qrOpen} slug={profile.slug} name={card.name} />
+	<QrDialog bind:open={qrOpen} slug={profile.slug} name={card.name} style={card.qr} />
 	<DeleteCardDialog bind:target={deleteTarget} ondeleted={onDeleted} />
 	<FilePickerDialog
 		bind:open={photoPickerOpen}
