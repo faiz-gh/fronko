@@ -76,7 +76,7 @@ func (req *profileRequest) validate() string {
 	if data[0] != '{' {
 		return "data must be a JSON object"
 	}
-	return ""
+	return validateCardURLs(data)
 }
 
 func profileIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {

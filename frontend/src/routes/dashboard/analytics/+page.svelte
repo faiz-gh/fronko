@@ -121,6 +121,10 @@
 			userId: userId ?? undefined,
 			profileId: profileId ?? undefined
 		};
+		// The Teams table follows the team filter; the people list never does.
+		// Without a team filter they're the same request, so it's made once.
+		const everyone = session.seesOthers ? getAnalyticsMembers(period) : Promise.resolve([]);
+		const inTeam = session.seesOthers && teamId !== null ? getAnalyticsMembers({ ...period, teamId }) : everyone;
 		try {
 			const [s, ts, c, cs, ts2, ms, ps] = await Promise.all([
 				getAnalyticsSummary(q),
@@ -128,8 +132,8 @@
 				getAnalyticsContent(q),
 				getAnalyticsCards(q),
 				session.seesOthers ? getAnalyticsTeams({ ...period, teamId: teamId ?? undefined }) : Promise.resolve([]),
-				session.seesOthers ? getAnalyticsMembers({ ...period, teamId: teamId ?? undefined }) : Promise.resolve([]),
-				session.seesOthers ? getAnalyticsMembers(period) : Promise.resolve([])
+				inTeam,
+				everyone
 			]);
 			if (key !== loadedKey) return; // a newer filter won
 			summary = s;
@@ -420,14 +424,16 @@
 							<div class="flex flex-col gap-1">
 								<h2 id="funnel-heading" class="font-semibold">From visit to lead</h2>
 								<p class="text-muted-foreground text-sm">
-									{pct(rate(cur!.leads, cur!.sessions))} of visits ended in a lead.
+									{cur!.sessions > 0
+										? `${pct(rate(cur!.leads, cur!.sessions))} of visits ended in a lead.`
+										: 'No visits in this period yet.'}
 								</p>
 							</div>
 							<Funnel steps={funnel} />
 						</section>
 					</div>
 
-					<div class="grid items-start gap-6 lg:grid-cols-2 2xl:grid-cols-3">
+					<div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 2xl:grid-cols-3">
 						<section class="bg-card flex flex-col gap-4 rounded-xl border p-5">
 							<h2 class="font-semibold">How visitors arrive</h2>
 							<SplitBar parts={sourceParts} label="Views by source" />
@@ -454,7 +460,7 @@
 								items={summary.time_buckets.map((v, i) => ({ key: String(i), label: timeLabels[i], value: v }))}
 							/>
 						</section>
-						<section class="bg-card flex flex-col gap-4 rounded-xl border p-5 lg:col-span-2 2xl:col-span-1">
+						<section class="bg-card flex min-w-0 flex-col gap-4 rounded-xl border p-5 lg:col-span-2 2xl:col-span-1">
 							<div class="flex flex-col gap-1">
 								<h2 class="font-semibold">When cards are viewed</h2>
 								<p class="text-muted-foreground text-sm">In your time zone.</p>
@@ -666,7 +672,9 @@
 								{:else}
 									<Table.Row
 										><Table.Cell colspan={11} class="text-muted-foreground py-10 text-center"
-											>No cards match these filters</Table.Cell
+											>{teamId === null && userId === null && profileId === null
+												? 'No cards yet'
+												: 'No cards match these filters'}</Table.Cell
 										></Table.Row
 									>
 								{/each}

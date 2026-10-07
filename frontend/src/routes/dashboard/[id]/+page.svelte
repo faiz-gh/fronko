@@ -179,6 +179,14 @@
 	const rail = $derived(
 		card && errorsBySection ? railItems(card, `/p/${session.orgHandle}/${slug}`, errorsBySection) : []
 	);
+	// While the unsaved-changes bar floats over the bottom of the page, keep
+	// focused fields (e.g. tabbing to "Add block") scrolled clear of it.
+	$effect(() => {
+		if (!dirty) return;
+		const root = document.documentElement;
+		root.style.scrollPaddingBottom = '6rem';
+		return () => root.style.removeProperty('scroll-padding-bottom');
+	});
 	const firstInvalid = $derived(SECTIONS.find((id) => errorsBySection?.[id]) ?? null);
 
 	async function copyLink() {
@@ -389,7 +397,7 @@
 								{:else if section === 'contact'}
 									<ContactSection bind:card {errors} booking={profile.booking} holder={profile.assigned_user} />
 								{:else if section === 'links'}
-									<LinksSection bind:card />
+									<LinksSection bind:card {errors} />
 								{:else if section === 'brochures'}
 									<BrochuresSection bind:card files={fileMeta} onfile={remember} />
 								{:else if section === 'layout'}

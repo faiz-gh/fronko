@@ -319,15 +319,23 @@ export function normalizeCard(raw: unknown): CardData {
 
 /**
  * Returns an absolute http(s) URL, or null. Anything else (javascript:, data:, …)
- * is rejected so visitor-facing links can't run script.
+ * is rejected so visitor-facing links can't run script. Text that isn't an
+ * address ("not a url") is rejected too: browsers would percent-encode it into
+ * a host, so the host must look like a domain, an IP or localhost.
  */
 export function safeUrl(input: string): string | null {
 	const trimmed = input.trim();
-	if (!trimmed) return null;
+	if (!trimmed || /\s/.test(trimmed)) return null;
 	const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`;
 	try {
 		const url = new URL(withScheme);
-		return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+		if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+		const host = url.hostname;
+		const validHost =
+			host === 'localhost' ||
+			host.startsWith('[') ||
+			/^(?!-)[a-z0-9-]+(?<!-)(\.(?!-)[a-z0-9-]+(?<!-))*\.[a-z0-9-]{2,}$/i.test(host);
+		return validHost ? url.href : null;
 	} catch {
 		return null;
 	}

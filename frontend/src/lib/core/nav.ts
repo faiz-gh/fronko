@@ -55,7 +55,7 @@ export const DASHBOARD_NAV: NavItem[] = [
 		icon: UsersIcon,
 		visible: () => session.isAdmin,
 		active: (path) => path.startsWith('/dashboard/users'),
-		count: () => orgUsers.assignable.length
+		count: () => orgUsers.people.length
 	},
 	{
 		href: '/dashboard/teams',

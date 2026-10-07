@@ -329,6 +329,28 @@ export function renderSignature(
 	return { template, html, text: plainText(p) };
 }
 
+/** Text colours lightened for the dark preview: greys, plus the dark slate accent. */
+const DARK_TEXT: Record<string, string> = {
+	[TEXT]: '#e5e7eb',
+	[MUTED]: '#a1a1aa',
+	'#9ca3af': '#a1a1aa',
+	'#d1d5db': '#52525b',
+	[ACCENT_HEX.slate]: '#cbd5e1'
+};
+
+/**
+ * The signature as a mail app in dark mode shows it: dark text colours are
+ * lightened so they stay readable on a dark background. Only `color:` is
+ * changed; backgrounds and borders keep their colours. For the preview only;
+ * copied and downloaded signatures stay as rendered.
+ */
+export function darkModeHtml(html: string): string {
+	return html.replace(/(^|[;"\s])color:(#[0-9a-f]{6})/gi, (m, pre: string, hex: string) => {
+		const swap = DARK_TEXT[hex.toLowerCase()];
+		return swap ? `${pre}color:${swap}` : m;
+	});
+}
+
 /** A standalone page holding the signature, for the .html download and previews. */
 export function signatureDocument(html: string, background = '#ffffff'): string {
 	return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Email signature</title></head><body style="margin:0;padding:16px;background:${background};">${html}</body></html>`;

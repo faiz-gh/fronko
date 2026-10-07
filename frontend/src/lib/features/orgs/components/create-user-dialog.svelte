@@ -219,7 +219,16 @@
 				</Field.Group>
 				<Dialog.Footer>
 					<Dialog.Close class={buttonVariants({ variant: 'outline' })}>Cancel</Dialog.Close>
-					<Button type="submit" disabled={creating || !username || !email || !password}>
+					<Button
+						type="submit"
+						disabled={creating ||
+							!username ||
+							!email ||
+							!password ||
+							!!usernameError ||
+							!!emailError ||
+							!!passwordError}
+					>
 						{#if creating}<Spinner data-icon="inline-start" />{/if}
 						Create user
 					</Button>

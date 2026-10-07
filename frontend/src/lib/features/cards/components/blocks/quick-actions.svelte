@@ -8,16 +8,30 @@
 
 	let { card, align = 'center' }: { card: CardData; align?: 'center' | 'start' } = $props();
 
+	const who = $derived(card.name.trim());
 	const quick = $derived(
 		[
-			card.email.trim() && { kind: 'email', label: 'Email', href: `mailto:${card.email.trim()}`, icon: MailIcon },
+			card.email.trim() && {
+				kind: 'email',
+				label: 'Email',
+				name: who ? `Email ${who}` : 'Email',
+				href: `mailto:${card.email.trim()}`,
+				icon: MailIcon
+			},
 			card.phone_number && {
 				kind: 'call',
 				label: 'Call',
+				name: who ? `Call ${who}` : 'Call',
 				href: `tel:${e164(card.phone_country_code, card.phone_number)}`,
 				icon: PhoneIcon
 			},
-			safeUrl(card.website) && { kind: 'website', label: 'Website', href: safeUrl(card.website)!, icon: GlobeIcon }
+			safeUrl(card.website) && {
+				kind: 'website',
+				label: 'Website',
+				name: 'Website (opens in a new tab)',
+				href: safeUrl(card.website)!,
+				icon: GlobeIcon
+			}
 		].filter((q) => !!q)
 	);
 </script>
@@ -32,12 +46,13 @@
 				data-track="click"
 				data-track-target={q.kind}
 				data-track-label={q.label}
+				aria-label={q.name}
 				class="group flex w-16 flex-col items-center gap-1.5"
 			>
 				<span
 					class="bg-muted text-foreground grid size-11 place-items-center rounded-full transition-colors group-hover:bg-(--card-accent) group-hover:text-white"
 				>
-					<q.icon class="size-[18px]" />
+					<q.icon class="size-[18px]" aria-hidden="true" />
 				</span>
 				<span class="text-muted-foreground text-xs">{q.label}</span>
 			</a>

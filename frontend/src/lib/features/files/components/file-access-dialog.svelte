@@ -28,9 +28,11 @@
 	// Admins see every file anyway, and a personal file's owner always has it,
 	// so only the other members can be given access.
 	const candidates = $derived(
-		orgUsers.assignable.filter((u) => u.role === 'member' && !(file?.area === 'personal' && file.owner?.id === u.id))
+		orgUsers.people.filter((u) => u.role === 'member' && !(file?.area === 'personal' && file.owner?.id === u.id))
 	);
-	// A team file's own team already has it.
+	// A team file's own team already has it, so its members show as on and locked.
+	const viaTeam = (u: { teams: { id: number }[] }) =>
+		file?.area === 'team' && u.teams.some((t) => t.id === file?.team?.id);
 	const teamCandidates = $derived((teams.list ?? []).filter((t) => !(file?.area === 'team' && file.team?.id === t.id)));
 
 	$effect(() => {
@@ -158,9 +160,15 @@
 								<UserAvatar username={user.username} class="size-7 text-[10px]" />
 								<span class="flex min-w-0 flex-1 flex-col">
 									<span class="truncate text-sm font-medium">{user.username}</span>
-									<span class="text-muted-foreground truncate text-xs">{user.email}</span>
+									<span class="text-muted-foreground truncate text-xs">
+										{viaTeam(user) ? `Has access via ${file?.team?.name ?? 'the team'}` : user.email}
+									</span>
 								</span>
-								<Switch checked={selected.has(user.id)} onCheckedChange={(on) => toggle(user.id, on)} />
+								{#if viaTeam(user)}
+									<Switch checked disabled aria-label="{user.username} has access via the team" />
+								{:else}
+									<Switch checked={selected.has(user.id)} onCheckedChange={(on) => toggle(user.id, on)} />
+								{/if}
 							</label>
 						</li>
 					{/each}

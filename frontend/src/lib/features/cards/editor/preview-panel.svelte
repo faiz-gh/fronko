@@ -9,8 +9,9 @@
 	import { cn } from '$lib/utils';
 	import { tapUrl, type CardData } from '../card';
 	import ProfileCard from '../components/profile-card.svelte';
+	import VisitorActions from '../components/visitor-actions.svelte';
 	import QrCode from '../components/qr-code.svelte';
-	import { downloadQrPng, downloadQrSvg } from '../qr';
+	import { downloadQrPng, downloadQrSvg, qrContrastIssue } from '../qr';
 
 	let {
 		card,
@@ -31,6 +32,8 @@
 	} = $props();
 
 	let qrMarkup = $state('');
+	// Colours too close to scan would download a code nobody can read.
+	const unscannable = $derived(!!qrContrastIssue(card.qr)?.blocking);
 </script>
 
 <aside class="bg-muted/40 bg-dots hidden border-l xl:block" aria-label="Preview">
@@ -63,7 +66,14 @@
 		<div class="-mx-2 flex min-h-0 flex-1 justify-center overflow-y-auto px-2 py-2">
 			{#if previewMode === 'card'}
 				<div class="my-auto w-full max-w-[380px]">
-					<ProfileCard {card} slug={savedSlug} {files} org={branding.value} {booking} />
+					<ProfileCard {card} slug={savedSlug} {files} org={branding.value} {booking}>
+						{#snippet actions()}
+							<!-- As on the public card, but inert: they would act on the live page. -->
+							<div class="flex flex-col gap-2" inert>
+								<VisitorActions {card} />
+							</div>
+						{/snippet}
+					</ProfileCard>
 				</div>
 			{:else}
 				<div class="my-auto flex w-full max-w-[300px] flex-col items-center gap-4">
@@ -72,15 +82,24 @@
 						{tapUrl(session.orgHandle, savedSlug, 'qr')}
 					</p>
 					<div class="grid w-full grid-cols-2 gap-2">
-						<Button variant="outline" onclick={() => downloadQrSvg(qrMarkup, savedSlug)} disabled={!qrMarkup}>
+						<Button
+							variant="outline"
+							onclick={() => downloadQrSvg(qrMarkup, savedSlug)}
+							disabled={!qrMarkup || unscannable}
+						>
 							<DownloadIcon data-icon="inline-start" />
 							SVG
 						</Button>
-						<Button onclick={() => downloadQrPng(qrMarkup, savedSlug)} disabled={!qrMarkup}>
+						<Button onclick={() => downloadQrPng(qrMarkup, savedSlug)} disabled={!qrMarkup || unscannable}>
 							<DownloadIcon data-icon="inline-start" />
 							PNG
 						</Button>
 					</div>
+					{#if unscannable}
+						<p class="text-destructive text-center text-xs">
+							Phones can't read these colours. Pick a darker or lighter pair to download the code.
+						</p>
+					{/if}
 					{#if slug !== savedSlug}
 						<p class="text-muted-foreground text-center text-xs">This code uses your saved link. Save to update it.</p>
 					{/if}

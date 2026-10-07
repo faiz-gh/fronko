@@ -6,7 +6,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import QrCode from './qr-code.svelte';
 	import { tapUrl, type QrStyle } from '$lib/features/cards/card';
-	import { downloadQrPng, downloadQrSvg } from '$lib/features/cards/qr';
+	import { downloadQrPng, downloadQrSvg, qrContrastIssue } from '$lib/features/cards/qr';
 	import { session } from '$lib/core/session.svelte';
 	import { cn } from '$lib/utils';
 
@@ -29,6 +29,8 @@
 	// Marked as a QR visit, so the card's QR tap behaviour applies.
 	const url = $derived(slug ? tapUrl(session.orgHandle, slug, 'qr') : '');
 	let svg = $state('');
+	// Colours too close to scan would download a code nobody can read.
+	const unscannable = $derived(!!style && !!qrContrastIssue(style)?.blocking);
 
 	async function copyLink() {
 		try {
@@ -61,11 +63,11 @@
 		</button>
 
 		<Dialog.Footer class="grid grid-cols-2 gap-2 sm:flex">
-			<Button variant="outline" onclick={() => downloadQrSvg(svg, slug)} disabled={!svg}>
+			<Button variant="outline" onclick={() => downloadQrSvg(svg, slug)} disabled={!svg || unscannable}>
 				<DownloadIcon data-icon="inline-start" />
 				SVG
 			</Button>
-			<Button onclick={() => downloadQrPng(svg, slug)} disabled={!svg}>
+			<Button onclick={() => downloadQrPng(svg, slug)} disabled={!svg || unscannable}>
 				<DownloadIcon data-icon="inline-start" />
 				PNG
 			</Button>

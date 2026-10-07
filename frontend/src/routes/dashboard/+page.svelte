@@ -64,7 +64,8 @@
 	const totalLeads = $derived(cards.list?.reduce((sum, p) => sum + p.lead_count, 0) ?? 0);
 
 	// Refetch when cards or their lead counts change (e.g. after a delete).
-	let fetchedFor = '';
+	// Starts as null so the first run always fetches, even with no cards.
+	let fetchedFor: string | null = null;
 	$effect(() => {
 		const list = cards.list;
 		if (!list) return;
@@ -83,7 +84,7 @@
 	});
 
 	// Organisation view
-	const people = $derived(orgUsers.assignable);
+	const people = $derived(orgUsers.people);
 	const unassigned = $derived((cards.list ?? []).filter((p) => !p.assigned_user));
 	const settingUp = $derived(people.filter((u) => ['unverified', 'temporary_password'].includes(userStatus(u))));
 
@@ -209,7 +210,11 @@
 				]
 			: []),
 		{ done: (cards.list?.length ?? 0) > 0, label: 'Create a card', action: () => (cards.createOpen = true) },
-		{ done: people.length > 0, label: 'Add someone from your team', action: () => (createUserOpen = true) },
+		{
+			done: people.some((u) => u.role !== 'owner'),
+			label: 'Add someone from your team',
+			action: () => (createUserOpen = true)
+		},
 		{
 			done: (cards.list ?? []).some((p) => p.assigned_user),
 			label: 'Assign a card to them',

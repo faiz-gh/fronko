@@ -11,9 +11,13 @@ class OrgUsers {
 	#owner: string | null = null;
 	#loading: Promise<void> | null = null;
 
-	/** Users who can be given cards and files: everyone but the owner. */
-	get assignable(): OrgUser[] {
-		return (this.list ?? []).filter((u) => u.role !== 'owner');
+	/**
+	 * Everyone, the owner included: counted on the Users page and offered when
+	 * assigning cards, as in analytics. (The owner sees every file anyway, so
+	 * file access lists only members.)
+	 */
+	get people(): OrgUser[] {
+		return this.list ?? [];
 	}
 
 	byId(id: number | null | undefined): OrgUser | undefined {

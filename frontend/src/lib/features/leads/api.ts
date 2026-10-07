@@ -86,3 +86,8 @@ export async function listAllLeads(query: Omit<LeadQuery, 'page' | 'pageSize'> =
 		if (all.length >= res.total || res.leads.length === 0) return all;
 	}
 }
+
+/** Admins only: deletes a lead for good. */
+export function deleteLead(id: number): Promise<void> {
+	return apiClient<void>(`/api/me/leads/${id}`, { method: 'DELETE' });
+}

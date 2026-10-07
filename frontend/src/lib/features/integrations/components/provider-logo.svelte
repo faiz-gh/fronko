@@ -16,7 +16,14 @@
 		<svg viewBox="0 0 24 24" fill="currentColor" class="size-1/2"><path d={logo.path} /></svg>
 	{:else if logo.icon}
 		<logo.icon class="size-1/2" />
+	{:else if logo.mark === 'microsoft'}
+		<svg viewBox="0 0 24 24" class="size-1/2">
+			<rect x="1" y="1" width="10.5" height="10.5" fill="#f25022" />
+			<rect x="12.5" y="1" width="10.5" height="10.5" fill="#7fba00" />
+			<rect x="1" y="12.5" width="10.5" height="10.5" fill="#00a4ef" />
+			<rect x="12.5" y="12.5" width="10.5" height="10.5" fill="#ffb900" />
+		</svg>
 	{:else}
-		<span class="text-[0.8em] font-semibold tracking-tight">{initialsOf(name)}</span>
+		<span class="text-[0.8em] font-semibold tracking-tight">{logo.initials ?? initialsOf(name)}</span>
 	{/if}
 </span>

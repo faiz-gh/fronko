@@ -113,6 +113,15 @@ describe('safeUrl', () => {
 			expect(safeUrl(bad)).toBeNull();
 		}
 	});
+
+	it('rejects text that is not an address', () => {
+		for (const bad of ['not a url', 'https://not a url', 'hello', 'https://ada', 'ada.', 'https://%20.com']) {
+			expect(safeUrl(bad)).toBeNull();
+		}
+		expect(safeUrl('http://localhost:3000/p')).toBe('http://localhost:3000/p');
+		expect(safeUrl('https://192.168.1.10/x')).toBe('https://192.168.1.10/x');
+		expect(safeUrl('sub.ada-lovelace.co.uk')).toBe('https://sub.ada-lovelace.co.uk/');
+	});
 });
 
 describe('link helpers', () => {

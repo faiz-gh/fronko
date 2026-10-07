@@ -1,6 +1,13 @@
 <script lang="ts">
 	import CheckIcon from '@lucide/svelte/icons/check';
-	import { createTeam, TEAM_COLORS, updateTeam, type Team, type TeamDetail } from '$lib/features/teams/api';
+	import {
+		createTeam,
+		TEAM_COLOR_NAMES,
+		TEAM_COLORS,
+		updateTeam,
+		type Team,
+		type TeamDetail
+	} from '$lib/features/teams/api';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Field from '$lib/components/ui/field';
@@ -78,14 +85,14 @@
 					/>
 				</Field.Field>
 				<Field.Field>
-					<Field.Label>Colour</Field.Label>
-					<div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Team colour">
+					<Field.Label id="team-colour-label">Colour</Field.Label>
+					<div class="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="team-colour-label">
 						{#each TEAM_COLORS as c (c)}
 							<button
 								type="button"
 								role="radio"
 								aria-checked={color === c}
-								aria-label={c}
+								aria-label={TEAM_COLOR_NAMES[c]}
 								onclick={() => (color = c)}
 								class="focus-visible:ring-ring/50 grid size-8 place-items-center rounded-full text-white ring-offset-2 ring-offset-background outline-none focus-visible:ring-3 aria-checked:ring-2 aria-checked:ring-foreground/60"
 								style="background: {c}"

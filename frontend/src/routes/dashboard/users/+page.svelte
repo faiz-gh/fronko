@@ -34,7 +34,7 @@
 		orgUsers.refresh();
 	});
 
-	const people = $derived(orgUsers.assignable);
+	const people = $derived(orgUsers.people);
 	const visible = $derived.by(() => {
 		const q = query.trim().toLowerCase();
 		return people.filter(
@@ -100,7 +100,7 @@
 				</div>
 			{/each}
 		</div>
-	{:else if people.length === 0}
+	{:else if people.every((u) => u.role === 'owner')}
 		<Empty.Root class="bg-card rounded-xl border border-dashed py-20">
 			<Empty.Header>
 				<Empty.Media variant="icon">
@@ -159,8 +159,8 @@
 											>
 												{user.username}
 											</a>
-											{#if user.role === 'admin'}
-												<Badge variant="secondary">{ROLE_LABEL.admin}</Badge>
+											{#if user.role !== 'member'}
+												<Badge variant="secondary">{ROLE_LABEL[user.role]}</Badge>
 											{/if}
 										</span>
 										<span class="text-muted-foreground truncate text-xs">{user.email}</span>

@@ -48,8 +48,18 @@ export interface TeamMembership {
 	role: TeamRole;
 }
 
-/** Colours offered for teams; any #rrggbb works. */
-export const TEAM_COLORS = ['#2563eb', '#16a34a', '#e11d48', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#4b5563'];
+/** Colours offered for teams, with names for screen readers; any #rrggbb works. */
+export const TEAM_COLOR_NAMES: Record<string, string> = {
+	'#2563eb': 'Blue',
+	'#16a34a': 'Green',
+	'#e11d48': 'Red',
+	'#d97706': 'Amber',
+	'#7c3aed': 'Violet',
+	'#0891b2': 'Cyan',
+	'#db2777': 'Pink',
+	'#4b5563': 'Grey'
+};
+export const TEAM_COLORS = Object.keys(TEAM_COLOR_NAMES);
 
 /** A team's colour, or a neutral default. */
 export function teamColor(t: Pick<TeamRef, 'color'> | null | undefined): string {
