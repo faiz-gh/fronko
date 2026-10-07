@@ -71,6 +71,8 @@ type AuthResponse struct {
 	Role               string  `json:"role"`
 	OrgName            string  `json:"org_name"`
 	MustChangePassword bool    `json:"must_change_password"`
+	// Teams the user is in, with their role in each.
+	Teams []models.TeamRef `json:"teams"`
 }
 
 // authResponse describes the signed-in user, including their organisation's name.
@@ -83,6 +85,12 @@ func (h *AuthHandler) authResponse(ctx context.Context, u *models.User) AuthResp
 		res.OrgName = org.Name
 	} else {
 		log.Printf("get organization %d: %v", u.OrgID, err)
+	}
+	res.Teams = []models.TeamRef{}
+	if teams, err := h.repo.ListUserTeams(ctx, u.ID); err == nil {
+		res.Teams = teams
+	} else {
+		log.Printf("list teams of user %d: %v", u.ID, err)
 	}
 	return res
 }

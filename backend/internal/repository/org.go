@@ -34,20 +34,26 @@ func (r *Repository) UpdateOrganization(ctx context.Context, o *models.Organizat
 }
 
 // orgUserQuery reads users with what they hold: cards assigned to them,
-// leads that arrived while they held a card, and the size of their personal files.
+// leads that arrived while they held a card, the size of their personal
+// files, and the teams they're in.
 func orgUserQuery(where string) string {
 	return `SELECT ` + userColumns("u.") + `,
 	       (SELECT COUNT(*) FROM profiles p WHERE p.assigned_user_id = u.user_id),
 	       (SELECT COUNT(*) FROM leads l WHERE l.assigned_user_id = u.user_id),
-	       (SELECT COALESCE(SUM(f.size_bytes), 0) FROM files f WHERE f.user_id = u.user_id AND f.area = 'personal')
+	       (SELECT COALESCE(SUM(f.size_bytes), 0) FROM files f WHERE f.user_id = u.user_id AND f.area = 'personal'),
+	       ` + userTeamsJSON("u.user_id") + `
 	FROM users u WHERE ` + where
 }
 
 func scanOrgUser(row pgx.Row) (*models.OrgUser, error) {
 	var u models.OrgUser
-	err := row.Scan(append(userDest(&u.User), &u.CardCount, &u.LeadCount, &u.UsedBytes)...)
+	var teams []byte
+	err := row.Scan(append(userDest(&u.User), &u.CardCount, &u.LeadCount, &u.UsedBytes, &teams)...)
 	if err != nil {
 		return nil, mapError(err)
+	}
+	if u.Teams, err = decodeTeamRefs(teams); err != nil {
+		return nil, err
 	}
 	return &u, nil
 }

@@ -5,7 +5,7 @@
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import { getOrg, getOrgTrend, type OrgUsage, type UsagePoint } from '$lib/api/admin';
 	import { ApiError } from '$lib/api/client';
-	import { formatBytes } from '$lib/api/files';
+	import { formatBytes, PURPOSES, type FilePurpose } from '$lib/api/files';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -50,6 +50,14 @@
 	const series = (key: keyof UsagePoint) => (trend ?? []).map((p) => ({ date: p.date, value: Number(p[key] ?? 0) }));
 	const count = (n: number) => Math.round(n).toLocaleString();
 
+	// "5 brochures, 2 logos": the biggest purposes first, counts only.
+	function purposeNote(byPurpose: Record<string, number>): string {
+		return Object.entries(byPurpose)
+			.sort((a, b) => b[1] - a[1])
+			.map(([p, n]) => `${n} ${(PURPOSES[p as FilePurpose]?.[n === 1 ? 'label' : 'plural'] ?? p).toLowerCase()}`)
+			.join(', ');
+	}
+
 	const facts = $derived(
 		org
 			? [
@@ -65,9 +73,23 @@
 							.filter(Boolean)
 							.join(', ')
 					},
+					{ label: 'Teams', value: org.team_count.toLocaleString(), note: org.team_count ? '' : 'Not using teams' },
 					{ label: 'Cards', value: org.card_count.toLocaleString(), note: '' },
 					{ label: 'Leads', value: org.lead_count.toLocaleString(), note: 'Captured on its cards' },
-					{ label: 'Files', value: org.file_count.toLocaleString(), note: formatBytes(org.storage_used_bytes) + ' in total' }
+					{
+						label: 'Files',
+						value: org.file_count.toLocaleString(),
+						note: [formatBytes(org.storage_used_bytes) + ' in total', purposeNote(org.files_by_purpose)].filter(Boolean).join(' · ')
+					},
+					{
+						label: 'Branding',
+						value: org.logo_set ? 'Logo set' : 'No logo',
+						note: org.logo_set
+							? `${org.logo_policy === 'required' ? 'Required' : 'Optional'} on cards${org.signature_locked ? ', signature template locked' : ''}`
+							: org.signature_locked
+								? 'Signature template locked'
+								: ''
+					}
 				]
 			: []
 	);
@@ -133,7 +155,7 @@
 			</Alert.Root>
 		{/if}
 
-		<dl class="bg-border grid grid-cols-2 gap-px overflow-hidden rounded-xl border lg:grid-cols-5">
+		<dl class="bg-border grid grid-cols-2 gap-px overflow-hidden rounded-xl border lg:grid-cols-4">
 			{#each facts as f (f.label)}
 				<div class="bg-card flex flex-col gap-1 px-4 py-4 sm:px-6 sm:py-5">
 					<dt class="text-muted-foreground text-xs sm:text-sm">{f.label}</dt>
@@ -141,7 +163,7 @@
 					{#if f.note}<dd class="text-muted-foreground text-xs">{f.note}</dd>{/if}
 				</div>
 			{/each}
-			<div class="bg-card col-span-2 flex flex-col gap-1 px-4 py-4 sm:px-6 sm:py-5 lg:col-span-1">
+			<div class="bg-card col-span-2 flex flex-col gap-1 px-4 py-4 sm:px-6 sm:py-5">
 				<dt class="text-muted-foreground text-xs sm:text-sm">Storage</dt>
 				<dd class="text-lg font-semibold tracking-tight"><StorageCell {org} /></dd>
 				<dd class="text-muted-foreground text-xs">
@@ -157,7 +179,7 @@
 			</div>
 			{#if trend === null}
 				<div class="grid gap-4 md:grid-cols-2">
-					{#each [1, 2, 3, 4] as i (i)}<Skeleton class="h-[250px] rounded-xl" />{/each}
+					{#each [1, 2, 3, 4, 5] as i (i)}<Skeleton class="h-[250px] rounded-xl" />{/each}
 				</div>
 			{:else}
 				<div class="grid gap-4 md:grid-cols-2">
@@ -165,6 +187,7 @@
 					<TrendChart label="Cards" points={series('card_count')} format={count} />
 					<TrendChart label="Leads" points={series('lead_count')} format={count} />
 					<TrendChart label="Storage used" points={series('storage_used_bytes')} format={formatBytes} />
+					<TrendChart label="Teams" points={series('team_count')} format={count} />
 				</div>
 			{/if}
 		</section>

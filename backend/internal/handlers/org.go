@@ -113,6 +113,8 @@ type createUserRequest struct {
 	Password   string        `json:"password"`
 	Role       string        `json:"role"`
 	QuotaBytes optionalQuota `json:"quota_bytes"`
+	// Teams to put the new user in, with their role in each.
+	Teams []models.TeamMembership `json:"teams"`
 }
 
 // Protected (admins): POST /api/org/users. Creates a user with a temporary
@@ -155,6 +157,10 @@ func (h *OrgHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errQuotaRange)
 		return
 	}
+	if len(req.Teams) > maxTeamsPerUser || !validRoles(req.Teams) {
+		writeError(w, http.StatusBadRequest, "invalid teams")
+		return
+	}
 
 	org, err := h.repo.GetOrganization(r.Context(), p.OrgID)
 	if err != nil {
@@ -183,7 +189,7 @@ func (h *OrgHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		StorageQuotaBytes:  quota,
 		CreatedBy:          &creator,
 	}
-	if err := h.repo.CreateUser(r.Context(), user); err != nil {
+	if err := h.repo.CreateUser(r.Context(), user, req.Teams...); err != nil {
 		if errors.Is(err, repository.ErrConflict) {
 			if repository.IsEmailConflict(err) {
 				writeError(w, http.StatusConflict, "an account with this email already exists")

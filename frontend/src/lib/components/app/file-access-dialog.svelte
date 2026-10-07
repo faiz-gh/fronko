@@ -7,15 +7,21 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { Switch } from '$lib/components/ui/switch';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import FileThumb from './file-thumb.svelte';
 	import UserAvatar from './user-avatar.svelte';
+	import { teamColor } from '$lib/api/teams';
 	import { orgUsers } from '$lib/org-users.svelte';
+	import { teams } from '$lib/teams.svelte';
 
 	/** The file whose access is being managed; the dialog is open while this is set. */
 	let { file = $bindable(null) }: { file?: LibraryFile | null } = $props();
 
 	let selected = $state<Set<number> | null>(null);
 	let saved = new Set<number>();
+	let selectedTeams = $state<Set<number>>(new Set());
+	let savedTeams = new Set<number>();
+	let tab = $state<'people' | 'teams'>('people');
 	let saving = $state(false);
 	let error = $state('');
 
@@ -24,6 +30,8 @@
 	const candidates = $derived(
 		orgUsers.assignable.filter((u) => u.role === 'member' && !(file?.area === 'personal' && file.owner?.id === u.id))
 	);
+	// A team file's own team already has it.
+	const teamCandidates = $derived((teams.list ?? []).filter((t) => !(file?.area === 'team' && file.team?.id === t.id)));
 
 	$effect(() => {
 		const f = file;
@@ -31,10 +39,12 @@
 		error = '';
 		if (!f) return;
 		getFileGrants(f.id)
-			.then(({ users }) => {
+			.then(({ users, teams: grantedTeams }) => {
 				if (file?.id !== f.id) return;
 				saved = new Set(users.map((u) => u.id));
+				savedTeams = new Set(grantedTeams.map((t) => t.id));
 				selected = new Set(saved);
+				selectedTeams = new Set(savedTeams);
 			})
 			.catch((e) => (error = e instanceof Error ? e.message : 'Failed to load access'));
 	});
@@ -47,16 +57,26 @@
 		selected = next;
 	}
 
-	const changed = $derived(
-		!!selected && (selected.size !== saved.size || [...selected].some((id) => !saved.has(id)))
-	);
+	function toggleTeam(id: number, on: boolean) {
+		const next = new Set(selectedTeams);
+		if (on) next.add(id);
+		else next.delete(id);
+		selectedTeams = next;
+	}
+
+	const differs = (a: Set<number>, b: Set<number>) => a.size !== b.size || [...a].some((id) => !b.has(id));
+	const changed = $derived(!!selected && (differs(selected, saved) || differs(selectedTeams, savedTeams)));
 
 	async function save() {
 		if (!file || !selected) return;
 		saving = true;
 		try {
-			await setFileGrants(file.id, [...selected]);
-			toast.success(selected.size ? `Shared with ${selected.size} ${selected.size === 1 ? 'person' : 'people'}` : 'Access removed');
+			await setFileGrants(file.id, { userIds: [...selected], teamIds: [...selectedTeams] });
+			const parts = [
+				selected.size ? `${selected.size} ${selected.size === 1 ? 'person' : 'people'}` : '',
+				selectedTeams.size ? `${selectedTeams.size} ${selectedTeams.size === 1 ? 'team' : 'teams'}` : ''
+			].filter(Boolean);
+			toast.success(parts.length ? `Shared with ${parts.join(' and ')}` : 'Access removed');
 			file = null;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Could not save access';
@@ -73,6 +93,8 @@
 			<Dialog.Description>
 				{#if file?.area === 'personal'}
 					It's {file.owner?.username}'s file. Choose who else can see it and use it on their cards.
+				{:else if file?.area === 'team'}
+					Everyone in {file.team?.name} can use it. Choose who else can see it and use it on their cards.
 				{:else}
 					Organisation files are private to admins. Choose who else can see this one and use it on their cards.
 				{/if}
@@ -81,7 +103,7 @@
 
 		{#if file}
 			<div class="flex items-center gap-3 rounded-lg border p-2.5">
-				<FileThumb id={file.id} kind={file.kind} class="size-10 shrink-0 rounded-md" />
+				<FileThumb id={file.id} kind={file.kind} hasThumb={file.has_thumb} class="size-10 shrink-0 rounded-md" />
 				<span class="min-w-0 truncate text-sm font-medium">{file.title || file.name}</span>
 			</div>
 		{/if}
@@ -93,7 +115,40 @@
 				{/each}
 			</div>
 		{:else if selected}
-			{#if candidates.length === 0}
+			<Tabs.Root bind:value={tab}>
+				<Tabs.List class="w-full">
+					<Tabs.Trigger value="people">People{selected.size ? ` · ${selected.size}` : ''}</Tabs.Trigger>
+					<Tabs.Trigger value="teams">Teams{selectedTeams.size ? ` · ${selectedTeams.size}` : ''}</Tabs.Trigger>
+				</Tabs.List>
+			</Tabs.Root>
+			{#if tab === 'teams'}
+				{#if teamCandidates.length === 0}
+					<p class="text-muted-foreground py-4 text-center text-sm">
+						No teams yet. Create them on the <a href="/dashboard/teams" class="underline underline-offset-4">Teams</a> page.
+					</p>
+				{:else}
+					<ul class="-mx-2 flex max-h-72 flex-col overflow-y-auto">
+						{#each teamCandidates as team (team.id)}
+							<li>
+								<label class="hover:bg-muted/60 flex cursor-pointer items-center gap-3 rounded-md px-2 py-2">
+									<span
+										class="grid size-7 shrink-0 place-items-center rounded-full text-[11px] font-semibold text-white"
+										style="background: {teamColor(team)}">{team.name.slice(0, 1).toUpperCase()}</span
+									>
+									<span class="flex min-w-0 flex-1 flex-col">
+										<span class="truncate text-sm font-medium">{team.name}</span>
+										<span class="text-muted-foreground truncate text-xs">
+											{team.member_count}
+											{team.member_count === 1 ? 'person' : 'people'}
+										</span>
+									</span>
+									<Switch checked={selectedTeams.has(team.id)} onCheckedChange={(on) => toggleTeam(team.id, on)} />
+								</label>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			{:else if candidates.length === 0}
 				<p class="text-muted-foreground py-4 text-center text-sm">No other members to share with yet.</p>
 			{:else}
 				<ul class="-mx-2 flex max-h-72 flex-col overflow-y-auto">

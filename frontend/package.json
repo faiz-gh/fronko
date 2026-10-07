@@ -38,6 +38,7 @@
 		"@lucide/svelte": "^1.52.0",
 		"clsx": "^2.1.1",
 		"libphonenumber-js": "^1.13.14",
+		"pdfjs-dist": "^6.4.299",
 		"qrcode": "^1.5.4",
 		"simple-icons": "^16.33.0",
 		"svelte-easy-crop": "^5.0.1",

@@ -13,6 +13,7 @@
 	import { orgUsers } from '$lib/org-users.svelte';
 	import { session } from '$lib/session.svelte';
 	import { storage } from '$lib/storage.svelte';
+	import { teams } from '$lib/teams.svelte';
 	import { theme } from '$lib/theme.svelte';
 
 	let { children } = $props();
@@ -39,6 +40,7 @@
 			cards.load(session.username);
 			storage.load(session.username);
 			branding.load(session.username);
+			teams.load(session.username);
 			if (session.isAdmin) orgUsers.load(session.username);
 		}
 	});

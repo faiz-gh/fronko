@@ -16,12 +16,14 @@
 	import CardFilter from './card-filter.svelte';
 	import Pagination from './pagination.svelte';
 	import UserAvatar from './user-avatar.svelte';
+	import TeamPicker from './team-picker.svelte';
 	import UserPicker from './user-picker.svelte';
 	import { ACCENTS, downloadBlob, initials, normalizeCard } from '$lib/card/card';
 	import { cards } from '$lib/cards.svelte';
 	import { formatDateTime, plural, timeAgo } from '$lib/format';
 	import { e164, formatPhone } from '$lib/phone';
 	import { session } from '$lib/session.svelte';
+	import { teams } from '$lib/teams.svelte';
 	import { cn } from '$lib/utils';
 
 	let {
@@ -30,6 +32,8 @@
 		oncardchange,
 		user = null,
 		onuserchange,
+		team = null,
+		onteamchange,
 		filename = 'leads'
 	}: {
 		/** Lock the table to one card's leads and hide the card filter. */
@@ -40,12 +44,17 @@
 		/** Admins: leads that arrived while this user held the card; 'none' for the organisation's; null for all. */
 		user?: number | 'none' | null;
 		onuserchange?: (user: number | 'none' | null) => void;
+		/** Admins and team leads: leads of the people in this team; null for all. */
+		team?: number | null;
+		onteamchange?: (team: number | null) => void;
 		/** CSV file name, without extension. */
 		filename?: string;
 	} = $props();
 
-	// Only admins see other people's leads, so only they get the user filter and column.
-	const showUsers = $derived(session.isAdmin);
+	// Admins and team leads see other people's leads, so they get the user column;
+	// admins filter by anyone, leads by the teams they lead.
+	const showUsers = $derived(session.seesOthers);
+	const teamOptions = $derived(session.isAdmin ? (teams.list ?? []) : session.ledTeams);
 
 	const SEARCH_DEBOUNCE_MS = 250;
 
@@ -75,7 +84,7 @@
 	let requestId = 0;
 	$effect(() => {
 		void reloadToken;
-		const filterKey = JSON.stringify([effectiveCard, user, search, pageSize]);
+		const filterKey = JSON.stringify([effectiveCard, user, team, search, pageSize]);
 		// A new filter starts from the first page.
 		if (filterKey !== lastFilterKey) {
 			const changed = lastFilterKey !== '';
@@ -89,7 +98,14 @@
 		const id = ++requestId;
 		loading = true;
 		error = '';
-		listLeads({ profileId: effectiveCard ?? undefined, userId: user ?? undefined, q: search, page, pageSize })
+		listLeads({
+			profileId: effectiveCard ?? undefined,
+			userId: user ?? undefined,
+			teamId: team ?? undefined,
+			q: search,
+			page,
+			pageSize
+		})
 			.then((res) => {
 				if (id !== requestId) return;
 				// The data shrank under us (e.g. deleted card); step back to the last page.
@@ -114,7 +130,7 @@
 		if (session.username) cards.load(session.username, true);
 	}
 
-	const filtered = $derived(search !== '' || (!lockedToCard && card !== null) || user !== null);
+	const filtered = $derived(search !== '' || (!lockedToCard && card !== null) || user !== null || team !== null);
 	const showCardColumn = $derived(!lockedToCard && card === null);
 
 	// After paging, bring the top of the table back into view if it scrolled away.
@@ -147,7 +163,12 @@
 	async function exportCsv() {
 		exporting = true;
 		try {
-			const all = await listAllLeads({ profileId: effectiveCard ?? undefined, userId: user ?? undefined, q: search });
+			const all = await listAllLeads({
+				profileId: effectiveCard ?? undefined,
+				userId: user ?? undefined,
+				teamId: team ?? undefined,
+				q: search
+			});
 			const header = ['Name', 'Email', 'Phone', 'Message'];
 			if (!lockedToCard) header.push('Card');
 			if (showUsers) header.push('User');
@@ -173,7 +194,10 @@
 		{#if !lockedToCard}
 			<CardFilter value={card} onchange={(v) => oncardchange?.(v)} />
 		{/if}
-		{#if showUsers && onuserchange}
+		{#if onteamchange && teamOptions.length > 0}
+			<TeamPicker value={team} options={teamOptions} onchange={onteamchange} />
+		{/if}
+		{#if session.isAdmin && onuserchange}
 			<UserPicker value={user} onchange={onuserchange} noneLabel="Organisation" />
 		{/if}
 		<div class="relative order-last min-w-0 basis-full sm:order-none sm:max-w-sm sm:flex-1 sm:basis-auto">

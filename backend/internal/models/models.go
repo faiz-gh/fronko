@@ -19,7 +19,79 @@ const (
 	AreaPersonal = "personal"
 	AreaOrg      = "org"
 	AreaShared   = "shared"
+	AreaTeam     = "team"
 )
+
+// Roles within a team. Leads look after the team's files and see their
+// teammates' cards and leads; members see the team's files.
+const (
+	TeamRoleLead   = "lead"
+	TeamRoleMember = "member"
+)
+
+// File purposes say what a file is for, so the library and pickers can sort
+// logos from brochures.
+const (
+	PurposeLogo     = "logo"
+	PurposeBanner   = "banner"
+	PurposeAvatar   = "avatar"
+	PurposeCover    = "cover"
+	PurposeGallery  = "gallery"
+	PurposeBrochure = "brochure"
+	PurposeOther    = "other"
+)
+
+// Purposes lists every file purpose, in the order the library shows them.
+var Purposes = []string{PurposeLogo, PurposeBanner, PurposeAvatar, PurposeCover, PurposeGallery, PurposeBrochure, PurposeOther}
+
+// ValidPurpose reports whether p is a known file purpose.
+func ValidPurpose(p string) bool {
+	for _, v := range Purposes {
+		if v == p {
+			return true
+		}
+	}
+	return false
+}
+
+// Team is a group of people in an organisation, with its totals.
+type Team struct {
+	ID          int64     `json:"id"`
+	OrgID       int64     `json:"-"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Color       string    `json:"color"`
+	MemberCount int64     `json:"member_count"`
+	LeadCount   int64     `json:"lead_count"`
+	FileCount   int64     `json:"file_count"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// TeamMember is someone in a team and their role in it.
+type TeamMember struct {
+	UserRef
+	Email *string `json:"email"`
+	// OrgRole is the person's role in the organisation (owner, admin, member).
+	OrgRole string    `json:"org_role"`
+	Role    string    `json:"role"`
+	AddedAt time.Time `json:"added_at"`
+}
+
+// TeamRef names a team alongside someone's role in it (or a file in it).
+type TeamRef struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
+	Role  string `json:"role,omitempty"`
+}
+
+// TeamMembership is a person's place in one team, as sent when setting their teams.
+type TeamMembership struct {
+	TeamID int64  `json:"team_id"`
+	UserID int64  `json:"user_id"`
+	Role   string `json:"role"`
+}
 
 type Organization struct {
 	ID   int64  `json:"id"`
@@ -95,9 +167,10 @@ func (u *User) IsAdmin() bool { return u.Role == RoleOwner || u.Role == RoleAdmi
 // OrgUser is a user as the organisation's Users page lists them.
 type OrgUser struct {
 	User
-	CardCount int64 `json:"card_count"`
-	LeadCount int64 `json:"lead_count"`
-	UsedBytes int64 `json:"used_bytes"`
+	CardCount int64     `json:"card_count"`
+	LeadCount int64     `json:"lead_count"`
+	UsedBytes int64     `json:"used_bytes"`
+	Teams     []TeamRef `json:"teams"`
 }
 
 // UserRef names a user alongside something they hold (a card, lead or file).
@@ -117,6 +190,8 @@ type SessionState struct {
 	// OrgSuspended is set when a platform admin suspended the whole organisation.
 	OrgSuspended       bool
 	OrgSuspendedReason string
+	// Teams the user is in, with their role in each.
+	Teams []TeamRef
 }
 
 // EmailCode is a one-time code sent by email. Only its HMAC is stored.
@@ -183,15 +258,44 @@ type File struct {
 	// Owner is the user a personal file belongs to (or who uploaded an org or shared file).
 	Owner *UserRef `json:"owner,omitempty"`
 	// FormerOwner is the username of a deleted user whose personal file this was.
-	FormerOwner  *string   `json:"former_owner,omitempty"`
-	Bucket       string    `json:"-"`
-	ObjectKey    string    `json:"-"`
-	Kind         string    `json:"kind"` // "image" or "pdf"
-	ContentType  string    `json:"content_type"`
-	SizeBytes    int64     `json:"size_bytes"`
-	OriginalName string    `json:"name"`
-	Title        string    `json:"title"`
-	CreatedAt    time.Time `json:"created_at"`
+	FormerOwner *string `json:"former_owner,omitempty"`
+	// TeamID and Team are set for files in a team's area.
+	TeamID       *int64   `json:"-"`
+	Team         *TeamRef `json:"team,omitempty"`
+	Bucket       string   `json:"-"`
+	ObjectKey    string   `json:"-"`
+	ThumbKey     *string  `json:"-"`
+	Kind         string   `json:"kind"` // "image" or "pdf"
+	Purpose      string   `json:"purpose"`
+	ContentType  string   `json:"content_type"`
+	SizeBytes    int64    `json:"size_bytes"`
+	OriginalName string   `json:"name"`
+	Title        string   `json:"title"`
+	Width        *int     `json:"width"`
+	Height       *int     `json:"height"`
+	Pages        *int     `json:"pages"`
+	HasThumb     bool     `json:"has_thumb"`
+	// UseCount is how many places use the file: card slots, the logo and the signature banner.
+	UseCount  int64     `json:"use_count"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// FileUse is one card using a file, and where on the card.
+type FileUse struct {
+	ProfileID int64  `json:"profile_id"`
+	Slug      string `json:"slug"`
+	Name      string `json:"name"`
+	Slot      string `json:"slot"`
+}
+
+// FileUsage is everywhere a file is used that the viewer may know about.
+type FileUsage struct {
+	Cards []FileUse `json:"cards"`
+	// HiddenCards counts cards using the file that the viewer can't see.
+	HiddenCards int64 `json:"hidden_cards"`
+	OrgLogo     bool  `json:"org_logo"`
+	SigBanner   bool  `json:"signature_banner"`
 }
 
 // PublicFile is the file metadata shown on a public card.

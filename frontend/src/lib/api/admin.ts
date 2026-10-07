@@ -21,6 +21,7 @@ export interface OrgUsage {
 	admin_count: number;
 	member_count: number;
 	suspended_user_count: number;
+	team_count: number;
 	card_count: number;
 	lead_count: number;
 	file_count: number;
@@ -31,6 +32,12 @@ export interface OrgUsage {
 	storage_provider: string | null;
 	default_quota_bytes: number | null;
 	last_active_at: string | null;
+	/** Branding, as yes/no settings only. */
+	logo_set: boolean;
+	logo_policy: 'required' | 'optional';
+	signature_locked: boolean;
+	/** Files per purpose (logo, brochure, …): counts only. */
+	files_by_purpose: Record<string, number>;
 }
 
 export interface PlatformSummary {
@@ -45,6 +52,9 @@ export interface PlatformSummary {
 	storage_used_bytes: number;
 	active_orgs_30d: number;
 	new_feedback: number;
+	team_count: number;
+	orgs_with_teams: number;
+	orgs_with_logo: number;
 }
 
 /** One day of a trend. The platform-only fields are absent on organisation trends. */
@@ -59,6 +69,9 @@ export interface UsagePoint {
 	storage_used_bytes: number;
 	new_orgs?: number;
 	feedback_count?: number;
+	team_count: number;
+	orgs_with_teams?: number;
+	orgs_with_logo?: number;
 }
 
 export type FeedbackStatus = 'new' | 'read' | 'resolved';
@@ -106,7 +119,7 @@ export interface Page<T> {
 	page_size: number;
 }
 
-export type OrgSort = 'newest' | 'oldest' | 'name' | 'users' | 'cards' | 'leads' | 'storage' | 'last_active';
+export type OrgSort = 'newest' | 'oldest' | 'name' | 'users' | 'teams' | 'cards' | 'leads' | 'storage' | 'last_active';
 export type OrgStatusFilter = '' | 'active' | 'suspended';
 
 function query(params: Record<string, string | number | undefined>): string {

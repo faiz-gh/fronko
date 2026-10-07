@@ -134,6 +134,8 @@
 						class="max-w-44 border-dashed"
 					/>
 				</div>
+			{:else if profile.assigned_user && profile.assigned_user.username !== session.username}
+				<span class="truncate">{profile.assigned_user.username}</span>
 			{:else}
 				<span class="truncate font-mono">/p/{profile.slug}</span>
 			{/if}

@@ -61,7 +61,8 @@ backend/
 │   │   ├── feedback.go           # POST /api/me/feedback (users sending product feedback)
 │   │   ├── branding.go           # GET/PUT /api/org/branding: logo, logo policy, signature settings
 │   │   ├── account.go            # Email verification and change, forgot/reset password, change password
-│   │   ├── files.go              # File library: upload (type sniffing), list, rename, delete, public redirect
+│   │   ├── files.go              # File library: upload (type sniffing, previews), list/search/counts, update/move, bulk, usage, content, public redirect, grants
+│   │   ├── teams.go              # /api/org/teams: team CRUD, members, a user's teams
 │   │   ├── storage.go            # StorageService (decrypt keys → bucket client) and /api/me/storage
 │   │   ├── profile.go            # Profile CRUD and public slug lookup
 │   │   ├── vcard.go              # GET /api/profiles/{slug}/vcard: the card as a vCard 3.0 file
@@ -75,9 +76,12 @@ backend/
 │   │   ├── origin.go             # Same-origin check for state-changing requests
 │   │   └── ratelimit.go          # Per-IP token bucket limiter
 │   ├── mail/                     # SMTP sender (implicit TLS / STARTTLS), log fallback, code and notice templates
-│   ├── models/models.go          # Organization, OrgBranding, User, EmailCode, Profile, PublicProfile, Lead, StorageSettings, File
+│   ├── models/models.go          # Organization, OrgBranding, User, Team, TeamMember, EmailCode, Profile, PublicProfile, Lead, StorageSettings, File, FileUsage
 │   ├── models/admin.go           # PlatformAdmin, OrgUsage, PlatformSummary, UsagePoint, Feedback, AuditEntry
-│   ├── repository/repository.go  # All SQL; maps pg errors to ErrNotFound / ErrConflict
+│   ├── repository/repository.go  # Users, profiles, leads, storage settings; Scope and visibleTo(); maps pg errors to ErrNotFound / ErrConflict
+│   ├── repository/files.go       # Files: visibility rules, listing/search/counts, updates, usage, grants; card file refs (CardFileRefs, file_refs sync)
+│   ├── repository/teams.go       # Teams and memberships
+│   ├── repository/org.go         # Organisation settings, org users, branding
 │   ├── repository/admin.go       # Platform admins, org usage aggregates, snapshots, suspension, audit log
 │   ├── repository/feedback.go    # Feedback and replies
 │   ├── snapshots/scheduler.go    # Hourly usage snapshot for the admin trends
@@ -173,13 +177,15 @@ These are hard-coded:
 
 ## Database
 
-The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`, 006 changing a verified email, 007 organisations and users, 008 platform admin, 009 organisation branding).
+The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`, 006 changing a verified email, 007 organisations and users, 008 platform admin, 009 organisation branding, 010 teams and file purposes, 011 team and branding usage snapshots).
+- **Usage snapshots (011).** `org_usage_snapshots.team_count`, and `platform_usage_snapshots.team_count`, `orgs_with_teams` and `orgs_with_logo` (all default 0, so days before 011 read as zero).
+- **Teams and file purposes (010).** `teams` (per org; names unique ignoring case) and `team_members` (`role` `lead` or `member`; a user can be in many teams; both FKs cascade). `files` gains a fourth `area`, `team` (with `team_id`, enforced by `files_team_area_check`), a `purpose` (`logo`, `banner`, `avatar`, `cover`, `gallery`, `brochure`, `other`), the `width`/`height`/`pages` the browser reported, an optional `thumb_key` (a small preview next to the original) and `updated_at`. `file_team_grants` gives an org or shared file to a whole team. `file_refs` (`file_id`, `profile_id`, `slot`) records which card slot uses which file; `CreateProfile`/`UpdateProfile` rewrite a card's rows in the same transaction (`syncFileRefs`), and it drives `use_count` and `GET /api/me/files/{id}/usage`. The migration backfilled `file_refs` from `profiles.data` and guessed each file's purpose (PDFs → brochure, the org logo and banner, then card slots). `DeleteTeam` moves the team's files to `org` before deleting it.
 - **Branding (009).** `organizations.logo_file` (public id of an org or shared image, `NULL`: no logo), `logo_policy` (`required` or `optional`, checked by `organizations_logo_policy_check`), and `signature` JSONB (`locked_template`, `brand_color`, `disclaimer`, `banner_file`, `banner_url`; see `models.OrgSignature`). `DeleteFile` clears `logo_file` or `signature.banner_file` in the same statement when they name the deleted file. Email signatures themselves are built in the browser; per-card signature choices live in `profiles.data`.
 - **Platform admin (008).** `platform_admins` (separate from `users`; case-insensitive unique email, own `session_version`). `organizations.suspended_at` and `suspended_reason`. `feedback` (with `sender_email` and `org_name` copied in, and `org_id`/`user_id` `ON DELETE SET NULL`, so feedback outlives the org) and `feedback_replies`. `org_usage_snapshots` (one row per org per day) and `platform_usage_snapshots` (daily totals, kept apart so history survives deleted orgs). `admin_audit_log`, which also copies the admin's email.
 - **Organisations (007).** Every user belongs to one `organizations` row (`users.org_id`) with a `role`: `owner` (exactly one per org, enforced by a partial unique index), `admin` or `member`. 007 gave each existing account its own organisation, as owner. `users` also gained `must_change_password` (set while the org-chosen password is in use), `storage_quota_bytes` (`NULL`: unlimited), `suspended_at`, `created_by` and `last_login_at`.
 - **Cards** belong to the org (`profiles.org_id`); `profiles.user_id` is just the creator. `profiles.assigned_user_id` is the one user working on the card (`ON DELETE SET NULL`).
 - **Leads** record `assigned_user_id`, copied from the card when they arrive, so they stay with that person after a reassignment.
-- **Files** have an `org_id` and an `area`: `personal` (the uploader's own; counts toward their quota), `org` (private to admins) or `shared` (everyone in the org). `file_grants` gives individual users access to extra files. `former_owner` names a deleted user whose personal file it was.
+- **Files** have an `org_id` and an `area`: `personal` (the uploader's own; counts toward their quota), `org` (private to admins), `shared` (everyone in the org) or `team` (that team's members). `file_grants` gives individual users access to extra files and `file_team_grants` whole teams. `former_owner` names a deleted user whose personal file it was.
 - `users.email` (005) is nullable only for accounts that predate it; the app makes those users add one. `email_verified_at` gates the app, and `session_version` is copied into each JWT so bumping it revokes every session.
 - `email_codes` (005) holds at most one live code per user and purpose (`verify_email`, `reset_password`, and `change_email` from 006): an HMAC of the code, an attempt counter and an expiry. For `change_email`, the `email` column (006) holds the new address until it's confirmed.
 - `leads.phone_country_code` and `leads.phone_number` (004) store a visitor's number as two digit-only parts. A check constraint requires both or neither, and enforces the E.164 shape.
@@ -237,17 +243,17 @@ erDiagram
 
 **Cascades.** Deleting an organisation deletes everything in it, and deleting a profile deletes its leads. Users are never deleted with a bare `DELETE`: `DeleteOrgUser` first moves their personal files to the org area and passes cards and files they created to the owner, then deletes the row, which unassigns their cards and leads (`SET NULL`) and drops their grants.
 
-**Scopes.** Repository reads take a `repository.Scope{OrgID, UserID, Admin}` (built by `handlers.scopeOf`). Admins see the whole organisation; members see cards assigned to them, leads with their `assigned_user_id`, and files matching `fileVisible` (own personal files, `shared`, or granted). Keep new queries going through a scope so a member can never widen what they see.
+**Scopes.** Repository reads take a `repository.Scope{OrgID, UserID, Admin}` (built by `handlers.scopeOf`). Admins see the whole organisation. Cards and leads go through `visibleTo(col, n)`: a member sees what's assigned to them, and a **team lead** also sees (and can edit) what's assigned to the people in the teams they lead. Files go through `fileVisible` (own personal files, `shared`, their teams' files, and files granted to them or one of their teams) and `fileEditable` (own personal files; for leads, their teams' files). The `Principal` carries the user's teams (loaded with the session state on every request), which handlers use for checks like who may upload to or move files into a team. Keep new queries going through a scope so a member can never widen what they see.
 
 **The `data` column.** The backend treats `data` as opaque. It only checks that it is a JSON object, and stores `{}` when the field is missing or `null`. The frontend owns its shape. See [`CardData`](../frontend/README.md#card-data-model).
 
 ### Adding a migration
 
-Add a numbered pair next to the existing files (the next number is 010):
+Add a numbered pair next to the existing files (the next number is 012):
 
 ```
-migrations/010_<description>.up.sql
-migrations/010_<description>.down.sql
+migrations/012_<description>.up.sql
+migrations/012_<description>.down.sql
 ```
 
 The Docker entrypoint runs `migrate ... up` on every container start. Locally, run the same command by hand (see [Run locally](#run-locally)).
@@ -262,7 +268,7 @@ The Docker entrypoint runs `migrate ... up` on every container start. Locally, r
 | `23505` unique_violation | `ErrConflict` (wraps the driver error, so the constraint name is still available) | 409 |
 | `23503` foreign_key_violation | `ErrNotFound` | 404 (e.g. a lead for a missing profile) |
 
-`ListLeadsForUser` takes a `LeadFilter` (profile, search over name, email, phone number and notes, since, limit/offset) and runs two queries: a `COUNT(*)` for the total and the page itself. Both join `profiles` on `user_id`, so a filter naming another user's profile simply matches nothing. Search input is escaped so `%` and `_` match literally.
+`ListLeads` takes a scope and a `LeadFilter` (card, assignee or "unassigned", team, search over name, email, phone number and notes, since, limit/offset) and runs two queries: a `COUNT(*)` for the total and the page itself. The scope condition is always applied, so a filter naming someone the caller can't see simply matches nothing. Search input is escaped so `%` and `_` match literally.
 
 Ownership checks happen in SQL: `WHERE profile_id = $1 AND user_id = $2`. So another user's profile looks exactly like a missing one (`ErrNotFound`), and the API never confirms that someone else's profile ID exists.
 
@@ -336,7 +342,7 @@ There's no sign-up page. Accounts are made from the command line, which reads `D
 ./fronko admin set-password --email you@example.com   # replaces it and signs that admin out everywhere
 ```
 
-**Privacy boundary.** Usage comes from one aggregate query (`orgUsageQuery` in `repository/admin.go`): per org, user counts by role, card, lead and file counts, `SUM(files.size_bytes)`, whether the owner has a `user_storage` row (and its provider), and `MAX(last_login_at)`. It never selects card `data`, lead columns, file names or member identities. The owner's email and the feedback sender's email are the only personal data the admin API returns. Storage used counts files uploaded through Fronko only, not everything in the bucket.
+**Privacy boundary.** Usage comes from one aggregate query (`orgUsageQuery` in `repository/admin.go`): per org, user counts by role, the team count, card, lead and file counts (also per file purpose), `SUM(files.size_bytes)`, whether the owner has a `user_storage` row (and its provider), whether a logo is set, the logo policy, whether a signature template is locked, and `MAX(last_login_at)`. It never selects card `data`, lead columns, file names, team names or member identities. The owner's email and the feedback sender's email are the only personal data the admin API returns. Storage used counts files uploaded through Fronko only, not everything in the bucket.
 
 **Trends.** `snapshots.Run` (started from `main.go`) calls `TakeUsageSnapshot` at startup and every hour. Each run upserts today's (UTC) row in both snapshot tables from the same aggregate query, so the last run of a day becomes its final value and the numbers always match the live view. Days the server was down are gaps.
 
@@ -369,11 +375,12 @@ There's no sign-up page. Accounts are made from the command line, which reads `D
 | Brute force or lead spam | Per-IP token-bucket rate limits on auth and lead endpoints | `middleware/ratelimit.go` |
 | Rate-limit bypass via spoofed headers | `X-Real-IP` is only trusted when `TRUST_PROXY=true` | `middleware/ratelimit.go` |
 | bcrypt 72-byte truncation | Passwords are limited to 8–72 bytes at registration | `handlers/auth.go` |
-| Oversized bodies | `http.MaxBytesReader` caps JSON bodies at 64 KiB and uploads at 21 MiB; nginx caps `/api/` at 25 MB | `handlers/respond.go`, `handlers/files.go`, `frontend/docker/default.conf.template` |
+| Oversized bodies | `http.MaxBytesReader` caps JSON bodies at 64 KiB and uploads at about 21.3 MiB (a 20 MB PDF, a 300 KB preview and the multipart envelope); nginx caps `/api/` at 25 MB | `handlers/respond.go`, `handlers/files.go`, `frontend/docker/default.conf.template` |
 | Storage keys leaking from the database | AES-256-GCM with `SECRETS_KEY`. The AAD binds each ciphertext to its user and field. Keys are write-only in the API, and only a 4-char hint is stored in plain text | `secrets/`, `handlers/storage.go` |
 | SSRF through a user-supplied endpoint | https only, no literal private addresses, and a dialer `Control` hook that rejects private, loopback, link-local, CGNAT and metadata addresses **after DNS resolution** (defeats DNS rebinding). Redirects aren't followed and env proxies are ignored | `storage/storage.go` |
 | Malicious uploads (HTML/SVG posing as images) | The type is sniffed from the bytes, and only JPEG, PNG, WebP and PDF are accepted. The stored content type comes from sniffing, not the client | `handlers/files.go` |
-| Enumerating other people's files | Public file IDs are 128-bit random values. Owner endpoints scope by `user_id`, and public profiles only list files their card references | `handlers/files.go`, `repository/repository.go` |
+| Enumerating other people's files | Public file IDs are 128-bit random values. Signed-in endpoints (including `/api/me/files/{id}/content` and `/usage`) go through `fileVisible`/`fileEditable`, and public profiles only list files their card references | `handlers/files.go`, `repository/files.go` |
+| Untrusted file previews | Previews are made in the browser, so the server treats them like any upload: sniffed, JPEG/PNG/WebP only, at most 300 KB, and dropped (not failed) if they don't pass | `handlers/files.go` |
 | Provider errors leaking internals | `storage.Describe` turns SDK errors into short messages; the raw error is only logged | `storage/storage.go` |
 | IDOR on profiles and leads | Ownership enforced in the SQL `WHERE` clause; foreign profiles return 404 | `repository/repository.go` |
 | Leaking owner info publicly | Public lookups return `PublicProfile` (id, slug, data), with no `user_id` or timestamps | `models/models.go` |

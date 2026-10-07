@@ -7,7 +7,8 @@ The Fronko web app is a Svelte 5 + SvelteKit single-page app that compiles to st
 - **Dashboard** (`/dashboard`): an app shell with a sidebar (cards, theme toggle), and an overview with stats, cards and recent leads.
 - **Card editor** (`/dashboard/{id}`): edit a card with a live preview. Photo and brochures come from the file library. You can also view or export the card's leads.
 - **Leads** (`/dashboard/leads`): all leads across cards, filtered by card, searchable, paginated and exportable.
-- **Files** (`/dashboard/files`): the photo and PDF library stored in the user's own S3 bucket.
+- **Files** (`/dashboard/files`): the file manager for logos, banners, photos and brochures, stored in the organisation's own S3 bucket.
+- **Teams** (`/dashboard/teams`): group people into teams with leads; each team has its own files.
 - **Settings** (`/dashboard/settings`): connect that bucket (R2, B2, AWS S3, MinIO).
 - **Send feedback**: a dialog in the sidebar's account menu (bug, idea or other, an optional 1–5 rating and a message).
 - **Platform admin panel** (`/admin`): for whoever runs the server, with its own sign-in. Usage totals and trends per organisation, the feedback inbox with email replies, suspending organisations, and an audit log.
@@ -90,7 +91,8 @@ frontend/
 │   │   │   ├── profile.ts         # profile CRUD + public lookup
 │   │   │   ├── lead.ts            # submit / list leads
 │   │   │   ├── storage.ts         # bucket connection settings
-│   │   │   ├── files.ts           # files by area, uploadFile() with progress, fileUrl()
+│   │   │   ├── files.ts           # files: purposes (PURPOSES, crop specs), list/counts/update/bulk/usage, uploadFile() with progress + preview, fileUrl()
+│   │   │   ├── teams.ts           # teams, members, a user's teams, team colours
 │   │   │   ├── org.ts             # organisation, users, card assignment, file grants, branding, showsOrgLogo()
 │   │   │   ├── feedback.ts        # sendFeedback(), feedback categories
 │   │   │   └── admin.ts           # platform admin: sign-in, summary, trends, orgs, suspension, feedback inbox, audit
@@ -99,11 +101,14 @@ frontend/
 │   │   ├── card/qr.ts             # Lazy-loaded QR generation and PNG/SVG downloads
 │   │   ├── phone.ts               # Country list, dial codes, formatting, validation, legacy phone parsing
 │   │   ├── image.ts               # Canvas crop/rotate → WebP, PNG or JPEG File, used by ImageCropDialog
+│   │   ├── thumbnails.ts          # makeThumb(): upload previews (canvas for images, lazy pdf.js for a PDF's first page)
+│   │   ├── file-locations.ts      # File manager locations and move targets for the signed-in user
 │   │   ├── signature/templates.ts # Email signature templates and the per-card SignatureSettings
 │   │   ├── signature/render.ts    # renderSignature(): email-safe HTML + plain text for a card
 │   │   ├── components/
 │   │   │   ├── app/               # App-specific components (see below); app/admin/ holds the admin panel's,
-│   │   │   │                      #   app/card-blocks/ one component per ProfileCard block
+│   │   │   │                      #   app/card-blocks/ one component per ProfileCard block,
+│   │   │   │                      #   app/files/ the file manager's grid, table, detail sheet and purpose chips
 │   │   │   └── ui/                # shadcn-svelte primitives (generated, see Conventions)
 │   │   ├── session.svelte.ts      # Global reactive session store
 │   │   ├── admin-session.svelte.ts # Platform admin session (separate cookie and sign-in)
@@ -111,6 +116,7 @@ frontend/
 │   │   ├── cooldown.svelte.ts     # Resend countdown for emailed codes (RESEND_COOLDOWN_SECONDS = 60)
 │   │   ├── cards.svelte.ts        # The cards the user can see, shared by the sidebar and dashboard pages
 │   │   ├── org-users.svelte.ts    # Everyone in the organisation (admins), for pickers, filters and Users
+│   │   ├── teams.svelte.ts        # Teams (all for admins, own for others), with cached team details
 │   │   ├── password.ts            # Temporary password generator and copyable sign-in details
 │   │   ├── branding.svelte.ts     # The organisation's logo, logo policy and signature settings (everyone)
 │   │   ├── storage.svelte.ts      # Storage connection status (storage.ready), shared by Files/Settings/editor
@@ -128,11 +134,13 @@ frontend/
 │       ├── dashboard/
 │       │   ├── +layout.svelte     # Auth guard + app shell (sidebar / mobile drawer)
 │       │   ├── +page.svelte       # Overview: org (setup, needs attention, team) or member (their cards), recent leads
-│       │   ├── leads/+page.svelte # All leads: card and user filters, search, pagination, export
-│       │   ├── cards/+page.svelte # Admins: every card, assign to users, filter by user
+│       │   ├── leads/+page.svelte # All leads: card, user and team filters, search, pagination, export
+│       │   ├── cards/+page.svelte # Admins and team leads: cards, assign (admins), filter by team or user
 │       │   ├── users/+page.svelte # Admins: the team, with status, totals and storage
-│       │   ├── users/[id]/+page.svelte # Admins: one user: cards, storage limit, granted files, reset, suspend, delete
-│       │   ├── files/+page.svelte # Files by area: upload, browse, rename, delete, manage access
+│       │   ├── users/[id]/+page.svelte # Admins: one user: teams, cards, storage limit, granted files, reset, suspend, delete
+│       │   ├── teams/+page.svelte # Teams (admins: all, others: their own); New team
+│       │   ├── teams/[id]/+page.svelte # One team: people and roles, links to its files, cards and leads; edit, delete
+│       │   ├── files/+page.svelte # File manager: locations, purposes, search, sort, grid/list, bulk actions, detail sheet
 │       │   ├── signatures/+page.svelte # Email signatures: pick a card, template, what to include; copy or download
 │       │   ├── settings/+page.svelte # Tabs: Account, Organisation, Branding (admins), Storage
 │       │   └── [id]/+page.svelte  # Card editor + leads
@@ -167,19 +175,21 @@ frontend/
 | `/verify-email` | Signed in, unverified | Six-slot code input (paste fills it, submits when complete), resend with a countdown, "Change email", and sign out. Accounts without an email start with an "Add your email" form. Verified users are sent on to `next` |
 | `/forgot-password` | Public | Step 1: email → always "if an account exists, we've sent a code". Step 2: code, new password and confirmation → `/login?reset=1` |
 | `/set-password` | Signed in, on a temporary password | Replace the password the organisation set (temporary, new, confirm). Then on to `next` |
-| `/dashboard` | Signed in | Overview. **Admins:** stats (team, cards, leads all time, last 7 days), a setup checklist until the organisation is set up, "Needs attention" (unassigned cards, people still setting up), the team by leads, and recent leads tagged with their user. **Members:** stats, their cards, and their recent leads; a waiting state until a card is assigned |
-| `/dashboard/cards` | Admins | Every card in the organisation, with an inline assignee picker on each, a user filter (`?user=ID\|none`) and search |
-| `/dashboard/users` | Admins | The team: status (active, hasn't verified email, hasn't set a password, suspended), cards, leads, storage and last sign-in. "New user" opens `CreateUserDialog` |
-| `/dashboard/users/{id}` | Admins | One user: assign or unassign cards, storage limit, files granted to them, correct an unverified email, reset password, suspend or restore, make admin (owner), delete |
-| `/dashboard/leads` | Signed in | Every lead across your cards. Filter by card (`?card=ID`, kept in the URL so it can be linked to), search (name, email, phone or message), page size and pages, a Refresh button that refetches leads and lead counts without reloading the page, and CSV export of everything that matches (including phone). Clicking a lead's card filters to that card |
-| `/dashboard/files` | Signed in | The shared **file library**: drag-and-drop upload with progress, Photos/PDFs tabs, thumbnails, inline rename, "Used on" (which cards use each file), delete with a usage warning, pagination. Shows a "Connect storage" state until a bucket is connected |
+| `/dashboard` | Signed in | Overview. **Admins:** stats (people, teams, cards, leads all time, last 7 days), a setup checklist until the organisation is set up, "Needs attention" (unassigned cards, people still setting up), the team by leads, and recent leads tagged with their user. **Members:** stats, their cards, and their recent leads; a waiting state until a card is assigned |
+| `/dashboard/cards` | Admins, team leads | Admins: every card in the organisation, with an inline assignee picker on each. Team leads: their own and their teammates' cards (no create, delete or reassign). Team filter (`?team=ID`; leads get the teams they lead), user filter for admins (`?user=ID\|none`) and search |
+| `/dashboard/teams` | Admins, team members | Admins see every team and create them (name, description, colour); everyone else sees the teams they're in. Each card shows people, leads and files |
+| `/dashboard/teams/{id}` | Admins, the team's members | The team's people with their organisation role and team role. Admins add people (searchable), switch Member/Lead and remove people, edit or delete the team (its files move to the organisation's). Links to the team's files, and for admins and its leads, its cards and leads |
+| `/dashboard/users` | Admins | Everyone: teams, status (active, hasn't verified email, hasn't set a password, suspended), cards, leads, storage and last sign-in, with a team filter and search. "New user" opens `CreateUserDialog` (which can also put them in teams) |
+| `/dashboard/users/{id}` | Admins | One user: their teams and role in each, assign or unassign cards, storage limit, files granted to them, correct an unverified email, reset password, suspend or restore, make admin (owner), delete |
+| `/dashboard/leads` | Signed in | Every lead across your cards (team leads: also their teammates'). Filter by card (`?card=ID`, kept in the URL so it can be linked to), by team (`?team=ID`, admins and leads) and by user (admins), search (name, email, phone or message), page size and pages, a Refresh button that refetches leads and lead counts without reloading the page, and CSV export of everything that matches (including phone). Clicking a lead's card filters to that card |
+| `/dashboard/files` | Signed in | The **file manager**. A locations rail (a select on small screens): All files, Organisation, Shared, each team, people's files (admins) or My files, Shared, teams, Shared with me (others). Purpose chips with counts (Logos, Banners, Profile photos, Covers, Gallery, Brochures, Other), debounced search, sort, and a grid of previews or a list, all kept in the URL (`?loc=team:3&purpose=logo&q=…&sort=name`; the view is remembered per browser). Upload with the button, the dropzone, or by dropping files anywhere on the page; uploads go to the current location and take the selected purpose. Tick files (shift-click for a range) to re-purpose, move or delete them together. Clicking a file opens a sheet with a large preview, title, purpose and location, details, **Where it's used** (cards by slot, the org logo, the signature banner) and Open, Copy link, Crop a copy, Access (admins) and Delete. Shows a "Connect storage" state until a bucket is connected |
 | `/dashboard/signatures` | Signed in | **Email signatures.** Pick a card (`?card=ID`; admins see every card), then a template (Classic, Corporate, Compact, Bold, Minimal; gallery thumbnails are the real signature), and switch on what to include (photo, organisation logo, phone, email, website, location, booking link, social links, card link). Choices are saved on the card (`data.signature`). The preview is the exact HTML in a sandboxed iframe, with a dark-background toggle. **Copy signature** puts rich HTML (and plain text) on the clipboard for pasting into Gmail, Outlook or Apple Mail; **Copy HTML** and **Download .html** are there too, with step-by-step install tabs per mail app. When the organisation locks a template, only that one shows; a required logo shows its switch locked on; the organisation's banner and disclaimer are added under every signature |
 | `/dashboard/settings` | Signed in | Four tabs, kept in `?tab=` (`organisation`, `branding`, `storage`; Account is the default). Members see Account and Storage. **Organisation** (admins; the owner edits): name and default storage per user. **Branding** (admins): `BrandingSettings`, see Components. **Account**: username and email (with a Verified badge). **Change** opens `ChangeEmailForm`: new address + current password → a code sent to the new address → confirm; resend has a countdown, and the current email stays until confirmed. **Password**: current, new and confirm; changing it signs out every other session and keeps this one. **Storage**: choose a provider preset (R2, B2, AWS S3, MinIO, other; each shown with its icon via `StorageProviderIcon`), enter endpoint, bucket, region and keys, then Test connection or Connect. Keys are write-only: once saved, the fields show "Saved · ends in ABCD", and leaving them blank keeps them. Disconnect asks for confirmation. Shows a notice if the server has no `SECRETS_KEY` |
 | `/dashboard/{id}` | Signed in | Editor. The **Card** tab shows a `SectionRail` listing every section with a one-line summary (e.g. "1 of 5 filled", "2 links", "Classic · customised") and a red dot on sections with an invalid field; only the selected section is shown beside it, so the whole card is visible at a glance. The selected section is kept in the URL hash (`#contact`, `#sharing`, …), so links can open one; the save bar's "Show me" jumps to the first invalid section. The sections are Profile (with photo and 3:1 cover, both cropped before upload), Contact (email, mobile with country picker, website, booking link), Links (add, reorder, remove), Layout (template picker, then blocks to reorder, hide, add or remove, with inline settings for headings, text, galleries and events), Appearance (accent, light/dark theme, and the organisation-logo switch: hidden without a logo, locked on when required) and Sharing (public slug, lead collection, and what an NFC tap and a QR scan each do, with their links to copy or try, plus "Create signature"). A sticky preview pane on the right switches between the card and its QR code (which encodes the `?via=qr` link); below 1280px the preview opens in a dialog. A save bar with Discard appears when there are unsaved changes. The **Leads** tab shows the same paginated table, locked to this card. `?tab=leads` opens the Leads tab. `Ctrl/⌘+S` saves, and leaving with unsaved changes asks for confirmation |
 | `/admin/login` | Public | Platform admin sign-in (email and password). `next=/admin/...` sets where to go afterwards; `expired=1` shows a "session expired" notice |
-| `/admin` | Platform admin | Totals (organisations, active organisations, users, cards and leads, storage used, new feedback) and trend charts (organisations, users, cards, leads, storage used, organisations with storage) over 30 days, 90 days or a year |
-| `/admin/orgs` | Platform admin | Every organisation with owner email, users, cards, leads, storage (connected, provider, used) and last activity. Debounced search, All/Active/Suspended filter, sort menu, pagination. Rows open the organisation |
-| `/admin/orgs/{id}` | Platform admin | One organisation's totals and trends. **Suspend** asks for a reason (emailed to the owner, shown on their sign-in page); **Reinstate** confirms first |
+| `/admin` | Platform admin | Totals (organisations, active organisations, users, teams, cards and leads, storage used, organisations with a logo, new feedback) and trend charts (organisations, users, cards, leads, storage used, organisations with storage, teams, organisations with a logo) over 30 days, 90 days or a year |
+| `/admin/orgs` | Platform admin | Every organisation with owner email, users, teams, cards, leads, storage (connected, provider, used) and last activity. Debounced search, All/Active/Suspended filter, sort menu, pagination. Rows open the organisation |
+| `/admin/orgs/{id}` | Platform admin | One organisation's totals (users, teams, cards, leads, files by purpose, branding: logo set, policy, locked signature template, storage) and trends. **Suspend** asks for a reason (emailed to the owner, shown on their sign-in page); **Reinstate** confirms first |
 | `/admin/feedback` | Platform admin | Feedback by status (New, Read, Resolved, All), with category, rating, sender, organisation and reply count |
 | `/admin/feedback/{id}` | Platform admin | The message and its context (sender, organisation, page, time), the status toggle, the reply thread and a reply box. Opening new feedback marks it read. Replies are emailed to the sender |
 | `/admin/audit` | Platform admin | Sign-ins, suspensions, replies and status changes, newest first |
@@ -187,17 +197,18 @@ frontend/
 
 ### Organisations and roles
 
-Every account belongs to an organisation, and `session.role` is `owner`, `admin` or `member` (`session.isAdmin` covers owner and admin). The backend enforces every rule below; the UI just doesn't offer what would be refused.
+Every account belongs to an organisation, and `session.role` is `owner`, `admin` or `member` (`session.isAdmin` covers owner and admin). Separately, anyone can be in teams (`session.teams`, each with `role` `lead` or `member`); `session.isLead` is true when they lead at least one, and `session.seesOthers` covers admins and leads. The backend enforces every rule below; the UI just doesn't offer what would be refused.
 
-| | Owner | Admin | Member |
-| - | :-: | :-: | :-: |
-| Sidebar | Overview, Leads, Cards, Users, Files, Signatures | same | Overview, Leads, Files, Signatures, plus their cards |
-| Cards | create, delete, assign, edit all | same | edit their assigned cards, except the slug |
-| Leads | all, filter by user (`?user=ID\|none`) | same | leads that arrived while they held the card |
-| Files | Organisation, Shared, Users' files; manage access | same | My files (with a storage meter), Shared, Shared with me |
-| Users | create, edit, suspend, reset, delete, make admin | members only | none |
-| Settings | Organisation (name, default storage limit), Branding, Storage | org name (read only), Branding | storage usage; email is managed by the org |
-| Branding | logo, logo policy, signature template lock, brand colour, disclaimer, banner | same | sees it; chooses the logo per card when it's optional |
+| | Owner | Admin | Team lead (member) | Member |
+| - | :-: | :-: | :-: | :-: |
+| Sidebar | Overview, Leads, Cards, Users, Teams, Files, Signatures | same | Overview, Leads, Cards, Teams, Files, Signatures | Overview, Leads, Teams (if in one), Files, Signatures, plus their cards |
+| Cards | create, delete, assign, edit all | same | edit their own and their teammates' cards, except the slug | edit their assigned cards, except the slug |
+| Leads | all, filter by user (`?user=ID\|none`) or team | same | their own and their teammates', filter by team they lead | leads that arrived while they held the card |
+| Files | Organisation, Shared, every team, people's files; move anywhere but personal; manage access (people and teams) | same | their files, Shared, their teams' (manage the teams they lead), Shared with me | My files (with a storage meter), Shared, their teams' (read), Shared with me |
+| Teams | create, edit, delete, set members and leads | same | see their teams | see their teams |
+| Users | create, edit, suspend, reset, delete, make admin, set teams | members only (teams for anyone) | none | none |
+| Settings | Organisation (name, default storage limit), Branding, Storage | org name (read only), Branding | storage usage; email is managed by the org | same |
+| Branding | logo, logo policy, signature template lock, brand colour, disclaimer, banner | same | sees it; chooses the logo per card when it's optional | same |
 
 Users the organisation creates are emailed their username and a temporary password. They sign in with it, verify their email (`/verify-email`, without "Change email"), then must choose a password on `/set-password` before the dashboard opens.
 
@@ -355,18 +366,24 @@ App-specific components live in `src/lib/components/app/`:
 | `SectionRail` | `items` (`{ id, label, icon, summary, error? }[]`), `active`, `onselect`, `label`, `class?` | Every section of a long form with a one-line summary and an error dot, as a vertical tab list (a scrolling strip below 1024px; arrow keys move between items). Pair it with `FormSection panel` blocks whose `id` matches |
 | `BrandingSettings` | none | Settings → Branding: logo (cropped square to 512×512 PNG on upload, or picked from org/shared files), logo policy (required or employee chooses), signature template lock, brand colour, disclaimer, and banner (cropped to 4:1, 3:1 or 2:1 at 1200px wide, JPEG) with its link. Saves through `PUT /api/org/branding` and updates the `branding` store |
 | `BlockListEditor` | `bind:blocks`, `files`, `onfile` | The editor's block list: expand a block for its settings, move, hide, remove, and "Add block". Galleries upload several images at once or pick from the library; `onfile` gets each file so the editor can remember its metadata |
-| `FileDropzone` | `kind?`, `area?`, `onuploaded?`, `compact?`, `multiple?`, `disabled?` | Drag-and-drop or click to upload, with per-file progress and inline errors. It checks type and size on the client for quick feedback; the server re-checks by sniffing |
-| `FilePickerDialog` | `open` (bindable), `kind`, `title`, `selected?`, `onselect` | Pick a photo or PDF from any file the user can see (filterable by area, paginated), or upload a new one inline. Used by the editor's Photo and Brochures fields |
-| `FileThumb` | `id`, `kind`, `class?` | Image thumbnail (lazy, via the file redirect) or a PDF tile |
+| `FileDropzone` | `kind?`, `area?`, `teamId?`, `purpose?`, `onuploaded?`, `compact?`, `multiple?`, `disabled?` | Drag-and-drop or click to upload, with per-file progress and inline errors. Uploads take `purpose` where it fits the file (PDFs default to brochures). It exposes `browse()` and `upload(files)` so a page-wide drop target or an Upload button can feed it. It checks type and size on the client for quick feedback; the server re-checks by sniffing |
+| `FilePickerDialog` | `open` (bindable), `purpose`, `kind?`, `title`, `selected?`, `excludePersonal?`, `crop?`, `onselect` | Pick a file the user can see. It opens filtered to `purpose`, with purpose chips to widen it, search, a location select and pagination; "Upload new" adds a file with that purpose where the user is looking. With a `crop` spec (`PURPOSES[p].crop`), new images are cropped first, and a library image can be used as is or **cropped into a new copy**. `excludePersonal` hides personal files (branding). Used for the card photo, cover, brochures, gallery, logo and banner |
+| `FileGrid` / `FileTable` | `files`, `selected`, `selectable?`, `onopen`, `ontoggle` (`ontoggleall` for the table) | The file manager's two views (`app/files/`): preview tiles with purpose, team and "in use" badges, or a table with purpose, location, size, use count and uploader. Both support selection |
+| `FileDetailSheet` | `file` (bindable), `editable`, `targets`, `onchanged`, `ondelete`, `onaccess?`, `oncopied` | A side sheet for one file: preview, editable title, purpose and location, details, where it's used, Open, Copy link, Crop a copy, Access and Delete |
+| `PurposeChips` | `value` (bindable), `purposes`, `counts?`, `total?` | Filter chips for file purposes, with counts |
+| `FileThumb` | `id`, `kind`, `hasThumb?`, `fit?`, `full?`, `class?` | A file's preview: the small upload preview (`?size=thumb`, falling back to the image), or a PDF's first page when it has one, else a PDF tile. `fit="contain"` shows logos and banners whole on a checkerboard; `full` loads the image itself |
 | `AppSidebar` | `onnavigate?` | Organisation and role, role-based navigation (members also get their card list), account menu |
 | `CreateCardDialog` | none (opened through `cards.createOpen`) | Name, slug and optional assignee. Creates the card and opens the editor |
 | `CardTile` | `profile`, `onqr`, `ondelete?` | A card in a grid with copy link, QR and menu. Admins get an inline assignee picker |
 | `CreateUserDialog` | `open` (bindable), `oncreated?` | New user with a generated temporary password, storage limit and (owner) admin switch. The server emails the user their sign-in details; the dialog also shows them, copyable |
-| `UserPicker` | `value`, `onchange`, `filter?`, `allowNone?`, `allLabel?`, `noneLabel?`, `size?`, `disabled?` | Choose a user from `orgUsers`, the organisation (`'none'`), or everyone (`null`, filters only) |
+| `UserPicker` | `value`, `onchange`, `filter?`, `allowNone?`, `allLabel?`, `noneLabel?`, `size?`, `disabled?` | Choose a user from `orgUsers`, the organisation (`'none'`), or everyone (`null`, filters only). A searchable popover; when the organisation has teams, people are grouped by team (someone in several teams appears under each, leads are tagged) with a "No team" group last |
+| `TeamPicker` | `value`, `options`, `onchange`, `allLabel?`, `size?` | Filter by team (`null` is every team); admins pass every team, leads the teams they lead |
+| `TeamDialog` | `open` (bindable), `team?`, `onsaved?` | Create or edit a team: name, description, colour |
+| `TeamMembershipsInput` | `value` (bindable `{ team_id, role }[]`), `disabled?` | A switch per team plus a Member/Lead toggle, used when creating a user and on their page |
 | `UserAvatar` | `username`, `class?` | Initials avatar for a user |
 | `StorageMeter` | `used`, `quota`, `compact?` | Used vs. limit bar; turns amber at 85% and red when full |
 | `QuotaInput` | `value` (bindable bytes or `null`), `id`, `disabled?` | Megabytes field with a "No limit" switch |
-| `FileAccessDialog` | `file` (bindable; set it to open) | Choose which members can see an organisation file or someone's personal file |
+| `FileAccessDialog` | `file` (bindable; set it to open) | Choose which members (People tab) and which teams (Teams tab) can see an organisation, team or personal file |
 | `RecentLeads` | `leads`, `total`, `showUser?`, `empty` | The overview's latest-leads panel |
 | `DeleteCardDialog` | `target` (bindable), `ondeleted?` | Confirms and deletes a card, then updates `cards` |
 | `FormSection` | `title`, `description?`, `id?`, `panel?` | A form section. The heading sits beside the fields at 1536px and wider, above them otherwise. With `panel`, it's the tab panel for the `SectionRail` item with the same `id` (`id="panel-<id>"`), heading above |
@@ -450,3 +467,5 @@ The `backend` hostname comes from the Docker Compose network. See `deploy/docker
 - **API calls** go through `src/lib/api/*`. Don't call `fetch` directly from components.
 - **Errors.** Catch `ApiError` and show `e.message`. Check `e.status` for specific cases, for example a 404 on the public page.
 - **Icons.** Import them individually (`@lucide/svelte/icons/<name>`) to keep the bundle small.
+- **Adding shadcn-svelte components.** The CLI can't resolve SvelteKit 3's `"extends": "$app/tsconfig"`. Temporarily point `tsconfig.json` at `./node_modules/$app/tsconfig.json`, run `npx shadcn-svelte@latest add <name> --yes`, then restore it. When the CLI asks to overwrite shared files (e.g. `button`), it has no "keep" flag: back those folders up, use `--overwrite`, and put them back.
+- **File purposes** live in `PURPOSES` (`lib/api/files.ts`), with each image purpose's crop spec. Use them rather than hard-coding crop sizes, and pass `purpose` to `uploadFile` and `FilePickerDialog`.

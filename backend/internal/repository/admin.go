@@ -71,7 +71,11 @@ const orgUsageQuery = `
 	       s.user_id IS NOT NULL AS storage_connected,
 	       s.verified_at IS NOT NULL AS storage_verified,
 	       s.provider AS storage_provider,
-	       o.default_quota_bytes, u.last_active_at
+	       o.default_quota_bytes, u.last_active_at,
+	       (SELECT COUNT(*) FROM teams t WHERE t.org_id = o.org_id) AS team_count,
+	       o.logo_file IS NOT NULL AS logo_set, o.logo_policy,
+	       COALESCE(o.signature->>'locked_template', '') <> '' AS signature_locked,
+	       fp.files_by_purpose
 	FROM organizations o
 	LEFT JOIN users ow ON ow.org_id = o.org_id AND ow.role = 'owner'
 	LEFT JOIN user_storage s ON s.user_id = ow.user_id
@@ -88,21 +92,31 @@ const orgUsageQuery = `
 		JOIN profiles p ON p.profile_id = ld.profile_id WHERE p.org_id = o.org_id) l
 	CROSS JOIN LATERAL (
 		SELECT COUNT(*) AS file_count, COALESCE(SUM(size_bytes), 0)::bigint AS storage_used_bytes
-		FROM files WHERE org_id = o.org_id) f`
+		FROM files WHERE org_id = o.org_id) f
+	CROSS JOIN LATERAL (
+		SELECT COALESCE(jsonb_object_agg(purpose, n), '{}') AS files_by_purpose
+		FROM (SELECT purpose, COUNT(*) AS n FROM files WHERE org_id = o.org_id GROUP BY purpose) p) fp`
 
 const orgUsageColumns = `org_id, name, created_at, owner_email, suspended_at, suspended_reason,
 	user_count, admin_count, member_count, suspended_user_count,
 	card_count, lead_count, file_count, storage_used_bytes,
-	storage_connected, storage_verified, storage_provider, default_quota_bytes, last_active_at`
+	storage_connected, storage_verified, storage_provider, default_quota_bytes, last_active_at, team_count,
+	logo_set, logo_policy, signature_locked, files_by_purpose`
 
 func scanOrgUsage(row pgx.Row) (*models.OrgUsage, error) {
 	var o models.OrgUsage
+	var byPurpose []byte
 	err := row.Scan(&o.ID, &o.Name, &o.CreatedAt, &o.OwnerEmail, &o.SuspendedAt, &o.SuspendedReason,
 		&o.UserCount, &o.AdminCount, &o.MemberCount, &o.SuspendedUserCount,
 		&o.CardCount, &o.LeadCount, &o.FileCount, &o.StorageUsedBytes,
-		&o.StorageConnected, &o.StorageVerified, &o.StorageProvider, &o.DefaultQuotaBytes, &o.LastActiveAt)
+		&o.StorageConnected, &o.StorageVerified, &o.StorageProvider, &o.DefaultQuotaBytes, &o.LastActiveAt,
+		&o.TeamCount, &o.LogoSet, &o.LogoPolicy, &o.SignatureLocked, &byPurpose)
 	if err != nil {
 		return nil, mapError(err)
+	}
+	o.FilesByPurpose = map[string]int64{}
+	if err := json.Unmarshal(byPurpose, &o.FilesByPurpose); err != nil {
+		return nil, fmt.Errorf("decode files by purpose: %w", err)
 	}
 	return &o, nil
 }
@@ -123,6 +137,7 @@ var orgUsageSorts = map[string]string{
 	"oldest":      "created_at ASC",
 	"name":        "LOWER(name) ASC",
 	"users":       "user_count DESC",
+	"teams":       "team_count DESC",
 	"cards":       "card_count DESC",
 	"leads":       "lead_count DESC",
 	"storage":     "storage_used_bytes DESC",
@@ -191,10 +206,14 @@ func (r *Repository) PlatformSummary(ctx context.Context) (*models.PlatformSumma
 		       COUNT(*) FILTER (WHERE storage_connected),
 		       COALESCE(SUM(storage_used_bytes), 0)::bigint,
 		       COUNT(*) FILTER (WHERE last_active_at > now() - interval '30 days'),
-		       (SELECT COUNT(*) FROM feedback WHERE status = 'new')
+		       (SELECT COUNT(*) FROM feedback WHERE status = 'new'),
+		       COALESCE(SUM(team_count), 0)::bigint,
+		       COUNT(*) FILTER (WHERE team_count > 0),
+		       COUNT(*) FILTER (WHERE logo_set)
 		FROM (`+orgUsageQuery+`) usage`,
 	).Scan(&s.OrgCount, &s.SuspendedOrgCount, &s.NewOrgs30d, &s.UserCount, &s.CardCount, &s.LeadCount,
-		&s.FileCount, &s.OrgsWithStorage, &s.StorageUsedBytes, &s.ActiveOrgs30d, &s.NewFeedback)
+		&s.FileCount, &s.OrgsWithStorage, &s.StorageUsedBytes, &s.ActiveOrgs30d, &s.NewFeedback,
+		&s.TeamCount, &s.OrgsWithTeams, &s.OrgsWithLogo)
 	if err != nil {
 		return nil, err
 	}
@@ -213,10 +232,12 @@ func (r *Repository) TakeUsageSnapshot(ctx context.Context, day time.Time) error
 	return pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO org_usage_snapshots (snapshot_date, org_id, user_count, card_count, lead_count,
-				file_count, storage_used_bytes, storage_connected)
-			SELECT $1::date, org_id, user_count, card_count, lead_count, file_count, storage_used_bytes, storage_connected
+				file_count, storage_used_bytes, storage_connected, team_count)
+			SELECT $1::date, org_id, user_count, card_count, lead_count, file_count, storage_used_bytes, storage_connected,
+			       team_count
 			FROM (`+orgUsageQuery+`) usage
 			ON CONFLICT (snapshot_date, org_id) DO UPDATE SET
+				team_count = EXCLUDED.team_count,
 				user_count = EXCLUDED.user_count, card_count = EXCLUDED.card_count,
 				lead_count = EXCLUDED.lead_count, file_count = EXCLUDED.file_count,
 				storage_used_bytes = EXCLUDED.storage_used_bytes, storage_connected = EXCLUDED.storage_connected`,
@@ -225,20 +246,23 @@ func (r *Repository) TakeUsageSnapshot(ctx context.Context, day time.Time) error
 		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO platform_usage_snapshots (snapshot_date, org_count, user_count, card_count, lead_count,
-				file_count, orgs_with_storage, storage_used_bytes, new_orgs, feedback_count)
+				file_count, orgs_with_storage, storage_used_bytes, new_orgs, feedback_count,
+				team_count, orgs_with_teams, orgs_with_logo)
 			SELECT $1::date, COUNT(*),
 			       COALESCE(SUM(user_count), 0), COALESCE(SUM(card_count), 0), COALESCE(SUM(lead_count), 0),
 			       COALESCE(SUM(file_count), 0), COUNT(*) FILTER (WHERE storage_connected),
 			       COALESCE(SUM(storage_used_bytes), 0),
 			       COUNT(*) FILTER (WHERE (created_at AT TIME ZONE 'UTC')::date = $1::date),
-			       (SELECT COUNT(*) FROM feedback WHERE (created_at AT TIME ZONE 'UTC')::date = $1::date)
+			       (SELECT COUNT(*) FROM feedback WHERE (created_at AT TIME ZONE 'UTC')::date = $1::date),
+			       COALESCE(SUM(team_count), 0), COUNT(*) FILTER (WHERE team_count > 0), COUNT(*) FILTER (WHERE logo_set)
 			FROM (`+orgUsageQuery+`) usage
 			ON CONFLICT (snapshot_date) DO UPDATE SET
 				org_count = EXCLUDED.org_count, user_count = EXCLUDED.user_count,
 				card_count = EXCLUDED.card_count, lead_count = EXCLUDED.lead_count,
 				file_count = EXCLUDED.file_count, orgs_with_storage = EXCLUDED.orgs_with_storage,
 				storage_used_bytes = EXCLUDED.storage_used_bytes, new_orgs = EXCLUDED.new_orgs,
-				feedback_count = EXCLUDED.feedback_count`,
+				feedback_count = EXCLUDED.feedback_count, team_count = EXCLUDED.team_count,
+				orgs_with_teams = EXCLUDED.orgs_with_teams, orgs_with_logo = EXCLUDED.orgs_with_logo`,
 			date); err != nil {
 			return fmt.Errorf("platform snapshot: %w", err)
 		}
@@ -250,7 +274,8 @@ func (r *Repository) TakeUsageSnapshot(ctx context.Context, day time.Time) error
 func (r *Repository) PlatformTrend(ctx context.Context, days int) ([]models.UsagePoint, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT to_char(snapshot_date, 'YYYY-MM-DD'), org_count, user_count, card_count, lead_count,
-		       file_count, orgs_with_storage, storage_used_bytes, new_orgs, feedback_count
+		       file_count, orgs_with_storage, storage_used_bytes, new_orgs, feedback_count,
+		       team_count, orgs_with_teams, orgs_with_logo
 		FROM platform_usage_snapshots
 		WHERE snapshot_date > (now() AT TIME ZONE 'UTC')::date - $1::int
 		ORDER BY snapshot_date`, days)
@@ -260,7 +285,8 @@ func (r *Repository) PlatformTrend(ctx context.Context, days int) ([]models.Usag
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (models.UsagePoint, error) {
 		var p models.UsagePoint
 		err := row.Scan(&p.Date, &p.OrgCount, &p.UserCount, &p.CardCount, &p.LeadCount,
-			&p.FileCount, &p.OrgsWithStorage, &p.StorageUsedBytes, &p.NewOrgs, &p.FeedbackCount)
+			&p.FileCount, &p.OrgsWithStorage, &p.StorageUsedBytes, &p.NewOrgs, &p.FeedbackCount,
+			&p.TeamCount, &p.OrgsWithTeams, &p.OrgsWithLogo)
 		return p, err
 	})
 }
@@ -268,7 +294,8 @@ func (r *Repository) PlatformTrend(ctx context.Context, days int) ([]models.Usag
 // OrgTrend returns one organisation's usage for the last `days` days, oldest first.
 func (r *Repository) OrgTrend(ctx context.Context, orgID int64, days int) ([]models.UsagePoint, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT to_char(snapshot_date, 'YYYY-MM-DD'), user_count, card_count, lead_count, file_count, storage_used_bytes
+		SELECT to_char(snapshot_date, 'YYYY-MM-DD'), user_count, card_count, lead_count, file_count, storage_used_bytes,
+		       team_count
 		FROM org_usage_snapshots
 		WHERE org_id = $1 AND snapshot_date > (now() AT TIME ZONE 'UTC')::date - $2::int
 		ORDER BY snapshot_date`, orgID, days)
@@ -277,7 +304,7 @@ func (r *Repository) OrgTrend(ctx context.Context, orgID int64, days int) ([]mod
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (models.UsagePoint, error) {
 		var p models.UsagePoint
-		err := row.Scan(&p.Date, &p.UserCount, &p.CardCount, &p.LeadCount, &p.FileCount, &p.StorageUsedBytes)
+		err := row.Scan(&p.Date, &p.UserCount, &p.CardCount, &p.LeadCount, &p.FileCount, &p.StorageUsedBytes, &p.TeamCount)
 		return p, err
 	})
 }

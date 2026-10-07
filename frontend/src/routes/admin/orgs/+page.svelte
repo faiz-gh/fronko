@@ -22,6 +22,7 @@
 		{ value: 'name', label: 'Name' },
 		{ value: 'last_active', label: 'Recently active' },
 		{ value: 'users', label: 'Most users' },
+		{ value: 'teams', label: 'Most teams' },
 		{ value: 'cards', label: 'Most cards' },
 		{ value: 'leads', label: 'Most leads' },
 		{ value: 'storage', label: 'Most storage' }
@@ -163,6 +164,7 @@
 					<Table.Row class="bg-muted/40 hover:bg-muted/40">
 						<Table.Head class="h-10 pl-5">Organisation</Table.Head>
 						<Table.Head class="hidden h-10 text-right sm:table-cell">Users</Table.Head>
+						<Table.Head class="hidden h-10 text-right md:table-cell">Teams</Table.Head>
 						<Table.Head class="hidden h-10 text-right sm:table-cell">Cards</Table.Head>
 						<Table.Head class="hidden h-10 text-right md:table-cell">Leads</Table.Head>
 						<Table.Head class="hidden h-10 lg:table-cell">Storage</Table.Head>
@@ -191,6 +193,7 @@
 								</div>
 							</Table.Cell>
 							<Table.Cell class="tabular hidden py-3 text-right sm:table-cell">{org.user_count}</Table.Cell>
+							<Table.Cell class="tabular hidden py-3 text-right md:table-cell">{org.team_count}</Table.Cell>
 							<Table.Cell class="tabular hidden py-3 text-right sm:table-cell">{org.card_count}</Table.Cell>
 							<Table.Cell class="tabular hidden py-3 text-right md:table-cell">{org.lead_count}</Table.Cell>
 							<Table.Cell class="hidden py-3 text-sm lg:table-cell"><StorageCell {org} /></Table.Cell>
