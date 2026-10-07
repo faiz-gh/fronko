@@ -7,9 +7,9 @@
 	import Share2Icon from '@lucide/svelte/icons/share-2';
 	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
 	import SendIcon from '@lucide/svelte/icons/send';
-	import { getPublicProfile, type PublicProfile } from '$lib/api/profile';
-	import { submitLead } from '$lib/api/lead';
-	import { ApiError } from '$lib/api/client';
+	import { getPublicProfile, type PublicProfile } from '$lib/features/cards/api';
+	import { submitLead } from '$lib/features/leads/api';
+	import { ApiError } from '$lib/core/api';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Empty from '$lib/components/ui/empty';
@@ -18,11 +18,11 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import ProfileCard from '$lib/components/app/profile-card.svelte';
-	import PhoneInput from '$lib/components/app/phone-input.svelte';
-	import { ACCENTS, normalizeCard, publicUrl, vcardUrl, type CardData, type TapSource } from '$lib/card/card';
-	import { createTracker, visitSource } from '$lib/analytics/track';
-	import { isValidPhone } from '$lib/phone';
+	import ProfileCard from '$lib/features/cards/components/profile-card.svelte';
+	import PhoneInput from '$lib/components/shared/phone-input.svelte';
+	import { ACCENTS, normalizeCard, publicUrl, vcardUrl, type CardData, type TapSource } from '$lib/features/cards/card';
+	import { createTracker, visitSource } from '$lib/features/analytics/track';
+	import { isValidPhone } from '$lib/core/phone';
 	import { cn } from '$lib/utils';
 
 	const org = page.params.org ?? '';
@@ -98,6 +98,8 @@
 	let submitting = $state(false);
 	let submitError = $state('');
 	let submitted = $state(false);
+	// What the visitor gave the lead form, kept to fill in the booking page.
+	let visitor = $state<{ name: string; email: string } | null>(null);
 	// The number is optional, but if one is typed it must be valid.
 	const leadPhoneInvalid = $derived(!!leadPhone && !isValidPhone(leadPhoneCode, leadPhone));
 
@@ -117,6 +119,7 @@
 				session: tracker.session
 			});
 			submitted = true;
+			visitor = { name: leadName.trim(), email: leadEmail.trim() };
 		} catch (e) {
 			submitError = e instanceof Error ? e.message : 'Failed to send';
 		} finally {
@@ -171,7 +174,9 @@
 			? 'background-image: radial-gradient(80% 60% at 50% 0%, color-mix(in oklch, var(--card-accent) 14%, transparent), transparent 70%)'
 			: undefined}
 	>
-		<main class={cn('flex w-full flex-1 flex-col lg:flex-none', card ? 'max-w-sm sm:max-w-md lg:max-w-lg' : 'max-w-sm')}>
+		<main
+			class={cn('flex w-full flex-1 flex-col lg:flex-none', card ? 'max-w-sm sm:max-w-md lg:max-w-lg' : 'max-w-sm')}
+		>
 			{#if unavailable}
 				<Empty.Root class="flex-1">
 					<Empty.Header>
@@ -201,7 +206,7 @@
 			{:else if !card || !profile}
 				<Skeleton class="h-[520px] w-full rounded-3xl" />
 			{:else}
-				<ProfileCard {card} slug={profile.slug} {files} org={profile.org}>
+				<ProfileCard {card} slug={profile.slug} {files} org={profile.org} booking={profile.booking} {visitor}>
 					{#snippet actions()}
 						<Button
 							size="lg"
@@ -276,14 +281,7 @@
 					</Field.Field>
 					<Field.Field>
 						<Field.Label for="lead-email">Email</Field.Label>
-						<Input
-							id="lead-email"
-							type="email"
-							autocomplete="email"
-							bind:value={leadEmail}
-							required
-							maxlength={254}
-						/>
+						<Input id="lead-email" type="email" autocomplete="email" bind:value={leadEmail} required maxlength={254} />
 					</Field.Field>
 					<Field.Field data-invalid={leadPhoneInvalid || undefined}>
 						<Field.Label for="lead-phone">
@@ -302,7 +300,9 @@
 						{/if}
 					</Field.Field>
 					<Field.Field data-invalid={!!submitError || undefined}>
-						<Field.Label for="lead-notes">Message <span class="text-muted-foreground font-normal">(optional)</span></Field.Label>
+						<Field.Label for="lead-notes"
+							>Message <span class="text-muted-foreground font-normal">(optional)</span></Field.Label
+						>
 						<Textarea
 							id="lead-notes"
 							bind:value={leadNotes}

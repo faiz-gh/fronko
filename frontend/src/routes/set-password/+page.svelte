@@ -3,14 +3,14 @@
 	import { page } from '$app/state';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
-	import { changePassword } from '$lib/api/auth';
+	import { changePassword } from '$lib/features/auth/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import * as Alert from '$lib/components/ui/alert';
 	import * as Field from '$lib/components/ui/field';
-	import AuthLayout from '$lib/components/app/auth-layout.svelte';
-	import { session } from '$lib/session.svelte';
+	import AuthLayout from '$lib/features/auth/components/auth-layout.svelte';
+	import { session } from '$lib/core/session.svelte';
 
 	let currentPassword = $state('');
 	let newPassword = $state('');
@@ -135,7 +135,13 @@
 					type="submit"
 					size="lg"
 					class="w-full"
-					disabled={busy || !currentPassword || !newPassword || !confirmPassword || tooShort || mismatch || sameAsTemporary}
+					disabled={busy ||
+						!currentPassword ||
+						!newPassword ||
+						!confirmPassword ||
+						tooShort ||
+						mismatch ||
+						sameAsTemporary}
 				>
 					{#if busy}<Spinner data-icon="inline-start" />{/if}
 					Set password and continue

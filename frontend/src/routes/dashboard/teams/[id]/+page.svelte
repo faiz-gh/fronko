@@ -11,8 +11,8 @@
 	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
 	import UsersRoundIcon from '@lucide/svelte/icons/users-round';
 	import XIcon from '@lucide/svelte/icons/x';
-	import { me } from '$lib/api/auth';
-	import { ROLE_LABEL } from '$lib/api/org';
+	import { me } from '$lib/features/auth/api';
+	import { ROLE_LABEL } from '$lib/features/orgs/api';
 	import {
 		deleteTeam,
 		setTeamMembers,
@@ -21,7 +21,7 @@
 		type TeamDetail,
 		type TeamMember,
 		type TeamRole
-	} from '$lib/api/teams';
+	} from '$lib/features/teams/api';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -32,12 +32,12 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import * as Table from '$lib/components/ui/table';
 	import * as ToggleGroup from '$lib/components/ui/toggle-group';
-	import TeamDialog from '$lib/components/app/team-dialog.svelte';
-	import UserAvatar from '$lib/components/app/user-avatar.svelte';
-	import { timeAgo } from '$lib/format';
-	import { orgUsers } from '$lib/org-users.svelte';
-	import { session } from '$lib/session.svelte';
-	import { teams } from '$lib/teams.svelte';
+	import TeamDialog from '$lib/features/teams/components/team-dialog.svelte';
+	import UserAvatar from '$lib/components/shared/user-avatar.svelte';
+	import { timeAgo } from '$lib/core/format';
+	import { orgUsers } from '$lib/features/orgs/users.svelte';
+	import { session } from '$lib/core/session.svelte';
+	import { teams } from '$lib/features/teams/store.svelte';
 
 	const id = $derived(Number(page.params.id));
 	let team = $state<TeamDetail | null>(null);
@@ -135,7 +135,10 @@
 </svelte:head>
 
 <div class="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-4 py-6 sm:px-8 lg:px-10 lg:py-10">
-	<a href="/dashboard/teams" class="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-sm">
+	<a
+		href="/dashboard/teams"
+		class="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-sm"
+	>
 		<ArrowLeftIcon class="size-4" />
 		Teams
 	</a>
@@ -189,7 +192,8 @@
 				<span class="bg-muted grid size-9 place-items-center rounded-lg"><FolderIcon class="size-4" /></span>
 				<span class="flex flex-col">
 					<span class="text-sm font-medium">Team files</span>
-					<span class="text-muted-foreground text-xs">{team.file_count} {team.file_count === 1 ? 'file' : 'files'}</span>
+					<span class="text-muted-foreground text-xs">{team.file_count} {team.file_count === 1 ? 'file' : 'files'}</span
+					>
 				</span>
 			</a>
 			{#if seesWork}
@@ -262,7 +266,9 @@
 						<Empty.Media variant="icon"><UsersRoundIcon /></Empty.Media>
 						<Empty.Title>Nobody in this team yet</Empty.Title>
 						<Empty.Description>
-							{session.isAdmin ? 'Add people, then make one or more of them leads.' : 'Your admins add people to teams.'}
+							{session.isAdmin
+								? 'Add people, then make one or more of them leads.'
+								: 'Your admins add people to teams.'}
 						</Empty.Description>
 					</Empty.Header>
 				</Empty.Root>
@@ -285,7 +291,8 @@
 											<UserAvatar username={m.username} class="size-8 text-[11px]" />
 											<span class="flex min-w-0 flex-col">
 												{#if session.isAdmin}
-													<a href="/dashboard/users/{m.id}" class="truncate font-medium hover:underline">{m.username}</a>
+													<a href="/dashboard/users/{m.id}" class="truncate font-medium hover:underline">{m.username}</a
+													>
 												{:else}
 													<span class="truncate font-medium">{m.username}</span>
 												{/if}

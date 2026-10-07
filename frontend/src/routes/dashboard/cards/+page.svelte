@@ -4,23 +4,23 @@
 	import IdCardIcon from '@lucide/svelte/icons/id-card';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import SearchIcon from '@lucide/svelte/icons/search';
-	import type { Profile } from '$lib/api/profile';
+	import type { Profile } from '$lib/features/cards/api';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import CardTile from '$lib/components/app/card-tile.svelte';
-	import DeleteCardDialog from '$lib/components/app/delete-card-dialog.svelte';
-	import QrDialog from '$lib/components/app/qr-dialog.svelte';
-	import NfcDialog from '$lib/components/app/nfc-dialog.svelte';
-	import TeamPicker from '$lib/components/app/team-picker.svelte';
-	import UserPicker from '$lib/components/app/user-picker.svelte';
-	import { normalizeCard } from '$lib/card/card';
-	import { cards } from '$lib/cards.svelte';
-	import { plural } from '$lib/format';
-	import { orgUsers } from '$lib/org-users.svelte';
-	import { session } from '$lib/session.svelte';
-	import { teams } from '$lib/teams.svelte';
+	import CardTile from '$lib/features/cards/components/card-tile.svelte';
+	import DeleteCardDialog from '$lib/features/cards/components/delete-card-dialog.svelte';
+	import QrDialog from '$lib/features/cards/components/qr-dialog.svelte';
+	import NfcDialog from '$lib/features/cards/components/nfc-dialog.svelte';
+	import TeamPicker from '$lib/features/teams/components/team-picker.svelte';
+	import UserPicker from '$lib/features/orgs/components/user-picker.svelte';
+	import { normalizeCard } from '$lib/features/cards/card';
+	import { cards } from '$lib/features/cards/store.svelte';
+	import { plural } from '$lib/core/format';
+	import { orgUsers } from '$lib/features/orgs/users.svelte';
+	import { session } from '$lib/core/session.svelte';
+	import { teams } from '$lib/features/teams/store.svelte';
 
 	// Members see their cards on the overview and in the sidebar; admins and
 	// team leads get this page.
@@ -40,7 +40,8 @@
 	/** Who is in the chosen team: from the users list for admins, the team itself for leads. */
 	const teamMembers = $derived.by((): Set<number> | null => {
 		if (team === null) return null;
-		if (session.isAdmin) return new Set((orgUsers.list ?? []).filter((u) => u.teams.some((t) => t.id === team)).map((u) => u.id));
+		if (session.isAdmin)
+			return new Set((orgUsers.list ?? []).filter((u) => u.teams.some((t) => t.id === team)).map((u) => u.id));
 		return teams.memberIds(team);
 	});
 
@@ -63,8 +64,9 @@
 			if (typeof user === 'number' && p.assigned_user?.id !== user) return false;
 			if (!q) return true;
 			const c = normalizeCard(p.data);
-			return [c.name, c.title, c.company, p.slug, p.assigned_user?.username ?? '']
-				.some((v) => v.toLowerCase().includes(q));
+			return [c.name, c.title, c.company, p.slug, p.assigned_user?.username ?? ''].some((v) =>
+				v.toLowerCase().includes(q)
+			);
 		});
 	});
 
@@ -114,7 +116,8 @@
 		<div class="bg-card flex flex-col items-start gap-3 rounded-xl border p-6">
 			<p class="font-medium">Couldn't load cards</p>
 			<p class="text-muted-foreground text-sm">{cards.error}</p>
-			<Button variant="outline" onclick={() => session.username && cards.load(session.username, true)}>Try again</Button>
+			<Button variant="outline" onclick={() => session.username && cards.load(session.username, true)}>Try again</Button
+			>
 		</div>
 	{:else if cards.list && all.length === 0}
 		<Empty.Root class="bg-card rounded-xl border border-dashed py-20">
@@ -148,7 +151,12 @@
 			{/if}
 			<div class="relative min-w-0 basis-full sm:max-w-sm sm:flex-1 sm:basis-auto">
 				<SearchIcon class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-				<Input bind:value={query} placeholder="Search name, company, link or user" class="pl-9" aria-label="Search cards" />
+				<Input
+					bind:value={query}
+					placeholder="Search name, company, link or user"
+					class="pl-9"
+					aria-label="Search cards"
+				/>
 			</div>
 		</div>
 

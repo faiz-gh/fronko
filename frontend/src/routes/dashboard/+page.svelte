@@ -25,42 +25,40 @@
 		type CardStat,
 		type MemberStat,
 		type TeamStat
-	} from '$lib/api/analytics';
-	import { listLeads, type Lead } from '$lib/api/lead';
-	import { teamColor } from '$lib/api/teams';
-	import { STATUS_LABEL, userStatus } from '$lib/api/org';
-	import type { Profile } from '$lib/api/profile';
+	} from '$lib/features/analytics/api';
+	import { listLeads, type Lead } from '$lib/features/leads/api';
+	import { teamColor } from '$lib/features/teams/api';
+	import { STATUS_LABEL, userStatus } from '$lib/features/orgs/api';
+	import type { Profile } from '$lib/features/cards/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as ToggleGroup from '$lib/components/ui/toggle-group';
-	import ActivityFeed from '$lib/components/app/activity-feed.svelte';
-	import SeriesChart from '$lib/components/app/charts/series-chart.svelte';
-	import SplitBar from '$lib/components/app/charts/split-bar.svelte';
-	import StatTile from '$lib/components/app/charts/stat-tile.svelte';
-	import CardAvatar from '$lib/components/app/card-avatar.svelte';
-	import CardTile from '$lib/components/app/card-tile.svelte';
-	import CreateUserDialog from '$lib/components/app/create-user-dialog.svelte';
-	import ProfileCard from '$lib/components/app/profile-card.svelte';
-	import QrDialog from '$lib/components/app/qr-dialog.svelte';
-	import NfcDialog from '$lib/components/app/nfc-dialog.svelte';
-	import RecentLeads from '$lib/components/app/recent-leads.svelte';
-	import UserAvatar from '$lib/components/app/user-avatar.svelte';
-	import { emptyCard, normalizeCard } from '$lib/card/card';
-	import { qrContrastIssue } from '$lib/card/qr';
-	import { cards } from '$lib/cards.svelte';
-	import { plural } from '$lib/format';
-	import { orgUsers } from '$lib/org-users.svelte';
-	import { session } from '$lib/session.svelte';
-	import { storage } from '$lib/storage.svelte';
-	import { teams } from '$lib/teams.svelte';
+	import ActivityFeed from '$lib/features/analytics/components/activity-feed.svelte';
+	import SeriesChart from '$lib/components/shared/charts/series-chart.svelte';
+	import SplitBar from '$lib/components/shared/charts/split-bar.svelte';
+	import StatTile from '$lib/components/shared/charts/stat-tile.svelte';
+	import CardAvatar from '$lib/features/cards/components/card-avatar.svelte';
+	import CardTile from '$lib/features/cards/components/card-tile.svelte';
+	import CreateUserDialog from '$lib/features/orgs/components/create-user-dialog.svelte';
+	import ProfileCard from '$lib/features/cards/components/profile-card.svelte';
+	import QrDialog from '$lib/features/cards/components/qr-dialog.svelte';
+	import NfcDialog from '$lib/features/cards/components/nfc-dialog.svelte';
+	import RecentLeads from '$lib/features/leads/components/recent-leads.svelte';
+	import UserAvatar from '$lib/components/shared/user-avatar.svelte';
+	import { emptyCard, normalizeCard } from '$lib/features/cards/card';
+	import { qrContrastIssue } from '$lib/features/cards/qr';
+	import { cards } from '$lib/features/cards/store.svelte';
+	import { plural } from '$lib/core/format';
+	import { orgUsers } from '$lib/features/orgs/users.svelte';
+	import { session } from '$lib/core/session.svelte';
+	import { storage } from '$lib/features/files/storage.svelte';
+	import { teams } from '$lib/features/teams/store.svelte';
 
-	const WEEK_MS = 7 * 24 * 3600 * 1000;
 	const RECENT_LIMIT = 8;
 
 	type RecentLead = Lead & { profile: Profile };
 
 	let recent = $state<RecentLead[] | null>(null);
-	let leadsThisWeek = $state<number | null>(null);
 	let createUserOpen = $state(false);
 
 	const totalLeads = $derived(cards.list?.reduce((sum, p) => sum + p.lead_count, 0) ?? 0);
@@ -74,21 +72,14 @@
 		if (key === fetchedFor) return;
 		fetchedFor = key;
 		const byId = new Map(list.map((p) => [p.id, p]));
-		Promise.all([
-			listLeads({ pageSize: RECENT_LIMIT }),
-			listLeads({ since: new Date(Date.now() - WEEK_MS), pageSize: 1 })
-		])
-			.then(([latest, week]) => {
+		listLeads({ pageSize: RECENT_LIMIT })
+			.then((latest) => {
 				recent = latest.leads.flatMap((l) => {
 					const profile = byId.get(l.profile_id);
 					return profile ? [{ ...l, profile }] : [];
 				});
-				leadsThisWeek = week.total;
 			})
-			.catch(() => {
-				recent = [];
-				leadsThisWeek = null;
-			});
+			.catch(() => (recent = []));
 	});
 
 	// Organisation view
@@ -146,14 +137,24 @@
 	const kpis = $derived(
 		cur && prev
 			? [
-					{ label: 'Views', value: formatCount(cur.views), delta: change(cur.views, prev.views), trend: points.map((p) => p.views) },
+					{
+						label: 'Views',
+						value: formatCount(cur.views),
+						delta: change(cur.views, prev.views),
+						trend: points.map((p) => p.views)
+					},
 					{
 						label: 'Unique visitors',
 						value: formatCount(cur.unique_visitors),
 						delta: change(cur.unique_visitors, prev.unique_visitors),
 						trend: points.map((p) => p.unique_visitors)
 					},
-					{ label: 'Contacts saved', value: formatCount(cur.saves), delta: change(cur.saves, prev.saves), trend: points.map((p) => p.saves) },
+					{
+						label: 'Contacts saved',
+						value: formatCount(cur.saves),
+						delta: change(cur.saves, prev.saves),
+						trend: points.map((p) => p.saves)
+					},
 					{
 						label: 'Leads',
 						value: formatCount(cur.leads),
@@ -199,7 +200,13 @@
 	// First steps, until the organisation is set up.
 	const steps = $derived([
 		...(session.isOwner
-			? [{ done: !!storage.status?.configured, label: 'Connect storage for photos and brochures', href: '/dashboard/settings?tab=storage' }]
+			? [
+					{
+						done: !!storage.status?.configured,
+						label: 'Connect storage for photos and brochures',
+						href: '/dashboard/settings?tab=storage'
+					}
+				]
 			: []),
 		{ done: (cards.list?.length ?? 0) > 0, label: 'Create a card', action: () => (cards.createOpen = true) },
 		{ done: people.length > 0, label: 'Add someone from your team', action: () => (createUserOpen = true) },
@@ -279,7 +286,8 @@
 		<div class="bg-card flex flex-col items-start gap-3 rounded-xl border p-6">
 			<p class="font-medium">Couldn't load your cards</p>
 			<p class="text-muted-foreground text-sm">{cards.error}</p>
-			<Button variant="outline" onclick={() => session.username && cards.load(session.username, true)}>Try again</Button>
+			<Button variant="outline" onclick={() => session.username && cards.load(session.username, true)}>Try again</Button
+			>
 		</div>
 	{:else if !session.isAdmin && cards.list && cards.list.length === 0}
 		<section class="bg-card grid overflow-hidden rounded-2xl border lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -287,8 +295,8 @@
 				<span class="text-brand text-sm font-medium">Almost there</span>
 				<h2 class="text-3xl font-semibold tracking-tight text-balance">Your card is on its way</h2>
 				<p class="text-muted-foreground max-w-md text-pretty">
-					{session.orgName} hasn't assigned you a card yet. Once they do, it shows up here and you can make it yours:
-					your photo, contact details, links and brochures.
+					{session.orgName} hasn't assigned you a card yet. Once they do, it shows up here and you can make it yours: your
+					photo, contact details, links and brochures.
 				</p>
 				<Button variant="outline" class="w-fit" href="/dashboard/files">Upload your photo in the meantime</Button>
 			</div>
@@ -332,7 +340,9 @@
 					<div class="flex flex-wrap items-start justify-between gap-2">
 						<div class="flex flex-col gap-1">
 							<h2 id="sources-heading" class="font-semibold">Views by source</h2>
-							<p class="text-muted-foreground text-sm">Taps on the NFC tag, scans of the QR code, and everything else.</p>
+							<p class="text-muted-foreground text-sm">
+								Taps on the NFC tag, scans of the QR code, and everything else.
+							</p>
 						</div>
 						<Button variant="ghost" size="sm" href="/dashboard/analytics{range === '7' ? '?range=7' : ''}">
 							Full analytics
@@ -352,12 +362,16 @@
 						<section class="bg-card flex flex-col overflow-hidden rounded-xl border" aria-labelledby="teams-heading">
 							<div class="flex items-center justify-between gap-3 border-b px-5 py-3">
 								<h2 id="teams-heading" class="text-sm font-semibold">Top teams</h2>
-								<a href="/dashboard/analytics?tab=teams" class="text-muted-foreground hover:text-foreground text-sm">Compare</a>
+								<a href="/dashboard/analytics?tab=teams" class="text-muted-foreground hover:text-foreground text-sm"
+									>Compare</a
+								>
 							</div>
 							{#if teamStats.length === 0}
 								<div class="flex flex-col items-center gap-3 px-6 py-10 text-center">
 									<p class="text-muted-foreground max-w-xs text-sm">
-										{session.isAdmin ? 'Group people into teams to see which one gets the most out of their cards.' : 'No team activity yet.'}
+										{session.isAdmin
+											? 'Group people into teams to see which one gets the most out of their cards.'
+											: 'No team activity yet.'}
 									</p>
 									{#if session.isAdmin && (teams.list?.length ?? 0) === 0}
 										<Button variant="outline" size="sm" href="/dashboard/teams">Create a team</Button>
@@ -367,15 +381,23 @@
 								<ul class="divide-y">
 									{#each teamStats as t (t.id)}
 										<li>
-											<a href="/dashboard/analytics?tab=teams&team={t.id}" class="hover:bg-muted/50 flex flex-col gap-2 px-5 py-3">
+											<a
+												href="/dashboard/analytics?tab=teams&team={t.id}"
+												class="hover:bg-muted/50 flex flex-col gap-2 px-5 py-3"
+											>
 												<span class="flex items-center gap-2 text-sm">
 													<span class="size-2.5 rounded-full" style="background: {teamColor(t)}"></span>
 													<span class="min-w-0 flex-1 truncate font-medium">{t.name}</span>
-													<span class="text-muted-foreground text-xs tabular">{plural(t.saves, 'save')} · {plural(t.leads, 'lead')}</span>
+													<span class="text-muted-foreground text-xs tabular"
+														>{plural(t.saves, 'save')} · {plural(t.leads, 'lead')}</span
+													>
 													<span class="w-12 text-right font-semibold tabular">{t.views}</span>
 												</span>
 												<span class="bg-muted h-1.5 rounded-full">
-													<span class="block h-full rounded-full" style="width: {(t.views / maxTeamViews) * 100}%; background: var(--viz-1)"></span>
+													<span
+														class="block h-full rounded-full"
+														style="width: {(t.views / maxTeamViews) * 100}%; background: var(--viz-1)"
+													></span>
 												</span>
 											</a>
 										</li>
@@ -387,7 +409,9 @@
 						<section class="bg-card flex flex-col overflow-hidden rounded-xl border" aria-labelledby="people-heading">
 							<div class="flex items-center justify-between gap-3 border-b px-5 py-3">
 								<h2 id="people-heading" class="text-sm font-semibold">Top people</h2>
-								<a href="/dashboard/analytics?tab=teams" class="text-muted-foreground hover:text-foreground text-sm">Leaderboard</a>
+								<a href="/dashboard/analytics?tab=teams" class="text-muted-foreground hover:text-foreground text-sm"
+									>Leaderboard</a
+								>
 							</div>
 							{#if topPeople.length === 0}
 								<div class="flex flex-col items-center gap-3 px-6 py-10 text-center">
@@ -403,13 +427,19 @@
 								<ol class="divide-y">
 									{#each topPeople as m, i (m.user_id)}
 										<li>
-											<a href="/dashboard/analytics?user={m.user_id}" class="hover:bg-muted/50 flex items-center gap-3 px-5 py-2.5">
+											<a
+												href="/dashboard/analytics?user={m.user_id}"
+												class="hover:bg-muted/50 flex items-center gap-3 px-5 py-2.5"
+											>
 												<span class="text-muted-foreground w-4 text-right text-xs tabular">{i + 1}</span>
 												<UserAvatar username={m.username} class="size-7 text-[10px]" />
 												<span class="flex min-w-0 flex-1 flex-col">
 													<span class="truncate text-sm font-medium">{m.username}</span>
 													<span class="text-muted-foreground flex items-center gap-1 text-xs">
-														<IdCardIcon class="size-3" />{plural(m.cards, 'card')} · {plural(m.saves, 'save')} · {plural(m.leads, 'lead')}
+														<IdCardIcon class="size-3" />{plural(m.cards, 'card')} · {plural(m.saves, 'save')} · {plural(
+															m.leads,
+															'lead'
+														)}
 													</span>
 												</span>
 												<span class="text-right">
@@ -484,7 +514,10 @@
 											{step.label}
 										</span>
 									{:else if step.href}
-										<a href={step.href} class="hover:bg-muted flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium">
+										<a
+											href={step.href}
+											class="hover:bg-muted flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium"
+										>
 											<CircleIcon class="text-muted-foreground size-4 shrink-0" />
 											{step.label}
 											<ArrowRightIcon class="text-muted-foreground ml-auto size-4" />
@@ -515,7 +548,11 @@
 									<a href="/dashboard/cards?user=none" class="hover:bg-muted/50 flex items-center gap-3 px-5 py-3">
 										<div class="flex -space-x-2">
 											{#each unassigned.slice(0, 3) as profile (profile.id)}
-												<CardAvatar card={normalizeCard(profile.data)} fallback={profile.slug} class="ring-card size-7 text-[10px] ring-2" />
+												<CardAvatar
+													card={normalizeCard(profile.data)}
+													fallback={profile.slug}
+													class="ring-card size-7 text-[10px] ring-2"
+												/>
 											{/each}
 										</div>
 										<span class="min-w-0 flex-1 text-sm">{plural(unassigned.length, 'card')} without a user</span>

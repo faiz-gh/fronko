@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { getPlatformTrend, getSummary, type PlatformSummary, type UsagePoint } from '$lib/api/admin';
-	import { formatBytes } from '$lib/api/files';
+	import { getPlatformTrend, getSummary, type PlatformSummary, type UsagePoint } from '$lib/features/admin/api';
+	import { formatBytes } from '$lib/features/files/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import RangeToggle from '$lib/components/app/admin/range-toggle.svelte';
-	import TrendChart from '$lib/components/app/admin/trend-chart.svelte';
-	import { plural } from '$lib/format';
+	import RangeToggle from '$lib/features/admin/components/range-toggle.svelte';
+	import TrendChart from '$lib/features/admin/components/trend-chart.svelte';
+	import { plural } from '$lib/core/format';
 
 	let summary = $state<PlatformSummary | null>(null);
 	let error = $state('');
@@ -53,7 +53,11 @@
 						value: summary.team_count.toLocaleString(),
 						note: `${summary.orgs_with_teams} of ${summary.org_count} organisations use teams`
 					},
-					{ label: 'Cards', value: summary.card_count.toLocaleString(), note: plural(summary.lead_count, 'lead') + ' captured' },
+					{
+						label: 'Cards',
+						value: summary.card_count.toLocaleString(),
+						note: plural(summary.lead_count, 'lead') + ' captured'
+					},
 					{
 						label: 'Storage used',
 						value: formatBytes(summary.storage_used_bytes),
@@ -86,7 +90,8 @@
 	<header class="flex flex-col gap-1">
 		<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Overview</h1>
 		<p class="text-muted-foreground text-sm">
-			How Fronko is used, in totals only. Card contents, leads, files and team members stay private to each organisation.
+			How Fronko is used, in totals only. Card contents, leads, files and team members stay private to each
+			organisation.
 		</p>
 	</header>
 
@@ -98,7 +103,7 @@
 		</div>
 	{:else}
 		<dl class="bg-border grid grid-cols-2 gap-px overflow-hidden rounded-xl border lg:grid-cols-4">
-			{#each stats ?? Array.from({ length: 8 }, (_, i) => ({ label: String(i), value: '', note: '', href: undefined })) as stat (stat.label)}
+			{#each stats ?? Array.from( { length: 8 }, (_, i) => ({ label: String(i), value: '', note: '', href: undefined }) ) as stat (stat.label)}
 				<div class="bg-card relative flex flex-col gap-1 px-4 py-4 sm:px-6 sm:py-5">
 					{#if stats}
 						<dt class="text-muted-foreground text-xs sm:text-sm">

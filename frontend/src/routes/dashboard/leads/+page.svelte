@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import LeadsTable from '$lib/components/app/leads-table.svelte';
-	import { normalizeCard } from '$lib/card/card';
-	import { cards } from '$lib/cards.svelte';
-	import { plural } from '$lib/format';
-	import { orgUsers } from '$lib/org-users.svelte';
-	import { session } from '$lib/session.svelte';
-	import { teams } from '$lib/teams.svelte';
+	import LeadsTable from '$lib/features/leads/components/leads-table.svelte';
+	import { normalizeCard } from '$lib/features/cards/card';
+	import { cards } from '$lib/features/cards/store.svelte';
+	import { plural } from '$lib/core/format';
+	import { orgUsers } from '$lib/features/orgs/users.svelte';
+	import { session } from '$lib/core/session.svelte';
+	import { teams } from '$lib/features/teams/store.svelte';
 
 	// Filters live in the URL (?card=ID&user=ID|none&team=ID) so they survive reloads and can be linked to.
 	const card = $derived.by(() => {
@@ -27,7 +27,9 @@
 		const id = Number(page.url.searchParams.get('team'));
 		return Number.isInteger(id) && id > 0 ? id : null;
 	});
-	const selectedTeam = $derived(team === null ? undefined : (teams.byId(team) ?? session.teams.find((t) => t.id === team)));
+	const selectedTeam = $derived(
+		team === null ? undefined : (teams.byId(team) ?? session.teams.find((t) => t.id === team))
+	);
 
 	const selected = $derived(card === null ? null : (cards.list?.find((p) => p.id === card) ?? null));
 	const selectedUser = $derived(typeof user === 'number' ? orgUsers.byId(user) : undefined);

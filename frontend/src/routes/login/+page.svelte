@@ -3,16 +3,17 @@
 	import { page } from '$app/state';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
-	import { login, register } from '$lib/api/auth';
-	import { ApiError } from '$lib/api/client';
+	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
+	import { discoverSSO, login, register, ssoStartUrl } from '$lib/features/auth/api';
+	import { ApiError } from '$lib/core/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import * as Alert from '$lib/components/ui/alert';
 	import * as Field from '$lib/components/ui/field';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import AuthLayout from '$lib/components/app/auth-layout.svelte';
-	import { session } from '$lib/session.svelte';
+	import AuthLayout from '$lib/features/auth/components/auth-layout.svelte';
+	import { session } from '$lib/core/session.svelte';
 
 	type Mode = 'login' | 'register';
 
@@ -26,6 +27,31 @@
 
 	const expired = page.url.searchParams.has('expired');
 	const passwordReset = page.url.searchParams.has('reset');
+	// Single sign-on sends people back here when it fails, saying why.
+	const ssoError = page.url.searchParams.get('sso_error') ?? '';
+
+	// Signing in with single sign-on instead of a password.
+	let ssoMode = $state(false);
+	let ssoIdentifier = $state('');
+	let ssoLoading = $state(false);
+
+	function startSSO(path: string) {
+		ssoLoading = true;
+		window.location.assign(ssoStartUrl(path, nextPath()));
+	}
+
+	async function handleSSO(event: SubmitEvent) {
+		event.preventDefault();
+		error = '';
+		ssoLoading = true;
+		try {
+			const { url } = await discoverSSO(ssoIdentifier.trim());
+			startSSO(url);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Something went wrong';
+			ssoLoading = false;
+		}
+	}
 
 	// Only follow same-site relative paths, never "//evil.com" or absolute URLs.
 	function nextPath(): string {
@@ -69,6 +95,7 @@
 			session.signIn(user);
 		} catch (e) {
 			if (e instanceof ApiError && e.code === 'org_suspended') session.suspendedReason = e.reason ?? '';
+			else if (e instanceof ApiError && e.code === 'sso_required' && e.ssoUrl) startSSO(e.ssoUrl);
 			else error = e instanceof Error ? e.message : 'Something went wrong';
 		} finally {
 			// The effect above navigates once loading drops.
@@ -120,6 +147,12 @@
 			<CircleAlertIcon />
 			<Alert.Title>{error}</Alert.Title>
 		</Alert.Root>
+	{:else if ssoError && mode === 'login'}
+		<Alert.Root variant="destructive">
+			<CircleAlertIcon />
+			<Alert.Title>Single sign-on didn't work</Alert.Title>
+			<Alert.Description>{ssoError}</Alert.Description>
+		</Alert.Root>
 	{:else if passwordReset && mode === 'login'}
 		<Alert.Root>
 			<CircleCheckIcon />
@@ -134,92 +167,140 @@
 		</Alert.Root>
 	{/if}
 
-	<form onsubmit={handleSubmit}>
-		<Field.Group>
-			<Field.Field data-invalid={!!usernameError || undefined}>
-				<Field.Label for="username">{mode === 'login' ? 'Username or email' : 'Username'}</Field.Label>
-				<Input
-					id="username"
-					autocomplete="username"
-					autocapitalize="none"
-					spellcheck={false}
-					required
-					bind:value={username}
-					disabled={loading}
-					aria-invalid={!!usernameError || undefined}
-				/>
-				{#if usernameError}
-					<Field.Error>{usernameError}</Field.Error>
-				{/if}
-			</Field.Field>
-			{#if mode === 'register'}
-				<Field.Field data-invalid={!!emailError || undefined}>
-					<Field.Label for="email">Email</Field.Label>
+	{#if mode === 'login' && ssoMode}
+		<form onsubmit={handleSSO}>
+			<Field.Group>
+				<Field.Field>
+					<Field.Label for="sso-identifier">Work email or organisation</Field.Label>
 					<Input
-						id="email"
-						type="email"
+						id="sso-identifier"
 						autocomplete="email"
 						autocapitalize="none"
 						spellcheck={false}
 						required
-						bind:value={email}
-						disabled={loading}
-						aria-invalid={!!emailError || undefined}
+						placeholder="you@company.com"
+						bind:value={ssoIdentifier}
+						disabled={ssoLoading}
 					/>
-					{#if emailError}
-						<Field.Error>{emailError}</Field.Error>
-					{:else}
-						<Field.Description>We'll send a code to confirm it.</Field.Description>
-					{/if}
+					<Field.Description>
+						We'll send you to your company's sign-in page. Your organisation's admin can tell you its name in Fronko.
+					</Field.Description>
 				</Field.Field>
-				<Field.Field>
-					<Field.Label for="organization">
-						Company or team <span class="text-muted-foreground font-normal">(optional)</span>
-					</Field.Label>
+				<Button type="submit" size="lg" class="w-full" disabled={ssoLoading || !ssoIdentifier.trim()}>
+					{#if ssoLoading}<Spinner data-icon="inline-start" />{/if}
+					Continue
+				</Button>
+				<Button type="button" variant="ghost" class="w-full" onclick={() => (ssoMode = false)} disabled={ssoLoading}>
+					Sign in with a password instead
+				</Button>
+			</Field.Group>
+		</form>
+	{:else}
+		<form onsubmit={handleSubmit}>
+			<Field.Group>
+				<Field.Field data-invalid={!!usernameError || undefined}>
+					<Field.Label for="username">{mode === 'login' ? 'Username or email' : 'Username'}</Field.Label>
 					<Input
-						id="organization"
-						autocomplete="organization"
-						maxlength={80}
-						bind:value={organization}
+						id="username"
+						autocomplete="username"
+						autocapitalize="none"
+						spellcheck={false}
+						required
+						bind:value={username}
 						disabled={loading}
-						placeholder={username || 'Acme Inc.'}
+						aria-invalid={!!usernameError || undefined}
 					/>
-					<Field.Description>You can add your team's accounts once you're in.</Field.Description>
-				</Field.Field>
-			{/if}
-			<Field.Field data-invalid={!!passwordError || undefined}>
-				<div class="flex items-center justify-between gap-2">
-					<Field.Label for="password">Password</Field.Label>
-					{#if mode === 'login'}
-						<a
-							href="/forgot-password"
-							class="text-muted-foreground hover:text-foreground text-sm underline-offset-4 hover:underline"
-						>
-							Forgot password?
-						</a>
+					{#if usernameError}
+						<Field.Error>{usernameError}</Field.Error>
 					{/if}
-				</div>
-				<Input
-					id="password"
-					type="password"
-					autocomplete={mode === 'login' ? 'current-password' : 'new-password'}
-					required
-					bind:value={password}
-					disabled={loading}
-					aria-invalid={!!passwordError || undefined}
-				/>
-				{#if passwordError}
-					<Field.Error>{passwordError}</Field.Error>
-				{:else if mode === 'register'}
-					<Field.Description>At least 8 characters.</Field.Description>
+				</Field.Field>
+				{#if mode === 'register'}
+					<Field.Field data-invalid={!!emailError || undefined}>
+						<Field.Label for="email">Email</Field.Label>
+						<Input
+							id="email"
+							type="email"
+							autocomplete="email"
+							autocapitalize="none"
+							spellcheck={false}
+							required
+							bind:value={email}
+							disabled={loading}
+							aria-invalid={!!emailError || undefined}
+						/>
+						{#if emailError}
+							<Field.Error>{emailError}</Field.Error>
+						{:else}
+							<Field.Description>We'll send a code to confirm it.</Field.Description>
+						{/if}
+					</Field.Field>
+					<Field.Field>
+						<Field.Label for="organization">
+							Company or team <span class="text-muted-foreground font-normal">(optional)</span>
+						</Field.Label>
+						<Input
+							id="organization"
+							autocomplete="organization"
+							maxlength={80}
+							bind:value={organization}
+							disabled={loading}
+							placeholder={username || 'Acme Inc.'}
+						/>
+						<Field.Description>You can add your team's accounts once you're in.</Field.Description>
+					</Field.Field>
 				{/if}
-			</Field.Field>
-			<Button type="submit" size="lg" class="w-full" disabled={loading || !canSubmit}>
-				{#if loading}
-					<Spinner data-icon="inline-start" />
+				<Field.Field data-invalid={!!passwordError || undefined}>
+					<div class="flex items-center justify-between gap-2">
+						<Field.Label for="password">Password</Field.Label>
+						{#if mode === 'login'}
+							<a
+								href="/forgot-password"
+								class="text-muted-foreground hover:text-foreground text-sm underline-offset-4 hover:underline"
+							>
+								Forgot password?
+							</a>
+						{/if}
+					</div>
+					<Input
+						id="password"
+						type="password"
+						autocomplete={mode === 'login' ? 'current-password' : 'new-password'}
+						required
+						bind:value={password}
+						disabled={loading}
+						aria-invalid={!!passwordError || undefined}
+					/>
+					{#if passwordError}
+						<Field.Error>{passwordError}</Field.Error>
+					{:else if mode === 'register'}
+						<Field.Description>At least 8 characters.</Field.Description>
+					{/if}
+				</Field.Field>
+				<Button type="submit" size="lg" class="w-full" disabled={loading || !canSubmit}>
+					{#if loading}
+						<Spinner data-icon="inline-start" />
+					{/if}
+					{mode === 'login' ? 'Sign in' : 'Create account'}
+				</Button>
+				{#if mode === 'login'}
+					<Field.Separator>or</Field.Separator>
+					<Button
+						type="button"
+						variant="outline"
+						size="lg"
+						class="w-full"
+						disabled={loading || ssoLoading}
+						onclick={() => {
+							ssoMode = true;
+							error = '';
+							if (username.includes('@')) ssoIdentifier = username.trim();
+						}}
+					>
+						<KeyRoundIcon data-icon="inline-start" />
+						Sign in with SSO
+					</Button>
 				{/if}
-				{mode === 'login' ? 'Sign in' : 'Create account'}
-			</Button>
-		</Field.Group>
-	</form>
+			</Field.Group>
+		</form>
+	{/if}
 </AuthLayout>

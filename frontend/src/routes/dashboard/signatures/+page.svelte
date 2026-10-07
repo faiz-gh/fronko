@@ -11,8 +11,8 @@
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import SignatureIcon from '@lucide/svelte/icons/signature';
 	import SunIcon from '@lucide/svelte/icons/sun';
-	import { fileUrl } from '$lib/api/files';
-	import { updateProfile } from '$lib/api/profile';
+	import { fileUrl } from '$lib/features/files/api';
+	import { updateProfile } from '$lib/features/cards/api';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
 	import * as Field from '$lib/components/ui/field';
@@ -20,24 +20,18 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import CardAvatar from '$lib/components/app/card-avatar.svelte';
-	import { branding } from '$lib/branding.svelte';
-	import { downloadBlob, normalizeCard, publicUrl, type CardData } from '$lib/card/card';
-	import { session } from '$lib/session.svelte';
-	import { cards } from '$lib/cards.svelte';
-	import {
-		measureImage,
-		renderSignature,
-		signatureDocument,
-		signatureTemplate,
-		type ImageSize
-	} from '$lib/signature/render';
+	import CardAvatar from '$lib/features/cards/components/card-avatar.svelte';
+	import { branding } from '$lib/features/branding/store.svelte';
+	import { downloadBlob, normalizeCard, publicUrl, type CardData } from '$lib/features/cards/card';
+	import { session } from '$lib/core/session.svelte';
+	import { cards } from '$lib/features/cards/store.svelte';
+	import { measureImage, renderSignature, signatureDocument, type ImageSize } from '$lib/features/signatures/render';
 	import {
 		SIGNATURE_TEMPLATES,
 		SIGNATURE_TEMPLATE_KEYS,
 		type SignatureSettings,
 		type SignatureTemplateKey
-	} from '$lib/signature/templates';
+	} from '$lib/features/signatures/templates';
 	import { cn } from '$lib/utils';
 
 	const selectedId = $derived(Number(page.url.searchParams.get('card')) || cards.list?.[0]?.id || null);
@@ -54,7 +48,9 @@
 		saved = JSON.stringify(s);
 	});
 
-	const card = $derived<CardData | null>(profile && settings ? { ...normalizeCard(profile.data), signature: settings } : null);
+	const card = $derived<CardData | null>(
+		profile && settings ? { ...normalizeCard(profile.data), signature: settings } : null
+	);
 	const dirty = $derived(!!settings && JSON.stringify(settings) !== saved);
 
 	const org = $derived(branding.value);
@@ -75,9 +71,19 @@
 		if (id) measureImage(fileUrl(id)).then((s) => (bannerSize = s));
 	});
 
-	const rendered = $derived(card && profile ? renderSignature(card, publicUrl(session.orgHandle, profile.slug), org, { logoSize, bannerSize }) : null);
+	const rendered = $derived(
+		card && profile
+			? renderSignature(card, publicUrl(session.orgHandle, profile.slug), org, {
+					logoSize,
+					bannerSize,
+					bookingUrl: profile.booking?.url
+				})
+			: null
+	);
 	const template = $derived(rendered?.template ?? 'classic');
-	const templates = $derived<SignatureTemplateKey[]>(locked && rendered ? [rendered.template] : SIGNATURE_TEMPLATE_KEYS);
+	const templates = $derived<SignatureTemplateKey[]>(
+		locked && rendered ? [rendered.template] : SIGNATURE_TEMPLATE_KEYS
+	);
 
 	let darkPreview = $state(false);
 	let copied = $state<'rich' | 'html' | null>(null);
@@ -189,7 +195,12 @@
 	/** Gallery thumbnails: the real signature, drawn with each template. */
 	function preview(key: SignatureTemplateKey): string {
 		if (!card || !profile) return '';
-		return renderSignature(card, publicUrl(session.orgHandle, profile.slug), org, { template: key, logoSize, bannerSize }).html;
+		return renderSignature(card, publicUrl(session.orgHandle, profile.slug), org, {
+			template: key,
+			logoSize,
+			bannerSize,
+			bookingUrl: profile.booking?.url
+		}).html;
 	}
 </script>
 
@@ -263,7 +274,9 @@
 							</div>
 						</div>
 						<div class={cn('overflow-hidden rounded-xl border', darkPreview ? 'bg-neutral-900' : 'bg-white')}>
-							<div class="border-b px-4 py-2 text-xs {darkPreview ? 'border-white/10 text-white/50' : 'text-neutral-400'}">
+							<div
+								class="border-b px-4 py-2 text-xs {darkPreview ? 'border-white/10 text-white/50' : 'text-neutral-400'}"
+							>
 								Best regards,
 							</div>
 							<iframe
@@ -282,11 +295,15 @@
 						{/if}
 						<div class="flex flex-wrap gap-2">
 							<Button onclick={copyRich} disabled={dirty}>
-								{#if copied === 'rich'}<CheckIcon data-icon="inline-start" />{:else}<CopyIcon data-icon="inline-start" />{/if}
+								{#if copied === 'rich'}<CheckIcon data-icon="inline-start" />{:else}<CopyIcon
+										data-icon="inline-start"
+									/>{/if}
 								Copy signature
 							</Button>
 							<Button variant="outline" onclick={copyHtml} disabled={dirty}>
-								{#if copied === 'html'}<CheckIcon data-icon="inline-start" />{:else}<CodeIcon data-icon="inline-start" />{/if}
+								{#if copied === 'html'}<CheckIcon data-icon="inline-start" />{:else}<CodeIcon
+										data-icon="inline-start"
+									/>{/if}
 								Copy HTML
 							</Button>
 							<Button variant="outline" onclick={download} disabled={dirty}>
@@ -324,7 +341,10 @@
 										active ? 'border-foreground ring-foreground ring-1' : 'hover:border-foreground/30'
 									)}
 								>
-									<span class="pointer-events-none relative h-32 overflow-hidden rounded-lg bg-white ring-1 ring-black/5" aria-hidden="true">
+									<span
+										class="pointer-events-none relative h-32 overflow-hidden rounded-lg bg-white ring-1 ring-black/5"
+										aria-hidden="true"
+									>
 										<span class="absolute top-3 left-3 block w-[200%] origin-top-left scale-50">
 											<!-- Our own renderer's output: every user-supplied value in it is escaped. -->
 											<!-- eslint-disable-next-line svelte/no-at-html-tags -->
@@ -336,7 +356,9 @@
 											{SIGNATURE_TEMPLATES[key].label}
 											{#if active}<CheckIcon class="size-3.5" />{/if}
 										</span>
-										<span class="text-muted-foreground text-xs leading-snug">{SIGNATURE_TEMPLATES[key].description}</span>
+										<span class="text-muted-foreground text-xs leading-snug"
+											>{SIGNATURE_TEMPLATES[key].description}</span
+										>
 									</span>
 								</button>
 							{/each}
@@ -388,7 +410,8 @@
 									{#if saving}<Spinner data-icon="inline-start" />{/if}
 									Save signature
 								</Button>
-								<Button variant="ghost" onclick={() => (settings = JSON.parse(saved))} disabled={saving}>Discard</Button>
+								<Button variant="ghost" onclick={() => (settings = JSON.parse(saved))} disabled={saving}>Discard</Button
+								>
 							</div>
 						{/if}
 					</section>

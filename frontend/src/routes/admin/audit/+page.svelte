@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { listAudit, type AuditEntry } from '$lib/api/admin';
+	import { listAudit, type AuditEntry } from '$lib/features/admin/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
-	import Pagination from '$lib/components/app/pagination.svelte';
-	import { formatDateTime } from '$lib/format';
+	import Pagination from '$lib/components/shared/pagination.svelte';
+	import { formatDateTime } from '$lib/core/format';
 
 	let pageNum = $state(1);
 	let pageSize = $state(50);
@@ -95,7 +95,9 @@
 					{#each entries as e (e.id)}
 						{@const info = describe(e)}
 						<Table.Row>
-							<Table.Cell class="text-muted-foreground py-3 pl-5 text-xs whitespace-nowrap">{formatDateTime(e.created_at)}</Table.Cell>
+							<Table.Cell class="text-muted-foreground py-3 pl-5 text-xs whitespace-nowrap"
+								>{formatDateTime(e.created_at)}</Table.Cell
+							>
 							<Table.Cell class="py-3 text-sm">{e.admin_email}</Table.Cell>
 							<Table.Cell class="py-3 text-sm">{ACTION[e.action] ?? e.action}</Table.Cell>
 							<Table.Cell class="hidden max-w-md truncate py-3 pr-5 text-sm md:table-cell">

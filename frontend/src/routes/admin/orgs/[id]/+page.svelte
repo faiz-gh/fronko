@@ -3,18 +3,18 @@
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import BanIcon from '@lucide/svelte/icons/ban';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
-	import { getOrg, getOrgTrend, type OrgUsage, type UsagePoint } from '$lib/api/admin';
-	import { ApiError } from '$lib/api/client';
-	import { formatBytes, PURPOSES, type FilePurpose } from '$lib/api/files';
+	import { getOrg, getOrgTrend, type OrgUsage, type UsagePoint } from '$lib/features/admin/api';
+	import { ApiError } from '$lib/core/api';
+	import { formatBytes, PURPOSES, type FilePurpose } from '$lib/features/files/api';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import RangeToggle from '$lib/components/app/admin/range-toggle.svelte';
-	import StorageCell from '$lib/components/app/admin/storage-cell.svelte';
-	import SuspendOrgDialog from '$lib/components/app/admin/suspend-org-dialog.svelte';
-	import TrendChart from '$lib/components/app/admin/trend-chart.svelte';
-	import { formatDateTime, plural, timeAgo } from '$lib/format';
+	import RangeToggle from '$lib/features/admin/components/range-toggle.svelte';
+	import StorageCell from '$lib/features/admin/components/storage-cell.svelte';
+	import SuspendOrgDialog from '$lib/features/admin/components/suspend-org-dialog.svelte';
+	import TrendChart from '$lib/features/admin/components/trend-chart.svelte';
+	import { formatDateTime, plural, timeAgo } from '$lib/core/format';
 
 	const id = $derived(Number(page.params.id));
 
@@ -79,7 +79,9 @@
 					{
 						label: 'Files',
 						value: org.file_count.toLocaleString(),
-						note: [formatBytes(org.storage_used_bytes) + ' in total', purposeNote(org.files_by_purpose)].filter(Boolean).join(' · ')
+						note: [formatBytes(org.storage_used_bytes) + ' in total', purposeNote(org.files_by_purpose)]
+							.filter(Boolean)
+							.join(' · ')
 					},
 					{
 						label: 'Branding',
@@ -127,7 +129,9 @@
 					{#if org.suspended_at}<Badge variant="destructive">Suspended</Badge>{/if}
 				</h1>
 				<p class="text-muted-foreground text-sm">
-					<span class="font-mono">/p/{org.handle}</span> · Owner {org.owner_email ?? '(no email)'} · created {formatDateTime(org.created_at)} · last active
+					<span class="font-mono">/p/{org.handle}</span> · Owner {org.owner_email ?? '(no email)'} · created {formatDateTime(
+						org.created_at
+					)} · last active
 					{org.last_active_at ? timeAgo(org.last_active_at) : 'never'}
 				</p>
 			</div>

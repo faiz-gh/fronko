@@ -3,7 +3,7 @@
 	import ArrowDownWideNarrowIcon from '@lucide/svelte/icons/arrow-down-wide-narrow';
 	import BuildingIcon from '@lucide/svelte/icons/building-2';
 	import SearchIcon from '@lucide/svelte/icons/search';
-	import { listOrgs, type OrgSort, type OrgStatusFilter, type OrgUsage } from '$lib/api/admin';
+	import { listOrgs, type OrgSort, type OrgStatusFilter, type OrgUsage } from '$lib/features/admin/api';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -12,9 +12,9 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
 	import * as ToggleGroup from '$lib/components/ui/toggle-group';
-	import Pagination from '$lib/components/app/pagination.svelte';
-	import StorageCell from '$lib/components/app/admin/storage-cell.svelte';
-	import { formatDateTime, timeAgo } from '$lib/format';
+	import Pagination from '$lib/components/shared/pagination.svelte';
+	import StorageCell from '$lib/features/admin/components/storage-cell.svelte';
+	import { formatDateTime, timeAgo } from '$lib/core/format';
 
 	const SORTS: { value: OrgSort; label: string }[] = [
 		{ value: 'newest', label: 'Newest' },
@@ -93,7 +93,12 @@
 	<div class="flex flex-wrap items-center gap-3">
 		<div class="relative w-full max-w-sm">
 			<SearchIcon class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-			<Input bind:value={query} placeholder="Search name or owner email" class="pl-9" aria-label="Search organisations" />
+			<Input
+				bind:value={query}
+				placeholder="Search name or owner email"
+				class="pl-9"
+				aria-label="Search organisations"
+			/>
 		</div>
 		<ToggleGroup.Root
 			type="single"

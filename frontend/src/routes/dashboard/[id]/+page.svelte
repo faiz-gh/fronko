@@ -3,91 +3,51 @@
 	import { page } from '$app/state';
 	import { fly } from 'svelte/transition';
 	import { toast } from 'svelte-sonner';
-	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
-	import ArrowUpIcon from '@lucide/svelte/icons/arrow-up';
+	import ArrowUpRightIcon from '@lucide/svelte/icons/arrow-up-right';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import CopyIcon from '@lucide/svelte/icons/copy';
-	import DownloadIcon from '@lucide/svelte/icons/download';
 	import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import EyeIcon from '@lucide/svelte/icons/eye';
-	import FileTextIcon from '@lucide/svelte/icons/file-text';
-	import LayoutTemplateIcon from '@lucide/svelte/icons/layout-template';
-	import LinkIcon from '@lucide/svelte/icons/link';
-	import PaletteIcon from '@lucide/svelte/icons/palette';
-	import PhoneIcon from '@lucide/svelte/icons/phone';
-	import Share2Icon from '@lucide/svelte/icons/share-2';
-	import UserIcon from '@lucide/svelte/icons/user';
-	import ImagesIcon from '@lucide/svelte/icons/images';
-	import PlusIcon from '@lucide/svelte/icons/plus';
 	import QrCodeIcon from '@lucide/svelte/icons/qr-code';
 	import SmartphoneNfcIcon from '@lucide/svelte/icons/smartphone-nfc';
-	import ArrowUpRightIcon from '@lucide/svelte/icons/arrow-up-right';
-	import SignatureIcon from '@lucide/svelte/icons/signature';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
-	import UploadIcon from '@lucide/svelte/icons/upload';
-	import XIcon from '@lucide/svelte/icons/x';
-	import { ACCEPT, checkUpload, formatBytes, PURPOSES, uploadFile, type LibraryFile, type PublicFile } from '$lib/api/files';
-	import { getMyProfile, getPublicProfile, updateProfile, type Profile } from '$lib/api/profile';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import * as Field from '$lib/components/ui/field';
-	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Spinner } from '$lib/components/ui/spinner';
-	import { Switch } from '$lib/components/ui/switch';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import BrandIcon from '$lib/components/app/brand-icon.svelte';
-	import CardAvatar from '$lib/components/app/card-avatar.svelte';
-	import DeleteCardDialog from '$lib/components/app/delete-card-dialog.svelte';
-	import UserPicker from '$lib/components/app/user-picker.svelte';
-	import { setCardAssignee } from '$lib/api/org';
-	import { branding } from '$lib/branding.svelte';
-	import { orgUsers } from '$lib/org-users.svelte';
-	import { session } from '$lib/session.svelte';
-	import FilePickerDialog from '$lib/components/app/file-picker-dialog.svelte';
-	import FormSection from '$lib/components/app/form-section.svelte';
-	import ImageCropDialog from '$lib/components/app/image-crop-dialog.svelte';
-	import LeadsTable from '$lib/components/app/leads-table.svelte';
-	import PhoneInput from '$lib/components/app/phone-input.svelte';
-	import ProfileCard from '$lib/components/app/profile-card.svelte';
-	import QrCode from '$lib/components/app/qr-code.svelte';
-	import QrStyleEditor from '$lib/components/app/qr-style-editor.svelte';
-	import { getAnalyticsSummary, lastDays, type AnalyticsTotals } from '$lib/api/analytics';
-	import QrDialog from '$lib/components/app/qr-dialog.svelte';
-	import NfcDialog from '$lib/components/app/nfc-dialog.svelte';
-	import SectionRail, { type RailItem } from '$lib/components/app/section-rail.svelte';
-	import TemplatePicker from '$lib/components/app/template-picker.svelte';
-	import BlockListEditor from '$lib/components/app/block-list-editor.svelte';
-	import { applyTemplate, isPreset, TEMPLATES, type TemplateKey } from '$lib/card/blocks';
-	import {
-		ACCENTS,
-		coverSrc,
-		detectCalendar,
-		isValidSlug,
-		MAX_DOCUMENTS,
-		newId,
-		normalizeCard,
-		publicUrl,
-		safeUrl,
-		TAP_ACTIONS,
-		tapUrl,
-		type AccentKey,
-		type CardData,
-		type TapAction,
-		type TapSource
-	} from '$lib/card/card';
-	import { downloadQrPng, downloadQrSvg, qrContrastIssue } from '$lib/card/qr';
-	import { cards } from '$lib/cards.svelte';
-	import { isValidPhone } from '$lib/phone';
-	import { storage } from '$lib/storage.svelte';
-	import { plural, timeAgo } from '$lib/format';
-	import { cn } from '$lib/utils';
-
-	const MAX_LINKS = 12;
+	import SectionRail from '$lib/components/shared/section-rail.svelte';
+	import { timeAgo } from '$lib/core/format';
+	import { session } from '$lib/core/session.svelte';
+	import { getAnalyticsSummary, lastDays, type AnalyticsTotals } from '$lib/features/analytics/api';
+	import { branding } from '$lib/features/branding/store.svelte';
+	import { getMyProfile, getPublicProfile, updateProfile, type Profile } from '$lib/features/cards/api';
+	import { normalizeCard, publicUrl, type CardData } from '$lib/features/cards/card';
+	import CardAvatar from '$lib/features/cards/components/card-avatar.svelte';
+	import DeleteCardDialog from '$lib/features/cards/components/delete-card-dialog.svelte';
+	import NfcDialog from '$lib/features/cards/components/nfc-dialog.svelte';
+	import ProfileCard from '$lib/features/cards/components/profile-card.svelte';
+	import QrDialog from '$lib/features/cards/components/qr-dialog.svelte';
+	import AppearanceSection from '$lib/features/cards/editor/appearance-section.svelte';
+	import BrochuresSection from '$lib/features/cards/editor/brochures-section.svelte';
+	import ContactSection from '$lib/features/cards/editor/contact-section.svelte';
+	import LayoutSection from '$lib/features/cards/editor/layout-section.svelte';
+	import LinksSection from '$lib/features/cards/editor/links-section.svelte';
+	import PreviewPanel from '$lib/features/cards/editor/preview-panel.svelte';
+	import ProfileSection from '$lib/features/cards/editor/profile-section.svelte';
+	import QrSection from '$lib/features/cards/editor/qr-section.svelte';
+	import { railItems, SECTIONS, sectionErrors, sectionFrom, type SectionId } from '$lib/features/cards/editor/sections';
+	import SharingSection from '$lib/features/cards/editor/sharing-section.svelte';
+	import { cardErrors, hasErrors } from '$lib/features/cards/editor/validation';
+	import { cards } from '$lib/features/cards/store.svelte';
+	import type { LibraryFile, PublicFile } from '$lib/features/files/api';
+	import LeadsTable from '$lib/features/leads/components/leads-table.svelte';
+	import { setCardAssignee } from '$lib/features/orgs/api';
+	import UserPicker from '$lib/features/orgs/components/user-picker.svelte';
+	import { orgUsers } from '$lib/features/orgs/users.svelte';
 
 	const profileId = $derived(Number(page.params.id));
 
@@ -101,7 +61,6 @@
 	let nfcOpen = $state(false);
 	let previewOpen = $state(false);
 	let previewMode = $state<'card' | 'qr'>('card');
-	let qrMarkup = $state('');
 	let deleteTarget = $state<Profile | null>(null);
 	let tab = $state(page.url.searchParams.get('tab') === 'leads' ? 'leads' : 'card');
 
@@ -110,33 +69,11 @@
 	const serialized = $derived(JSON.stringify({ slug, card }));
 	const dirty = $derived(card !== null && serialized !== snapshot);
 
-	const slugInvalid = $derived(!isValidSlug(slug));
-	// A pasted URL only matters when no library photo is set.
-	const avatarInvalid = $derived(!!card && !card.avatar_file && !!card.avatar_url.trim() && !safeUrl(card.avatar_url));
-
 	// Metadata for library files this card uses: names and sizes for the editor and preview.
 	let fileMeta = $state<Record<string, PublicFile>>({});
-	let photoPickerOpen = $state(false);
-	let docPickerOpen = $state(false);
-	let photoProgress = $state<number | null>(null);
-	let photoInput: HTMLInputElement | undefined = $state();
-	let coverPickerOpen = $state(false);
-	let coverProgress = $state<number | null>(null);
-	let coverInput: HTMLInputElement | undefined = $state();
-	// A freshly picked image waiting in the crop dialog.
-	let cropPhoto = $state<File | null>(null);
-	let cropCover = $state<File | null>(null);
-	// Colours too close to scan can't be saved.
-	const qrInvalid = $derived(!!card && !!qrContrastIssue(card.qr)?.blocking);
-	const websiteInvalid = $derived(!!card?.website.trim() && !safeUrl(card.website));
-	const emailInvalid = $derived(!!card?.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(card.email.trim()));
-	const phoneInvalid = $derived(!!card?.phone_number && !isValidPhone(card.phone_country_code, card.phone_number));
-	const calendarInvalid = $derived(!!card?.calendar_url.trim() && !safeUrl(card.calendar_url));
-	const calendarProvider = $derived(card ? detectCalendar(card.calendar_url) : null);
-	const cover = $derived(card ? coverSrc(card) : null);
-	const invalid = $derived(
-		slugInvalid || avatarInvalid || websiteInvalid || emailInvalid || phoneInvalid || calendarInvalid || qrInvalid
-	);
+
+	const errors = $derived(card ? cardErrors(card, slug) : null);
+	const invalid = $derived(!!errors && hasErrors(errors));
 	const canSave = $derived(dirty && !saving && !invalid);
 
 	// The last 30 days at a glance, linking to the full analytics.
@@ -152,8 +89,7 @@
 	// Kept current by the cards store (the single-card endpoint doesn't count leads).
 	const leadCount = $derived(cards.list?.find((p) => p.id === profileId)?.lead_count ?? 0);
 
-	const reduceMotion =
-		typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+	const reduceMotion = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 	// Reload when the sidebar switches to another card (same route, new id).
 	$effect(() => {
@@ -226,34 +162,9 @@
 		if (dirty && !confirm('You have unsaved changes. Leave anyway?')) nav.cancel();
 	});
 
-	function addLink() {
-		card?.links.push({ id: newId(), label: '', url: '' });
-	}
-
-	function moveLink(index: number, delta: number) {
-		if (!card) return;
-		const target = index + delta;
-		if (target < 0 || target >= card.links.length) return;
-		const [item] = card.links.splice(index, 1);
-		card.links.splice(target, 0, item);
-	}
-
-	const customised = $derived(!!card && !isPreset(card.blocks, card.template));
-
 	// One section of the form shows at a time, picked from the rail. The URL
 	// hash (#contact) remembers it, so links can open a given section.
-	const SECTIONS = ['profile', 'contact', 'links', 'brochures', 'layout', 'appearance', 'qr', 'sharing'] as const;
-	type SectionId = (typeof SECTIONS)[number];
-
-	function sectionFrom(hash: string): SectionId {
-		const id = hash.slice(1);
-		return (SECTIONS as readonly string[]).includes(id) ? (id as SectionId) : 'profile';
-	}
-
-	let section = $state<SectionId>(sectionFrom(page.url.hash));
-	$effect(() => {
-		section = sectionFrom(page.url.hash);
-	});
+	let section = $derived<SectionId>(sectionFrom(page.url.hash));
 	// Styling the code is easier with the code in view.
 	$effect(() => {
 		if (section === 'qr') previewMode = 'qr';
@@ -264,82 +175,11 @@
 		goto(`#${id}`, { shallow: true, replace: true, reset: false });
 	}
 
-	const sectionErrors = $derived<Record<SectionId, boolean>>({
-		profile: avatarInvalid,
-		contact: websiteInvalid || emailInvalid || phoneInvalid || calendarInvalid,
-		links: false,
-		brochures: false,
-		layout: false,
-		appearance: false,
-		qr: qrInvalid,
-		sharing: slugInvalid
-	});
-
-	const railItems = $derived.by((): RailItem<SectionId>[] => {
-		if (!card) return [];
-		const contacts = [card.email, card.phone_number, card.website, card.calendar_url, card.location].filter((v) =>
-			v.trim()
-		).length;
-		const links = card.links.filter((l) => l.url.trim()).length;
-		const hasPhoto = !!(card.avatar_file || card.avatar_url.trim());
-		const items: Omit<RailItem<SectionId>, 'error'>[] = [
-			{
-				id: 'profile',
-				label: 'Profile',
-				icon: UserIcon,
-				summary: card.name.trim() ? `${card.name.trim()}${hasPhoto ? '' : ' · no photo'}` : 'Add your name'
-			},
-			{ id: 'contact', label: 'Contact', icon: PhoneIcon, summary: contacts ? `${contacts} of 5 filled` : 'Nothing yet' },
-			{ id: 'links', label: 'Links', icon: LinkIcon, summary: links ? plural(links, 'link') : 'None yet' },
-			{
-				id: 'brochures',
-				label: 'Brochures',
-				icon: FileTextIcon,
-				summary: `${card.documents.length} of ${MAX_DOCUMENTS}`
-			},
-			{
-				id: 'layout',
-				label: 'Layout',
-				icon: LayoutTemplateIcon,
-				summary: `${TEMPLATES[card.template].label}${customised ? ' · customised' : ''}`
-			},
-			{
-				id: 'appearance',
-				label: 'Appearance',
-				icon: PaletteIcon,
-				summary: `${card.accent[0].toUpperCase()}${card.accent.slice(1)} · ${card.theme === 'dark' ? 'Dark' : 'Light'}`
-			},
-			{
-				id: 'qr',
-				label: 'QR code',
-				icon: QrCodeIcon,
-				summary:
-					card.qr.image === 'org_logo' ? 'With logo' : card.qr.image === 'custom' ? 'With image' : card.qr.dots === 'square' && card.qr.fg === '#0a0a0a' ? 'Plain' : 'Styled'
-			},
-			{ id: 'sharing', label: 'Sharing', icon: Share2Icon, summary: `/p/${session.orgHandle}/${slug}` }
-		];
-		return items.map((i) => ({ ...i, error: sectionErrors[i.id] }));
-	});
-
-	const firstInvalid = $derived(SECTIONS.find((id) => sectionErrors[id]) ?? null);
-
-	function chooseTemplate(key: TemplateKey) {
-		if (!card) return;
-		if (key === card.template && !customised) return;
-		if (customised && !confirm(`Switch to the ${TEMPLATES[key].label} layout? Your block order and hidden blocks will be reset; text, gallery and event details are kept.`)) return;
-		card.blocks = applyTemplate(card.blocks, key);
-		card.template = key;
-	}
-
-	async function copyTapUrl(via: TapSource) {
-		if (!profile) return;
-		try {
-			await navigator.clipboard.writeText(tapUrl(session.orgHandle, profile.slug, via));
-			toast.success(via === 'nfc' ? 'NFC link copied' : 'QR link copied');
-		} catch {
-			toast.error('Could not copy to clipboard');
-		}
-	}
+	const errorsBySection = $derived(errors ? sectionErrors(errors) : null);
+	const rail = $derived(
+		card && errorsBySection ? railItems(card, `/p/${session.orgHandle}/${slug}`, errorsBySection) : []
+	);
+	const firstInvalid = $derived(SECTIONS.find((id) => errorsBySection?.[id]) ?? null);
 
 	async function copyLink() {
 		if (!profile) return;
@@ -353,76 +193,6 @@
 
 	function remember(file: LibraryFile) {
 		fileMeta[file.id] = { id: file.id, kind: file.kind, name: file.title || file.name, size_bytes: file.size_bytes };
-	}
-
-	function usePhoto(file: LibraryFile) {
-		if (!card) return;
-		remember(file);
-		card.avatar_file = file.id;
-		card.avatar_url = '';
-	}
-
-	/** Checks a picked image, then opens the crop dialog for it. */
-	function pickImage(file: File, target: 'photo' | 'cover') {
-		const problem = checkUpload(file, 'image');
-		if (problem) {
-			toast.error(problem);
-			return;
-		}
-		if (target === 'photo') cropPhoto = file;
-		else cropCover = file;
-	}
-
-	async function uploadPhoto(file: File) {
-		photoProgress = 0;
-		try {
-			usePhoto(await uploadFile(file, { purpose: 'avatar', onProgress: (p) => (photoProgress = p) }));
-		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Upload failed');
-		} finally {
-			photoProgress = null;
-		}
-	}
-
-	function useCover(file: LibraryFile) {
-		if (!card) return;
-		remember(file);
-		card.cover_file = file.id;
-	}
-
-	async function uploadCover(file: File) {
-		coverProgress = 0;
-		try {
-			useCover(await uploadFile(file, { purpose: 'cover', onProgress: (p) => (coverProgress = p) }));
-		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Upload failed');
-		} finally {
-			coverProgress = null;
-		}
-	}
-
-	function removePhoto() {
-		if (!card) return;
-		card.avatar_file = '';
-		card.avatar_url = '';
-	}
-
-	function addDocument(file: LibraryFile) {
-		if (!card || card.documents.length >= MAX_DOCUMENTS) return;
-		remember(file);
-		if (card.documents.some((d) => d.file === file.id)) {
-			toast.info('That brochure is already on this card');
-			return;
-		}
-		card.documents.push({ id: newId(), file: file.id, title: file.title || file.name.replace(/\.pdf$/i, '') });
-	}
-
-	function moveDocument(index: number, delta: number) {
-		if (!card) return;
-		const target = index + delta;
-		if (target < 0 || target >= card.documents.length) return;
-		const [item] = card.documents.splice(index, 1);
-		card.documents.splice(target, 0, item);
 	}
 
 	async function onDeleted() {
@@ -537,7 +307,10 @@
 						Copy link
 					</Button>
 					<DropdownMenu.Root>
-						<DropdownMenu.Trigger class={buttonVariants({ variant: 'outline', size: 'icon' })} aria-label="More actions">
+						<DropdownMenu.Trigger
+							class={buttonVariants({ variant: 'outline', size: 'icon' })}
+							aria-label="More actions"
+						>
 							<EllipsisIcon />
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end" class="w-52">
@@ -587,7 +360,9 @@
 					title="Last 30 days"
 				>
 					{#if recentStats}
-						<span class="tabular">{recentStats.views} views · {recentStats.saves} saves · {recentStats.leads} leads</span>
+						<span class="tabular"
+							>{recentStats.views} views · {recentStats.saves} saves · {recentStats.leads} leads</span
+						>
 					{:else}
 						Analytics
 					{/if}
@@ -602,598 +377,37 @@
 					<div class="grid gap-6 pt-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10">
 						<SectionRail
 							label="Card sections"
-							items={railItems}
+							items={rail}
 							active={section}
 							onselect={openSection}
 							class="lg:sticky lg:top-6 lg:self-start"
 						/>
 						<div class="min-w-0">
-							{#if section === 'profile'}
-								<FormSection panel id="profile" title="Profile" description="Who you are. Shown at the top of your card.">
-									<Field.Group class="grid gap-5 sm:grid-cols-2">
-										<Field.Field class="sm:col-span-2">
-											<Field.Label for="name">Full name</Field.Label>
-											<Input id="name" bind:value={card.name} placeholder="Jane Doe" maxlength={80} />
-										</Field.Field>
-										<Field.Field>
-											<Field.Label for="title">Job title</Field.Label>
-											<Input id="title" bind:value={card.title} placeholder="Product Designer" maxlength={80} />
-										</Field.Field>
-										<Field.Field>
-											<Field.Label for="company">Company</Field.Label>
-											<Input id="company" bind:value={card.company} placeholder="Acme Inc." maxlength={80} />
-										</Field.Field>
-										<Field.Field class="sm:col-span-2">
-											<Field.Label for="location">Location</Field.Label>
-											<Input id="location" bind:value={card.location} placeholder="Berlin, Germany" maxlength={80} />
-										</Field.Field>
-										<Field.Field class="sm:col-span-2">
-											<div class="flex items-baseline justify-between">
-												<Field.Label for="bio">Short bio</Field.Label>
-												<span class="text-muted-foreground tabular text-xs">{card.bio.length}/280</span>
-											</div>
-											<Textarea
-												id="bio"
-												bind:value={card.bio}
-												rows={3}
-												maxlength={280}
-												placeholder="A sentence or two about what you do."
-											/>
-										</Field.Field>
-										<Field.Field class="sm:col-span-2" data-invalid={avatarInvalid || undefined}>
-											<Field.Label>Photo</Field.Label>
-											<div class="flex flex-wrap items-center gap-4">
-												<div class="relative">
-													<CardAvatar {card} fallback={profile.slug} class="size-16 text-lg" />
-													{#if photoProgress !== null}
-														<span class="bg-background/70 absolute inset-0 grid place-items-center rounded-full">
-															<Spinner class="size-5" />
-														</span>
-													{/if}
-												</div>
-												<div class="flex flex-wrap gap-2">
-													<Button
-														variant="outline"
-														onclick={() => photoInput?.click()}
-														disabled={!storage.ready || photoProgress !== null}
-													>
-														<UploadIcon data-icon="inline-start" />
-														{photoProgress !== null ? `Uploading ${Math.round(photoProgress * 100)}%` : 'Upload photo'}
-													</Button>
-													<Button variant="outline" onclick={() => (photoPickerOpen = true)} disabled={!storage.ready}>
-														<ImagesIcon data-icon="inline-start" />
-														From library
-													</Button>
-													{#if card.avatar_file || card.avatar_url}
-														<Button variant="ghost" onclick={removePhoto}>Remove</Button>
-													{/if}
-												</div>
-												<input
-													bind:this={photoInput}
-													type="file"
-													accept={ACCEPT.image}
-													class="sr-only"
-													tabindex="-1"
-													onchange={(e) => {
-														const f = e.currentTarget.files?.[0];
-														if (f) pickImage(f, 'photo');
-														e.currentTarget.value = '';
-													}}
-												/>
-											</div>
-											{#if storage.status && !storage.ready}
-												<Field.Description>
-													<a href="/dashboard/settings?tab=storage" class="text-foreground underline underline-offset-4">Connect storage</a>
-													to upload a photo, or paste an image URL below.
-												</Field.Description>
-											{/if}
-											{#if !card.avatar_file}
-												<Input
-													id="avatar"
-													type="url"
-													bind:value={card.avatar_url}
-													placeholder="Or paste an image URL: https://…/me.jpg"
-													aria-label="Photo URL"
-													aria-invalid={avatarInvalid || undefined}
-												/>
-												{#if avatarInvalid}
-													<Field.Error>Enter a valid http(s) image URL.</Field.Error>
-												{:else}
-													<Field.Description>JPEG, PNG or WebP up to 5 MB. Leave empty to show your initials.</Field.Description>
-												{/if}
-											{/if}
-										</Field.Field>
-										<Field.Field class="sm:col-span-2">
-											<Field.Label>Cover image</Field.Label>
-											<div class="flex flex-wrap items-center gap-4">
-												<div
-													class="relative aspect-3/1 w-48 shrink-0 overflow-hidden rounded-lg border"
-													style:background={cover ? undefined : ACCENTS[card.accent]}
-												>
-													{#if cover}
-														<img src={cover} alt="" class="size-full object-cover" />
-													{/if}
-													{#if coverProgress !== null}
-														<span class="bg-background/70 absolute inset-0 grid place-items-center">
-															<Spinner class="size-5" />
-														</span>
-													{/if}
-												</div>
-												<div class="flex flex-wrap gap-2">
-													<Button
-														variant="outline"
-														onclick={() => coverInput?.click()}
-														disabled={!storage.ready || coverProgress !== null}
-													>
-														<UploadIcon data-icon="inline-start" />
-														{coverProgress !== null ? `Uploading ${Math.round(coverProgress * 100)}%` : 'Upload cover'}
-													</Button>
-													<Button variant="outline" onclick={() => (coverPickerOpen = true)} disabled={!storage.ready}>
-														<ImagesIcon data-icon="inline-start" />
-														From library
-													</Button>
-													{#if card.cover_file}
-														<Button variant="ghost" onclick={() => card && (card.cover_file = '')}>Remove</Button>
-													{/if}
-												</div>
-												<input
-													bind:this={coverInput}
-													type="file"
-													accept={ACCEPT.image}
-													class="sr-only"
-													tabindex="-1"
-													onchange={(e) => {
-														const f = e.currentTarget.files?.[0];
-														if (f) pickImage(f, 'cover');
-														e.currentTarget.value = '';
-													}}
-												/>
-											</div>
-											<Field.Description>
-												A wide banner behind your photo, cropped to 3:1. Without one, the accent colour is used.
-											</Field.Description>
-										</Field.Field>
-									</Field.Group>
-								</FormSection>
-							{/if}
-
-							{#if section === 'contact'}
-								<FormSection
-									panel
-									id="contact"
-									title="Contact"
-									description="Shown as quick actions, and included when someone saves your contact."
-								>
-									<Field.Group class="grid gap-5 sm:grid-cols-2">
-										<Field.Field data-invalid={emailInvalid || undefined}>
-											<Field.Label for="email">Email</Field.Label>
-											<Input
-												id="email"
-												type="email"
-												bind:value={card.email}
-												placeholder="jane@acme.com"
-												aria-invalid={emailInvalid || undefined}
-											/>
-											{#if emailInvalid}
-												<Field.Error>Enter a valid email address.</Field.Error>
-											{/if}
-										</Field.Field>
-										<Field.Field data-invalid={phoneInvalid || undefined}>
-											<Field.Label for="phone">Mobile number</Field.Label>
-											<PhoneInput
-												id="phone"
-												bind:country={card.phone_country}
-												bind:code={card.phone_country_code}
-												bind:number={card.phone_number}
-												invalid={phoneInvalid}
-											/>
-											{#if phoneInvalid}
-												<Field.Error>
-													{card.phone_country_code ? 'Enter a valid number for this country.' : 'Pick the country code for this number.'}
-												</Field.Error>
-											{/if}
-										</Field.Field>
-										<Field.Field class="sm:col-span-2" data-invalid={websiteInvalid || undefined}>
-											<Field.Label for="website">Website</Field.Label>
-											<Input
-												id="website"
-												bind:value={card.website}
-												placeholder="acme.com"
-												aria-invalid={websiteInvalid || undefined}
-											/>
-											{#if websiteInvalid}
-												<Field.Error>Enter a valid web address.</Field.Error>
-											{/if}
-										</Field.Field>
-										<Field.Field class="sm:col-span-2" data-invalid={calendarInvalid || undefined}>
-											<Field.Label for="calendar">Booking link</Field.Label>
-											<div class="flex items-center gap-2">
-												<span class="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-lg">
-													<BrandIcon url={card.calendar_url} kind="calendar" />
-												</span>
-												<Input
-													id="calendar"
-													bind:value={card.calendar_url}
-													placeholder="calendly.com/you"
-													aria-invalid={calendarInvalid || undefined}
-												/>
-											</div>
-											{#if calendarInvalid}
-												<Field.Error>Enter a valid web address.</Field.Error>
-											{:else}
-												<Field.Description>
-													{calendarProvider
-														? `${calendarProvider.name} link. Shown as a “Book a meeting” button.`
-														: 'Calendly, Cal.com, Google Calendar or any booking page. Shown as a “Book a meeting” button.'}
-												</Field.Description>
-											{/if}
-										</Field.Field>
-									</Field.Group>
-								</FormSection>
-							{/if}
-
-							{#if section === 'links'}
-								<FormSection
-									panel
-									id="links"
-									title="Links"
-									description="Socials, portfolio, profiles. Known sites get their icon automatically."
-								>
-									<div class="flex flex-col gap-2">
-										{#each card.links as link, i (link.id)}
-											{@const linkInvalid = !!link.url.trim() && !safeUrl(link.url)}
-											<div class="bg-card flex items-start gap-2 rounded-xl border p-2">
-												<span class="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-lg">
-													<BrandIcon url={link.url} />
-												</span>
-												<div class="grid flex-1 gap-2 sm:grid-cols-[2fr_3fr]">
-													<Input
-														bind:value={link.label}
-														placeholder="Label (optional)"
-														aria-label="Link {i + 1} label"
-														class="shadow-none"
-													/>
-													<Input
-														bind:value={link.url}
-														placeholder="github.com/you"
-														aria-label="Link {i + 1} URL"
-														aria-invalid={linkInvalid || undefined}
-														class="shadow-none"
-													/>
-												</div>
-												<div class="flex shrink-0 max-sm:flex-col">
-													<Button variant="ghost" size="icon" disabled={i === 0} onclick={() => moveLink(i, -1)} aria-label="Move up">
-														<ArrowUpIcon />
-													</Button>
-													<Button
-														variant="ghost"
-														size="icon"
-														disabled={i === card.links.length - 1}
-														onclick={() => moveLink(i, 1)}
-														aria-label="Move down"
-													>
-														<ArrowDownIcon />
-													</Button>
-													<Button variant="ghost" size="icon" onclick={() => card?.links.splice(i, 1)} aria-label="Remove link">
-														<XIcon />
-													</Button>
-												</div>
-											</div>
-										{/each}
-										<button
-											type="button"
-											onclick={addLink}
-											disabled={card.links.length >= MAX_LINKS}
-											class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex h-12 items-center justify-center gap-2 rounded-xl border border-dashed text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50"
-										>
-											<PlusIcon class="size-4" />
-											{card.links.length >= MAX_LINKS ? `Up to ${MAX_LINKS} links` : 'Add link'}
-										</button>
-									</div>
-								</FormSection>
-							{/if}
-
-							{#if section === 'brochures'}
-								<FormSection
-									panel
-									id="brochures"
-									title="Brochures"
-									description="PDFs visitors can open from your card: price lists, portfolios, menus."
-								>
-									<div class="flex flex-col gap-2">
-										{#each card.documents as doc, i (doc.id)}
-											{@const meta = fileMeta[doc.file]}
-											<div class="bg-card flex items-center gap-2 rounded-xl border p-2">
-												<span class="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-lg">
-													<FileTextIcon class="size-4" />
-												</span>
-												<div class="flex min-w-0 flex-1 flex-col gap-1">
-													<Input
-														bind:value={doc.title}
-														placeholder={meta?.name ?? 'Brochure title'}
-														aria-label="Brochure {i + 1} title"
-														maxlength={120}
-														class="shadow-none"
-													/>
-													<span class="text-muted-foreground truncate px-1 text-xs">
-														{#if meta}{meta.name} · {formatBytes(meta.size_bytes)}{:else}PDF{/if}
-													</span>
-												</div>
-												<div class="flex shrink-0 max-sm:flex-col">
-													<Button variant="ghost" size="icon" disabled={i === 0} onclick={() => moveDocument(i, -1)} aria-label="Move up">
-														<ArrowUpIcon />
-													</Button>
-													<Button
-														variant="ghost"
-														size="icon"
-														disabled={i === card.documents.length - 1}
-														onclick={() => moveDocument(i, 1)}
-														aria-label="Move down"
-													>
-														<ArrowDownIcon />
-													</Button>
-													<Button variant="ghost" size="icon" onclick={() => card?.documents.splice(i, 1)} aria-label="Remove brochure">
-														<XIcon />
-													</Button>
-												</div>
-											</div>
-										{/each}
-										<button
-											type="button"
-											onclick={() => (docPickerOpen = true)}
-											disabled={!storage.ready || card.documents.length >= MAX_DOCUMENTS}
-											class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex h-12 items-center justify-center gap-2 rounded-xl border border-dashed text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50"
-										>
-											<PlusIcon class="size-4" />
-											{card.documents.length >= MAX_DOCUMENTS ? `Up to ${MAX_DOCUMENTS} brochures` : 'Add brochure'}
-										</button>
-										{#if storage.status && !storage.ready}
-											<p class="text-muted-foreground text-xs">
-												<a href="/dashboard/settings?tab=storage" class="text-foreground underline underline-offset-4">Connect storage</a>
-												to upload PDFs.
-											</p>
-										{/if}
-									</div>
-								</FormSection>
-							{/if}
-
-							{#if section === 'layout'}
-								<FormSection
-									panel
-									id="layout"
-									title="Layout"
-									description="Start from a template, then reorder, hide or add blocks."
-								>
-									<div class="flex flex-col gap-6">
-										<Field.Field>
-											<Field.Label>Template</Field.Label>
-											<TemplatePicker
-												value={card.template}
-												accent={ACCENTS[card.accent]}
-												logo={!!branding.value?.logo_file && (branding.value.logo_policy === 'required' || card.show_org_logo)}
-												onselect={chooseTemplate}
-											/>
-											{#if customised}
-												<Field.Description>
-													Customised from {TEMPLATES[card.template].label}. Pick a template to reset the layout.
-												</Field.Description>
-											{/if}
-										</Field.Field>
-										<Field.Field>
-											<Field.Label>Blocks</Field.Label>
-											<BlockListEditor bind:blocks={card.blocks} files={fileMeta} onfile={remember} />
-										</Field.Field>
-									</div>
-								</FormSection>
-							{/if}
-
-							{#if section === 'appearance'}
-								<FormSection panel id="appearance" title="Appearance" description="How your card looks to visitors.">
-									<Field.Group class="gap-6">
-										<Field.Field>
-											<Field.Label>Accent colour</Field.Label>
-											<div class="flex flex-wrap gap-2.5" role="radiogroup" aria-label="Accent colour">
-												{#each Object.entries(ACCENTS) as [key, color] (key)}
-													<button
-														type="button"
-														role="radio"
-														aria-checked={card.accent === key}
-														aria-label={key}
-														title={key}
-														onclick={() => card && (card.accent = key as AccentKey)}
-														class={cn(
-															'ring-offset-background grid size-9 place-items-center rounded-full text-white ring-offset-2 transition-shadow',
-															card.accent === key ? 'ring-foreground ring-2' : 'hover:ring-border hover:ring-2'
-														)}
-														style="background: {color}"
-													>
-														{#if card.accent === key}<CheckIcon class="size-4" />{/if}
-													</button>
-												{/each}
-											</div>
-											{#if card.cover_file}
-												<Field.Description>With a cover image, the accent frames your photo and the banner.</Field.Description>
-											{/if}
-										</Field.Field>
-										<Field.Field>
-											<Field.Label>Card theme</Field.Label>
-											<div class="grid max-w-md grid-cols-2 gap-3" role="radiogroup" aria-label="Card theme">
-												{#each ['light', 'dark'] as const as theme (theme)}
-													<button
-														type="button"
-														role="radio"
-														aria-checked={card.theme === theme}
-														onclick={() => card && (card.theme = theme)}
-														class={cn(
-															'flex flex-col gap-2 rounded-xl border p-2 text-left text-sm font-medium transition-colors',
-															card.theme === theme ? 'border-foreground ring-foreground ring-1' : 'hover:border-foreground/30'
-														)}
-													>
-														<span
-															class={cn(
-																'flex h-16 flex-col overflow-hidden rounded-lg ring-1 ring-black/5',
-																theme === 'dark' ? 'bg-neutral-900' : 'bg-white'
-															)}
-															aria-hidden="true"
-														>
-															<span class="h-5" style="background: {ACCENTS[card.accent]}"></span>
-															<span class="flex flex-col gap-1 p-2">
-																<span class={cn('h-1.5 w-12 rounded-full', theme === 'dark' ? 'bg-white/70' : 'bg-neutral-800')}></span>
-																<span class={cn('h-1.5 w-8 rounded-full', theme === 'dark' ? 'bg-white/30' : 'bg-neutral-300')}></span>
-															</span>
-														</span>
-														<span class="px-1 capitalize">{theme}</span>
-													</button>
-												{/each}
-											</div>
-										</Field.Field>
-										{#if branding.value?.logo_file}
-											{@const required = branding.value.logo_policy === 'required'}
-											<Field.Field orientation="horizontal" class="bg-card rounded-xl border p-4">
-												<Field.Content>
-													<Field.Label for="org-logo">Show {branding.value.name} logo</Field.Label>
-													<Field.Description>
-														{required
-															? `Required by ${branding.value.name} on every card.`
-															: 'Shown in the corner of your card’s header.'}
-													</Field.Description>
-												</Field.Content>
-												{#if required}
-													<Switch id="org-logo" checked disabled />
-												{:else}
-													<Switch id="org-logo" bind:checked={card.show_org_logo} />
-												{/if}
-											</Field.Field>
-										{/if}
-									</Field.Group>
-								</FormSection>
-							{/if}
-
-							{#if section === 'qr'}
-								<FormSection
-									panel
-									id="qr"
-									title="QR code"
-									description="Put your organisation's logo or an image in the middle, and match your colours."
-								>
-									<QrStyleEditor
-										bind:style={card.qr}
-										url={tapUrl(session.orgHandle, profile.slug, 'qr')}
-										orgLogo={branding.value?.logo_file}
-										orgName={branding.value?.name}
-										brandColor={branding.value?.signature?.brand_color}
+							{#if errors}
+								{#if section === 'profile'}
+									<ProfileSection bind:card slug={profile.slug} {errors} onfile={remember} />
+								{:else if section === 'contact'}
+									<ContactSection bind:card {errors} booking={profile.booking} holder={profile.assigned_user} />
+								{:else if section === 'links'}
+									<LinksSection bind:card />
+								{:else if section === 'brochures'}
+									<BrochuresSection bind:card files={fileMeta} onfile={remember} />
+								{:else if section === 'layout'}
+									<LayoutSection bind:card files={fileMeta} onfile={remember} />
+								{:else if section === 'appearance'}
+									<AppearanceSection bind:card />
+								{:else if section === 'qr'}
+									<QrSection bind:card slug={profile.slug} />
+								{:else if section === 'sharing'}
+									<SharingSection
+										bind:card
+										bind:slug
+										savedSlug={profile.slug}
+										profileId={profile.id}
+										{errors}
+										onnfc={() => (nfcOpen = true)}
 									/>
-								</FormSection>
-							{/if}
-
-							{#if section === 'sharing'}
-								<FormSection panel id="sharing" title="Sharing" description="Your public address and what visitors can do.">
-									<Field.Group class="gap-6">
-										<Field.Field data-invalid={slugInvalid || undefined}>
-											<Field.Label for="slug">Public link</Field.Label>
-											<div class="flex items-stretch">
-												<span
-													class="text-muted-foreground bg-muted flex max-w-[70%] shrink-0 items-center rounded-l-lg border border-r-0 px-3 font-mono text-xs"
-												>
-													<span class="hidden min-w-0 truncate 2xl:block">{location.host}</span>
-													<span class="truncate">/p/{session.orgHandle}/</span>
-												</span>
-												<Input
-													id="slug"
-													class="min-w-0 rounded-l-none font-mono read-only:bg-muted/40 read-only:text-muted-foreground"
-													value={slug}
-													oninput={(e) => (slug = e.currentTarget.value.toLowerCase())}
-													aria-invalid={slugInvalid || undefined}
-													readonly={!session.isAdmin}
-												/>
-											</div>
-											{#if !session.isAdmin}
-												<Field.Description>
-													{session.orgName} manages this link because it may already be printed on cards and QR codes.
-												</Field.Description>
-											{:else if slugInvalid}
-												<Field.Error>3–48 characters: lowercase letters, numbers and hyphens.</Field.Error>
-											{:else if slug !== profile.slug}
-												<Field.Description class="text-amber-700 dark:text-amber-400">
-													Changing this breaks the old link and any QR codes or NFC cards already printed.
-												</Field.Description>
-											{:else}
-												<Field.Description>The address of your card. NFC tags and QR codes use it too.</Field.Description>
-											{/if}
-										</Field.Field>
-										<Field.Field orientation="horizontal" class="bg-card rounded-xl border p-4">
-											<Field.Content>
-												<Field.Label for="collect">Collect leads</Field.Label>
-												<Field.Description>
-													Show a “Share your contact” button so visitors can leave their details.
-												</Field.Description>
-											</Field.Content>
-											<Switch id="collect" bind:checked={card.collect_leads} />
-										</Field.Field>
-										{#each [['nfc', 'NFC tap', 'This is the link on your NFC card.'], ['qr', 'QR code scan', 'Your QR code already points here.']] as const as [via, label, hint] (via)}
-											<Field.Field>
-												<Field.Label id="tap-{via}-label">When someone uses your {label}</Field.Label>
-												<div class="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-labelledby="tap-{via}-label">
-													{#each Object.entries(TAP_ACTIONS) as [action, info] (action)}
-														{@const unavailable = action === 'lead_form' && !card.collect_leads}
-														<button
-															type="button"
-															role="radio"
-															aria-checked={card.tap[via] === action}
-															disabled={unavailable}
-															onclick={() => card && (card.tap[via] = action as TapAction)}
-															class={cn(
-																'flex flex-col gap-0.5 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-																card.tap[via] === action ? 'border-foreground ring-foreground ring-1' : 'hover:border-foreground/30'
-															)}
-														>
-															<span class="text-sm font-medium">{info.label}</span>
-															<span class="text-muted-foreground text-xs leading-snug">
-																{unavailable ? 'Turn on Collect leads to use this.' : info.description}
-															</span>
-														</button>
-													{/each}
-												</div>
-												{#if card.tap[via] === 'lead_form' && !card.collect_leads}
-													<Field.Error>Collect leads is off, so visitors will just see your card.</Field.Error>
-												{/if}
-												<div class="flex items-center gap-2">
-													<code class="bg-muted text-muted-foreground min-w-0 flex-1 truncate rounded-lg px-3 py-2 font-mono text-xs">
-														{tapUrl(session.orgHandle, profile.slug, via)}
-													</code>
-													<Button variant="outline" size="icon" onclick={() => copyTapUrl(via)} aria-label="Copy {label} link">
-														<CopyIcon />
-													</Button>
-													<Button variant="outline" href={tapUrl(session.orgHandle, profile.slug, via)} target="_blank" title="Try it (uses the saved settings)">
-														Try it
-														<ExternalLinkIcon data-icon="inline-end" />
-													</Button>
-												</div>
-												<Field.Description>{hint} Changes apply as soon as you save; nothing needs re-writing.</Field.Description>
-											</Field.Field>
-										{/each}
-										<Field.Field orientation="horizontal" class="bg-card rounded-xl border p-4">
-											<Field.Content>
-												<Field.Label>NFC card</Field.Label>
-												<Field.Description>Put this card's NFC link on the chip inside your metal or plastic card.</Field.Description>
-											</Field.Content>
-											<Button variant="outline" onclick={() => (nfcOpen = true)}>
-												<SmartphoneNfcIcon data-icon="inline-start" />
-												Write to NFC card
-											</Button>
-										</Field.Field>
-										<Field.Field orientation="horizontal" class="bg-card rounded-xl border p-4">
-											<Field.Content>
-												<Field.Label>Email signature</Field.Label>
-												<Field.Description>Turn this card into a signature for Gmail, Outlook or Apple Mail.</Field.Description>
-											</Field.Content>
-											<Button variant="outline" href="/dashboard/signatures?card={profile.id}">
-												<SignatureIcon data-icon="inline-start" />
-												Create signature
-											</Button>
-										</Field.Field>
-									</Field.Group>
-								</FormSection>
+								{/if}
 							{/if}
 
 							{#if dirty}
@@ -1236,60 +450,14 @@
 					</div>
 				</div>
 
-				<aside class="bg-muted/40 bg-dots hidden border-l xl:block" aria-label="Preview">
-					<div class="sticky top-0 flex h-svh flex-col gap-5 p-8">
-						<div class="flex items-center justify-between">
-							<div class="bg-muted inline-flex rounded-lg p-[3px]" role="tablist" aria-label="Preview mode">
-								{#each [['card', 'Card'], ['qr', 'QR code']] as const as [mode, label] (mode)}
-									<button
-										type="button"
-										role="tab"
-										aria-selected={previewMode === mode}
-										onclick={() => (previewMode = mode)}
-										class={cn(
-											'h-8 rounded-md px-3 text-sm font-medium transition-colors',
-											previewMode === mode ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-										)}
-									>
-										{label}
-									</button>
-								{/each}
-							</div>
-							<Button variant="ghost" size="sm" href="/p/{session.orgHandle}/{profile.slug}" target="_blank">
-								Open
-								<ExternalLinkIcon data-icon="inline-end" />
-							</Button>
-						</div>
-
-						<div class="-mx-2 flex min-h-0 flex-1 justify-center overflow-y-auto px-2 py-2">
-							{#if previewMode === 'card'}
-								<div class="my-auto w-full max-w-[380px]">
-									<ProfileCard {card} slug={profile.slug} files={fileMeta} org={branding.value} />
-								</div>
-							{:else}
-								<div class="my-auto flex w-full max-w-[300px] flex-col items-center gap-4">
-									<QrCode url={tapUrl(session.orgHandle, profile.slug, 'qr')} style={card.qr} bind:svg={qrMarkup} class="w-full" />
-									<p class="text-muted-foreground max-w-full truncate font-mono text-xs">{tapUrl(session.orgHandle, profile.slug, 'qr')}</p>
-									<div class="grid w-full grid-cols-2 gap-2">
-										<Button variant="outline" onclick={() => downloadQrSvg(qrMarkup, profile!.slug)} disabled={!qrMarkup}>
-											<DownloadIcon data-icon="inline-start" />
-											SVG
-										</Button>
-										<Button onclick={() => downloadQrPng(qrMarkup, profile!.slug)} disabled={!qrMarkup}>
-											<DownloadIcon data-icon="inline-start" />
-											PNG
-										</Button>
-									</div>
-									{#if slug !== profile.slug}
-										<p class="text-muted-foreground text-center text-xs">
-											This code uses your saved link. Save to update it.
-										</p>
-									{/if}
-								</div>
-							{/if}
-						</div>
-					</div>
-				</aside>
+				<PreviewPanel
+					{card}
+					savedSlug={profile.slug}
+					{slug}
+					files={fileMeta}
+					booking={profile.booking}
+					bind:mode={previewMode}
+				/>
 			</div>
 		</Tabs.Content>
 
@@ -1304,51 +472,11 @@
 	<QrDialog bind:open={qrOpen} slug={profile.slug} name={card.name} style={card.qr} />
 	<NfcDialog bind:open={nfcOpen} profileId={profile.id} slug={profile.slug} name={card.name} />
 	<DeleteCardDialog bind:target={deleteTarget} ondeleted={onDeleted} />
-	<FilePickerDialog
-		bind:open={photoPickerOpen}
-		purpose="avatar"
-		crop={PURPOSES.avatar.crop}
-		title="Choose a photo"
-		selected={card.avatar_file ? [card.avatar_file] : []}
-		onselect={usePhoto}
-	/>
-	<FilePickerDialog
-		bind:open={coverPickerOpen}
-		purpose="cover"
-		crop={PURPOSES.cover.crop}
-		title="Choose a cover image"
-		selected={card.cover_file ? [card.cover_file] : []}
-		onselect={useCover}
-	/>
-	<ImageCropDialog
-		bind:file={cropPhoto}
-		title="Crop photo"
-		aspect={1}
-		shape="round"
-		outputWidth={512}
-		outputHeight={512}
-		onconfirm={uploadPhoto}
-	/>
-	<ImageCropDialog
-		bind:file={cropCover}
-		title="Crop cover image"
-		aspect={3}
-		outputWidth={1500}
-		outputHeight={500}
-		onconfirm={uploadCover}
-	/>
-	<FilePickerDialog
-		bind:open={docPickerOpen}
-		purpose="brochure"
-		title="Add a brochure"
-		selected={card.documents.map((d) => d.file)}
-		onselect={addDocument}
-	/>
 
 	<Dialog.Root bind:open={previewOpen}>
 		<Dialog.Content class="bg-muted max-h-[90svh] overflow-y-auto p-4 sm:max-w-sm">
 			<Dialog.Title class="sr-only">Preview</Dialog.Title>
-			<ProfileCard {card} slug={profile.slug} files={fileMeta} org={branding.value} />
+			<ProfileCard {card} slug={profile.slug} files={fileMeta} org={branding.value} booking={profile.booking} />
 		</Dialog.Content>
 	</Dialog.Root>
 {/if}

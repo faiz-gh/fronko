@@ -4,17 +4,17 @@
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
 	import MailIcon from '@lucide/svelte/icons/mail';
-	import { ApiError } from '$lib/api/client';
-	import { resendVerification, setEmail, verifyEmail } from '$lib/api/auth';
+	import { ApiError } from '$lib/core/api';
+	import { resendVerification, setEmail, verifyEmail } from '$lib/features/auth/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import * as Alert from '$lib/components/ui/alert';
 	import * as Field from '$lib/components/ui/field';
-	import AuthLayout from '$lib/components/app/auth-layout.svelte';
-	import CodeInput from '$lib/components/app/code-input.svelte';
-	import { Cooldown, RESEND_COOLDOWN_SECONDS } from '$lib/cooldown.svelte';
-	import { session } from '$lib/session.svelte';
+	import AuthLayout from '$lib/features/auth/components/auth-layout.svelte';
+	import CodeInput from '$lib/features/auth/components/code-input.svelte';
+	import { Cooldown, RESEND_COOLDOWN_SECONDS } from '$lib/core/cooldown.svelte';
+	import { session } from '$lib/core/session.svelte';
 
 	// Accounts from before emails were required start by adding one.
 	let editingEmail = $state(false);
@@ -128,7 +128,8 @@
 					{:else if addingEmail}
 						Enter the address you want to use. We'll send a new code to it.
 					{:else}
-						Enter the 6-digit code we sent to <span class="text-foreground font-medium break-all">{session.email}</span>.
+						Enter the 6-digit code we sent to <span class="text-foreground font-medium break-all">{session.email}</span
+						>.
 					{/if}
 				</p>
 			</div>
@@ -168,7 +169,13 @@
 							Send code
 						</Button>
 						{#if session.email}
-							<Button type="button" variant="ghost" class="w-full" onclick={() => (editingEmail = false)} disabled={!!busy}>
+							<Button
+								type="button"
+								variant="ghost"
+								class="w-full"
+								onclick={() => (editingEmail = false)}
+								disabled={!!busy}
+							>
 								Cancel
 							</Button>
 						{/if}

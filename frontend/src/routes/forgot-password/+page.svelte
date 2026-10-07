@@ -3,16 +3,16 @@
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
-	import { ApiError } from '$lib/api/client';
-	import { forgotPassword, resetPassword } from '$lib/api/auth';
+	import { ApiError } from '$lib/core/api';
+	import { forgotPassword, resetPassword } from '$lib/features/auth/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import * as Alert from '$lib/components/ui/alert';
 	import * as Field from '$lib/components/ui/field';
-	import AuthLayout from '$lib/components/app/auth-layout.svelte';
-	import CodeInput from '$lib/components/app/code-input.svelte';
-	import { Cooldown, RESEND_COOLDOWN_SECONDS } from '$lib/cooldown.svelte';
+	import AuthLayout from '$lib/features/auth/components/auth-layout.svelte';
+	import CodeInput from '$lib/features/auth/components/code-input.svelte';
+	import { Cooldown, RESEND_COOLDOWN_SECONDS } from '$lib/core/cooldown.svelte';
 
 	let step = $state<'email' | 'reset'>('email');
 	let email = $state('');

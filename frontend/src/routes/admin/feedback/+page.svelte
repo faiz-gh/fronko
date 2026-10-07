@@ -1,16 +1,16 @@
 <script lang="ts">
 	import MessageSquareIcon from '@lucide/svelte/icons/message-square';
 	import ReplyIcon from '@lucide/svelte/icons/reply';
-	import { FEEDBACK_STATUS_LABEL, listFeedback, type Feedback, type FeedbackStatus } from '$lib/api/admin';
-	import { CATEGORY_LABEL } from '$lib/api/feedback';
+	import { FEEDBACK_STATUS_LABEL, listFeedback, type Feedback, type FeedbackStatus } from '$lib/features/admin/api';
+	import { CATEGORY_LABEL } from '$lib/features/feedback/api';
 	import { Badge, type BadgeVariant } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import Pagination from '$lib/components/app/pagination.svelte';
-	import RatingStars from '$lib/components/app/admin/rating-stars.svelte';
-	import { formatDateTime, timeAgo } from '$lib/format';
+	import Pagination from '$lib/components/shared/pagination.svelte';
+	import RatingStars from '$lib/features/admin/components/rating-stars.svelte';
+	import { formatDateTime, timeAgo } from '$lib/core/format';
 	import { cn } from '$lib/utils';
 
 	type Tab = FeedbackStatus | 'all';
@@ -51,7 +51,11 @@
 	const tabCount = (t: Tab) =>
 		counts ? (t === 'all' ? counts.new + counts.read + counts.resolved : counts[t]) : undefined;
 
-	const STATUS_VARIANT: Record<FeedbackStatus, BadgeVariant> = { new: 'default', read: 'secondary', resolved: 'outline' };
+	const STATUS_VARIANT: Record<FeedbackStatus, BadgeVariant> = {
+		new: 'default',
+		read: 'secondary',
+		resolved: 'outline'
+	};
 </script>
 
 <svelte:head>
@@ -61,7 +65,9 @@
 <div class="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 sm:px-8 lg:px-10 lg:py-10">
 	<header class="flex flex-col gap-1">
 		<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Feedback</h1>
-		<p class="text-muted-foreground text-sm">What people tell you from the “Send feedback” menu. Replies go out by email.</p>
+		<p class="text-muted-foreground text-sm">
+			What people tell you from the “Send feedback” menu. Replies go out by email.
+		</p>
 	</header>
 
 	<Tabs.Root

@@ -11,9 +11,9 @@
 		setFeedbackStatus,
 		type Feedback,
 		type FeedbackStatus
-	} from '$lib/api/admin';
-	import { ApiError } from '$lib/api/client';
-	import { CATEGORY_LABEL } from '$lib/api/feedback';
+	} from '$lib/features/admin/api';
+	import { ApiError } from '$lib/core/api';
+	import { CATEGORY_LABEL } from '$lib/features/feedback/api';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Field from '$lib/components/ui/field';
@@ -21,9 +21,9 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as ToggleGroup from '$lib/components/ui/toggle-group';
-	import RatingStars from '$lib/components/app/admin/rating-stars.svelte';
-	import { adminNav } from '$lib/admin-nav.svelte';
-	import { formatDateTime } from '$lib/format';
+	import RatingStars from '$lib/features/admin/components/rating-stars.svelte';
+	import { adminNav } from '$lib/features/admin/nav.svelte';
+	import { formatDateTime } from '$lib/core/format';
 
 	const id = $derived(Number(page.params.id));
 

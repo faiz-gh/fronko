@@ -4,15 +4,15 @@
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import StarIcon from '@lucide/svelte/icons/star';
 	import UsersRoundIcon from '@lucide/svelte/icons/users-round';
-	import { teamColor } from '$lib/api/teams';
+	import { teamColor } from '$lib/features/teams/api';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import TeamDialog from '$lib/components/app/team-dialog.svelte';
-	import { plural } from '$lib/format';
-	import { session } from '$lib/session.svelte';
-	import { teams } from '$lib/teams.svelte';
+	import TeamDialog from '$lib/features/teams/components/team-dialog.svelte';
+	import { plural } from '$lib/core/format';
+	import { session } from '$lib/core/session.svelte';
+	import { teams } from '$lib/features/teams/store.svelte';
 
 	// Admins manage teams; everyone else sees the teams they're in.
 	$effect(() => {
@@ -83,7 +83,9 @@
 		<ul class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr))]">
 			{#each teams.list as team (team.id)}
 				{@const role = myRole(team.id)}
-				<li class="bg-card group relative flex flex-col overflow-hidden rounded-xl border transition-shadow hover:shadow-md">
+				<li
+					class="bg-card group relative flex flex-col overflow-hidden rounded-xl border transition-shadow hover:shadow-md"
+				>
 					<span class="h-1.5" style="background: {teamColor(team)}"></span>
 					<div class="flex flex-1 flex-col gap-3 p-5">
 						<div class="flex items-start justify-between gap-3">
