@@ -1,7 +1,7 @@
 // Package server is the composition root: it builds every module with its
-// dependencies, mounts their routes, and runs the HTTP server and the
-// background tasks until shutdown. Dependencies are wired by hand here;
-// there is no DI framework.
+// dependencies, mounts their routes, connects their events and jobs, and runs
+// the HTTP server, the job workers and the periodic tasks until shutdown.
+// Dependencies are wired by hand here; there is no DI framework.
 package server
 
 import (
@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,8 +27,9 @@ import (
 	"github.com/faiz-gh/fronko/backend/internal/orgs"
 	"github.com/faiz-gh/fronko/backend/internal/platform/config"
 	"github.com/faiz-gh/fronko/backend/internal/platform/database"
+	"github.com/faiz-gh/fronko/backend/internal/platform/events"
+	"github.com/faiz-gh/fronko/backend/internal/platform/jobs"
 	"github.com/faiz-gh/fronko/backend/internal/platform/mail"
-	"github.com/faiz-gh/fronko/backend/internal/platform/schedule"
 	"github.com/faiz-gh/fronko/backend/internal/platform/secrets"
 	"github.com/faiz-gh/fronko/backend/internal/platform/storage"
 	"github.com/faiz-gh/fronko/backend/internal/platform/web"
@@ -42,6 +44,18 @@ const (
 	authInterval = 10 * time.Second
 )
 
+// backgroundGrace is how long shutdown waits for running jobs and tasks to
+// stop. Jobs cut short go back in the queue.
+const backgroundGrace = 10 * time.Second
+
+// App is everything Build wires: the HTTP handler and the background work
+// the modules contribute.
+type App struct {
+	Handler     http.Handler
+	Tasks       []jobs.Task
+	JobHandlers map[string]jobs.Handler
+}
+
 // Run starts the server and blocks until ctx ends (then shuts down
 // gracefully) or the server fails.
 func Run(ctx context.Context, cfg *config.Config) error {
@@ -51,15 +65,24 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 	defer pool.Close()
 
-	handler, tasks, err := Build(ctx, cfg, pool)
+	a, err := Build(ctx, cfg, pool)
 	if err != nil {
 		return err
 	}
-	go schedule.Run(ctx, tasks)
+
+	// Background work stops before the pool closes (defers run last first).
+	bgCtx, stopBackground := context.WithCancel(ctx)
+	var bg sync.WaitGroup
+	defer func() {
+		stopBackground()
+		waitFor(&bg, backgroundGrace)
+	}()
+	bg.Go(func() { jobs.RunTasks(bgCtx, pool, a.Tasks) })
+	bg.Go(func() { jobs.NewWorker(pool, a.JobHandlers, cfg.JobWorkers).Run(bgCtx) })
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           handler,
+		Handler:           a.Handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,
@@ -90,10 +113,33 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	return nil
 }
 
-// Build wires every module and returns the HTTP handler and the periodic
-// tasks the modules contribute.
-func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (http.Handler, []schedule.Task, error) {
+// waitFor waits for wg, giving up after d.
+func waitFor(wg *sync.WaitGroup, d time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(d):
+		log.Printf("background work still running after %s; exiting anyway", d)
+	}
+}
+
+// Build wires every module and returns the HTTP handler and the background
+// work the modules contribute.
+func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, error) {
 	authService := auth.NewService(cfg.JWTSecret)
+	bus := events.New()
+
+	log.Printf("Environment: %s", cfg.Env)
+	if cfg.PublicURL == "" {
+		log.Println("PUBLIC_URL not set: integrations that need a callback URL (OAuth, SAML, SCIM) are unavailable")
+	}
+	if cfg.JobWorkers == 0 {
+		log.Println("JOB_WORKERS is 0: this instance queues background jobs but doesn't run them")
+	}
 
 	var mailer mail.Sender = mail.LogSender{}
 	if cfg.SMTPHost != "" {
@@ -105,7 +151,7 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (http.Ha
 			From:     cfg.SMTPFrom,
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("SMTP_FROM: %w", err)
+			return nil, fmt.Errorf("SMTP_FROM: %w", err)
 		}
 		mailer = smtpSender
 	} else {
@@ -118,7 +164,7 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (http.Ha
 	if cfg.SecretsKey != nil {
 		var err error
 		if box, err = secrets.New(cfg.SecretsKey); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	} else {
 		log.Println("SECRETS_KEY not set: file storage is disabled")
@@ -135,7 +181,7 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (http.Ha
 		brandingStore  = branding.NewStore(pool)
 		fileStore      = files.NewStore(pool)
 		cardStore      = cards.NewStore(pool)
-		leadStore      = leads.NewStore(pool)
+		leadStore      = leads.NewStore(pool, bus)
 		analyticsStore = analytics.NewStore(pool)
 		feedbackStore  = feedback.NewStore(pool)
 		adminStore     = platformadmin.NewStore(pool)
@@ -178,14 +224,28 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (http.Ha
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	})
-	var tasks []schedule.Task
+	a := &App{
+		Tasks:       jobs.MaintenanceTasks(pool),
+		JobHandlers: map[string]jobs.Handler{},
+	}
 	for _, m := range modules {
 		m.Routes(routes)
+		if s, ok := m.(app.Subscriber); ok {
+			s.Subscribe(bus)
+		}
+		if w, ok := m.(app.Worker); ok {
+			for kind, h := range w.JobHandlers() {
+				if _, dup := a.JobHandlers[kind]; dup {
+					return nil, fmt.Errorf("two modules handle %q jobs", kind)
+				}
+				a.JobHandlers[kind] = h
+			}
+		}
 		if s, ok := m.(app.Scheduled); ok {
-			tasks = append(tasks, s.Tasks()...)
+			a.Tasks = append(a.Tasks, s.Tasks()...)
 		}
 	}
 
-	handler := web.CORS(cfg.CORSAllowedOrigins, web.SameOrigin(cfg.CORSAllowedOrigins, routes.Handler(admin.Guard())))
-	return handler, tasks, nil
+	a.Handler = web.CORS(cfg.CORSAllowedOrigins, web.SameOrigin(cfg.CORSAllowedOrigins, routes.Handler(admin.Guard())))
+	return a, nil
 }

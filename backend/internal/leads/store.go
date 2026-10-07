@@ -9,15 +9,19 @@ import (
 
 	"github.com/faiz-gh/fronko/backend/internal/auth"
 	"github.com/faiz-gh/fronko/backend/internal/platform/database"
+	"github.com/faiz-gh/fronko/backend/internal/platform/events"
 )
 
 // Store runs the SQL for leads.
 type Store struct {
-	db *pgxpool.Pool
+	db  *pgxpool.Pool
+	bus *events.Bus
 }
 
-func NewStore(db *pgxpool.Pool) *Store {
-	return &Store{db: db}
+// NewStore returns the leads store. Created events go to bus, which may be
+// nil when nothing listens (tools and tests).
+func NewStore(db *pgxpool.Pool, bus *events.Bus) *Store {
+	return &Store{db: db, bus: bus}
 }
 
 // leadColumns lists the columns scanLead expects, for leads l joined to their
@@ -39,21 +43,32 @@ func scanLead(rows pgx.Rows) (*Lead, error) {
 }
 
 // CreateLead stores a lead against whoever holds the card right now, so it
-// stays theirs if the card is later reassigned. It returns database.ErrNotFound if
-// the profile does not exist or its organisation is suspended.
+// stays theirs if the card is later reassigned, and publishes Created in the
+// same transaction. It returns database.ErrNotFound if the profile does not
+// exist or its organisation is suspended.
 func (r *Store) CreateLead(ctx context.Context, lead *Lead) error {
-	query := `
-		INSERT INTO leads (profile_id, name, email, phone_country_code, phone_number, notes, source, assigned_user_id)
-		SELECT p.profile_id, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6, NULLIF($7, ''), p.assigned_user_id
-		FROM profiles p JOIN organizations o ON o.org_id = p.org_id
-		WHERE p.profile_id = $1 AND o.suspended_at IS NULL
-		RETURNING lead_id, created_at`
-	err := r.db.QueryRow(ctx, query,
-		lead.ProfileID, lead.Name, lead.Email, lead.PhoneCountryCode, lead.PhoneNumber, lead.Notes, lead.Source,
-	).Scan(
-		&lead.ID, &lead.CreatedAt,
-	)
-	return database.MapError(err)
+	return pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+		query := `
+			WITH card AS (
+				SELECT p.profile_id, p.org_id, p.assigned_user_id
+				FROM profiles p JOIN organizations o ON o.org_id = p.org_id
+				WHERE p.profile_id = $1 AND o.suspended_at IS NULL
+			)
+			INSERT INTO leads (profile_id, name, email, phone_country_code, phone_number, notes, source, assigned_user_id)
+			SELECT profile_id, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6, NULLIF($7, ''), assigned_user_id FROM card
+			RETURNING lead_id, created_at, (SELECT org_id FROM card), COALESCE(assigned_user_id, 0)`
+		evt := Created{ProfileID: lead.ProfileID}
+		err := tx.QueryRow(ctx, query,
+			lead.ProfileID, lead.Name, lead.Email, lead.PhoneCountryCode, lead.PhoneNumber, lead.Notes, lead.Source,
+		).Scan(
+			&lead.ID, &lead.CreatedAt, &evt.OrgID, &evt.AssignedUserID,
+		)
+		if err != nil {
+			return database.MapError(err)
+		}
+		evt.LeadID = lead.ID
+		return r.bus.Publish(ctx, tx, evt)
+	})
 }
 
 // LeadFilter narrows a user's leads. Zero values mean "no filter".

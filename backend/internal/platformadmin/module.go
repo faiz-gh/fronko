@@ -8,7 +8,7 @@ import (
 
 	"github.com/faiz-gh/fronko/backend/internal/app"
 	"github.com/faiz-gh/fronko/backend/internal/platform/database"
-	"github.com/faiz-gh/fronko/backend/internal/platform/schedule"
+	"github.com/faiz-gh/fronko/backend/internal/platform/jobs"
 )
 
 // snapshotInterval is how often today's usage snapshot is refreshed.
@@ -50,8 +50,8 @@ func (h *AdminHandler) Guard() func(http.Handler) http.Handler {
 // Each run rewrites today's row, so today's point stays current and the last
 // run of a day becomes that day's final value. Missed runs (the server was
 // down) only leave gaps in the trend.
-func (h *AdminHandler) Tasks() []schedule.Task {
-	return []schedule.Task{{
+func (h *AdminHandler) Tasks() []jobs.Task {
+	return []jobs.Task{{
 		Name:  "usage snapshot",
 		Every: snapshotInterval,
 		Run:   func(ctx context.Context) error { return h.store.TakeUsageSnapshot(ctx, time.Now()) },

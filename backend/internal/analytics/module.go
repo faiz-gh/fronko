@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/faiz-gh/fronko/backend/internal/app"
-	"github.com/faiz-gh/fronko/backend/internal/platform/schedule"
+	"github.com/faiz-gh/fronko/backend/internal/platform/jobs"
 )
 
 // Card analytics beacons: a visit sends a handful, a few seconds apart.
@@ -39,8 +39,8 @@ func (m Module) Routes(r *app.Routes) {
 
 // Tasks deletes events older than the retention period (and stale
 // visitor-hash salts) every hour.
-func (m Module) Tasks() []schedule.Task {
-	return []schedule.Task{{
+func (m Module) Tasks() []jobs.Task {
+	return []jobs.Task{{
 		Name:  "analytics retention",
 		Every: time.Hour,
 		Run: func(ctx context.Context) error {

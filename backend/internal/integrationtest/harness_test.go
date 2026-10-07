@@ -53,7 +53,7 @@ type (
 func newStores(pool *pgxpool.Pool) stores {
 	return stores{
 		users.NewStore(pool), orgs.NewStore(pool), teams.NewStore(pool), branding.NewStore(pool),
-		files.NewStore(pool), cards.NewStore(pool), leads.NewStore(pool), analytics.NewStore(pool),
+		files.NewStore(pool), cards.NewStore(pool), leads.NewStore(pool, nil), analytics.NewStore(pool),
 		feedback.NewStore(pool), platformadmin.NewStore(pool),
 	}
 }

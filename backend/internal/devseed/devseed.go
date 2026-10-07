@@ -26,6 +26,7 @@ import (
 	"github.com/faiz-gh/fronko/backend/internal/cards"
 	"github.com/faiz-gh/fronko/backend/internal/leads"
 	"github.com/faiz-gh/fronko/backend/internal/orgs"
+	"github.com/faiz-gh/fronko/backend/internal/platform/config"
 	"github.com/faiz-gh/fronko/backend/internal/platform/database"
 	"github.com/faiz-gh/fronko/backend/internal/platformadmin"
 	"github.com/faiz-gh/fronko/backend/internal/teams"
@@ -51,7 +52,7 @@ const (
 // tables lists every table, for --reset.
 const tables = `organizations, users, email_codes, teams, team_members, profiles, leads, user_storage,
 	files, file_grants, file_team_grants, file_refs, card_events, analytics_salts, platform_admins,
-	admin_audit_log, feedback, feedback_replies, org_usage_snapshots, platform_usage_snapshots`
+	admin_audit_log, feedback, feedback_replies, org_usage_snapshots, platform_usage_snapshots, jobs`
 
 // RunCLI is `fronko seed`.
 func RunCLI(args []string) error {
@@ -61,7 +62,11 @@ func RunCLI(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if os.Getenv("FRONKO_ENV") != "development" {
+	env, err := config.Environment()
+	if err != nil {
+		return err
+	}
+	if env != config.EnvDevelopment {
 		return errors.New("refusing to seed: set FRONKO_ENV=development (this writes demo accounts with known passwords)")
 	}
 	dbURL := os.Getenv("DATABASE_URL")
@@ -107,7 +112,7 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 		orgStore   = orgs.NewStore(pool)
 		teamStore  = teams.NewStore(pool)
 		cardStore  = cards.NewStore(pool)
-		leadStore  = leads.NewStore(pool)
+		leadStore  = leads.NewStore(pool, nil) // no subscribers: demo leads sync nowhere
 		adminStore = platformadmin.NewStore(pool)
 		hasher     = auth.NewService("") // only bcrypt is used
 	)

@@ -27,6 +27,9 @@ services:
       SMTP_FROM: "Fronko <no-reply@fronko.local>"
       # New product feedback is emailed here (shows up in Mailpit too).
       FEEDBACK_NOTIFY_EMAIL: admin@fronko.local
+      # Development mode: allows `docker exec backend-local ./fronko seed`.
+      FRONKO_ENV: development
+      PUBLIC_URL: http://localhost:3000
     ports:
       - "8080:8080"
     extra_hosts:
