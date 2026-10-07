@@ -11,12 +11,12 @@
 	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import { Button } from '$lib/components/ui/button';
-	import BrandIcon from '$lib/components/app/brand-icon.svelte';
-	import Logo from '$lib/components/app/logo.svelte';
-	import ProfileCard from '$lib/components/app/profile-card.svelte';
-	import QrCode from '$lib/components/app/qr-code.svelte';
-	import { emptyCard, type CardData } from '$lib/card/card';
-	import { session } from '$lib/session.svelte';
+	import BrandIcon from '$lib/components/shared/brand-icon.svelte';
+	import Logo from '$lib/components/shared/logo.svelte';
+	import ProfileCard from '$lib/features/cards/components/profile-card.svelte';
+	import QrCode from '$lib/features/cards/components/qr-code.svelte';
+	import { emptyCard, type CardData } from '$lib/features/cards/card';
+	import { session } from '$lib/core/session.svelte';
 
 	const REPO = 'https://github.com/faiz-gh/fronko';
 
@@ -166,7 +166,7 @@
 						class="bg-card text-muted-foreground hover:text-foreground inline-flex items-center gap-2 rounded-full border py-1 pr-3 pl-1 text-sm shadow-xs transition-colors"
 					>
 						<span class="rounded-full bg-orange-600/10 px-2 py-0.5 text-xs font-semibold text-orange-700">Open source</span>
-						<span>Self-host it{' '}<span class="hidden sm:inline">with Docker Compose</span></span>
+						<span>Self-host it <span class="hidden sm:inline">with Docker Compose</span></span>
 						<ArrowRightIcon class="size-3.5" />
 					</a>
 					<h1 class="text-[2.75rem] leading-[1.02] font-semibold tracking-[-0.04em] sm:text-6xl xl:text-[4rem]">

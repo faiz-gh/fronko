@@ -3,16 +3,16 @@
 	import { page } from '$app/state';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
-	import { login, register } from '$lib/api/auth';
-	import { ApiError } from '$lib/api/client';
+	import { login, register } from '$lib/features/auth/api';
+	import { ApiError } from '$lib/core/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import * as Alert from '$lib/components/ui/alert';
 	import * as Field from '$lib/components/ui/field';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import AuthLayout from '$lib/components/app/auth-layout.svelte';
-	import { session } from '$lib/session.svelte';
+	import AuthLayout from '$lib/features/auth/components/auth-layout.svelte';
+	import { session } from '$lib/core/session.svelte';
 
 	type Mode = 'login' | 'register';
 

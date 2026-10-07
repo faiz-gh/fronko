@@ -7,9 +7,9 @@
 	import Share2Icon from '@lucide/svelte/icons/share-2';
 	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
 	import SendIcon from '@lucide/svelte/icons/send';
-	import { getPublicProfile, type PublicProfile } from '$lib/api/profile';
-	import { submitLead } from '$lib/api/lead';
-	import { ApiError } from '$lib/api/client';
+	import { getPublicProfile, type PublicProfile } from '$lib/features/cards/api';
+	import { submitLead } from '$lib/features/leads/api';
+	import { ApiError } from '$lib/core/api';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Empty from '$lib/components/ui/empty';
@@ -18,11 +18,11 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import ProfileCard from '$lib/components/app/profile-card.svelte';
-	import PhoneInput from '$lib/components/app/phone-input.svelte';
-	import { ACCENTS, normalizeCard, publicUrl, vcardUrl, type CardData, type TapSource } from '$lib/card/card';
-	import { createTracker, visitSource } from '$lib/analytics/track';
-	import { isValidPhone } from '$lib/phone';
+	import ProfileCard from '$lib/features/cards/components/profile-card.svelte';
+	import PhoneInput from '$lib/components/shared/phone-input.svelte';
+	import { ACCENTS, normalizeCard, publicUrl, vcardUrl, type CardData, type TapSource } from '$lib/features/cards/card';
+	import { createTracker, visitSource } from '$lib/features/analytics/track';
+	import { isValidPhone } from '$lib/core/phone';
 	import { cn } from '$lib/utils';
 
 	const org = page.params.org ?? '';

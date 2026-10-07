@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
-	import { getMyProfile, type Profile } from '$lib/api/profile';
+	import { getMyProfile, type Profile } from '$lib/features/cards/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import NfcWriter from '$lib/components/app/nfc-writer.svelte';
-	import { normalizeCard, tapUrl } from '$lib/card/card';
-	import { session } from '$lib/session.svelte';
+	import NfcWriter from '$lib/features/cards/components/nfc-writer.svelte';
+	import { normalizeCard, tapUrl } from '$lib/features/cards/card';
+	import { session } from '$lib/core/session.svelte';
 
 	// A page of its own so the desktop's QR code can open the writer on a phone.
 	const profileId = $derived(Number(page.params.id));

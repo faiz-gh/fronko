@@ -3,8 +3,8 @@
 	import { Toaster } from '$lib/components/ui/sonner';
 	import favicon from '$lib/assets/favicon.svg';
 	import { page } from '$app/state';
-	import { session } from '$lib/session.svelte';
-	import { theme } from '$lib/theme.svelte';
+	import { session } from '$lib/core/session.svelte';
+	import { theme } from '$lib/core/theme.svelte';
 
 	let { children } = $props();
 

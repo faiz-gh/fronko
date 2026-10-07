@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { listAudit, type AuditEntry } from '$lib/api/admin';
+	import { listAudit, type AuditEntry } from '$lib/features/admin/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
-	import Pagination from '$lib/components/app/pagination.svelte';
-	import { formatDateTime } from '$lib/format';
+	import Pagination from '$lib/components/shared/pagination.svelte';
+	import { formatDateTime } from '$lib/core/format';
 
 	let pageNum = $state(1);
 	let pageSize = $state(50);

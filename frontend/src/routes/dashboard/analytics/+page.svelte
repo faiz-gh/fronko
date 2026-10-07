@@ -28,28 +28,28 @@
 		type ContentStat,
 		type MemberStat,
 		type TeamStat
-	} from '$lib/api/analytics';
-	import { teamColor } from '$lib/api/teams';
+	} from '$lib/features/analytics/api';
+	import { teamColor } from '$lib/features/teams/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import * as ToggleGroup from '$lib/components/ui/toggle-group';
-	import BarList from '$lib/components/app/charts/bar-list.svelte';
-	import Funnel from '$lib/components/app/charts/funnel.svelte';
-	import Heatmap from '$lib/components/app/charts/heatmap.svelte';
-	import SeriesChart from '$lib/components/app/charts/series-chart.svelte';
-	import SplitBar from '$lib/components/app/charts/split-bar.svelte';
-	import StatTile from '$lib/components/app/charts/stat-tile.svelte';
-	import BrandIcon from '$lib/components/app/brand-icon.svelte';
-	import FilterSelect from '$lib/components/app/filter-select.svelte';
-	import TeamPicker from '$lib/components/app/team-picker.svelte';
-	import UserAvatar from '$lib/components/app/user-avatar.svelte';
-	import { normalizeCard } from '$lib/card/card';
-	import { cards } from '$lib/cards.svelte';
-	import { formatDateTime, timeAgo } from '$lib/format';
-	import { session } from '$lib/session.svelte';
-	import { teams } from '$lib/teams.svelte';
+	import BarList from '$lib/components/shared/charts/bar-list.svelte';
+	import Funnel from '$lib/components/shared/charts/funnel.svelte';
+	import Heatmap from '$lib/components/shared/charts/heatmap.svelte';
+	import SeriesChart from '$lib/components/shared/charts/series-chart.svelte';
+	import SplitBar from '$lib/components/shared/charts/split-bar.svelte';
+	import StatTile from '$lib/components/shared/charts/stat-tile.svelte';
+	import BrandIcon from '$lib/components/shared/brand-icon.svelte';
+	import FilterSelect from '$lib/components/shared/filter-select.svelte';
+	import TeamPicker from '$lib/features/teams/components/team-picker.svelte';
+	import UserAvatar from '$lib/components/shared/user-avatar.svelte';
+	import { normalizeCard } from '$lib/features/cards/card';
+	import { cards } from '$lib/features/cards/store.svelte';
+	import { formatDateTime, timeAgo } from '$lib/core/format';
+	import { session } from '$lib/core/session.svelte';
+	import { teams } from '$lib/features/teams/store.svelte';
 	import { cn } from '$lib/utils';
 
 	const RANGES = [

@@ -5,16 +5,16 @@
 	import MenuIcon from '@lucide/svelte/icons/menu';
 	import { Button } from '$lib/components/ui/button';
 	import { Spinner } from '$lib/components/ui/spinner';
-	import AppSidebar from '$lib/components/app/app-sidebar.svelte';
-	import CreateCardDialog from '$lib/components/app/create-card-dialog.svelte';
-	import Logo from '$lib/components/app/logo.svelte';
-	import { branding } from '$lib/branding.svelte';
-	import { cards } from '$lib/cards.svelte';
-	import { orgUsers } from '$lib/org-users.svelte';
-	import { session } from '$lib/session.svelte';
-	import { storage } from '$lib/storage.svelte';
-	import { teams } from '$lib/teams.svelte';
-	import { theme } from '$lib/theme.svelte';
+	import AppSidebar from '$lib/components/shared/app-sidebar.svelte';
+	import CreateCardDialog from '$lib/features/cards/components/create-card-dialog.svelte';
+	import Logo from '$lib/components/shared/logo.svelte';
+	import { branding } from '$lib/features/branding/store.svelte';
+	import { cards } from '$lib/features/cards/store.svelte';
+	import { orgUsers } from '$lib/features/orgs/users.svelte';
+	import { session } from '$lib/core/session.svelte';
+	import { storage } from '$lib/features/files/storage.svelte';
+	import { teams } from '$lib/features/teams/store.svelte';
+	import { theme } from '$lib/core/theme.svelte';
 
 	let { children } = $props();
 

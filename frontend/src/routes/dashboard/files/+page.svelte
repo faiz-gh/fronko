@@ -28,8 +28,8 @@
 		type FilePurpose,
 		type FileSort,
 		type LibraryFile
-	} from '$lib/api/files';
-	import { teamColor, type TeamRef } from '$lib/api/teams';
+	} from '$lib/features/files/api';
+	import { teamColor, type TeamRef } from '$lib/features/teams/api';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -38,21 +38,21 @@
 	import * as Select from '$lib/components/ui/select';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Spinner } from '$lib/components/ui/spinner';
-	import FileAccessDialog from '$lib/components/app/file-access-dialog.svelte';
-	import FileDropzone from '$lib/components/app/file-dropzone.svelte';
-	import FileDetailSheet from '$lib/components/app/files/file-detail-sheet.svelte';
-	import FileGrid from '$lib/components/app/files/file-grid.svelte';
-	import FileTable from '$lib/components/app/files/file-table.svelte';
-	import PurposeChips from '$lib/components/app/files/purpose-chips.svelte';
-	import PurposeIcon from '$lib/components/app/files/purpose-icon.svelte';
-	import Pagination from '$lib/components/app/pagination.svelte';
-	import StorageMeter from '$lib/components/app/storage-meter.svelte';
-	import UserPicker from '$lib/components/app/user-picker.svelte';
-	import { fileLocations, moveTargets, type FileLocation } from '$lib/file-locations';
-	import { plural } from '$lib/format';
-	import { session } from '$lib/session.svelte';
-	import { storage } from '$lib/storage.svelte';
-	import { teams } from '$lib/teams.svelte';
+	import FileAccessDialog from '$lib/features/files/components/file-access-dialog.svelte';
+	import FileDropzone from '$lib/features/files/components/file-dropzone.svelte';
+	import FileDetailSheet from '$lib/features/files/components/file-detail-sheet.svelte';
+	import FileGrid from '$lib/features/files/components/file-grid.svelte';
+	import FileTable from '$lib/features/files/components/file-table.svelte';
+	import PurposeChips from '$lib/features/files/components/purpose-chips.svelte';
+	import PurposeIcon from '$lib/features/files/components/purpose-icon.svelte';
+	import Pagination from '$lib/components/shared/pagination.svelte';
+	import StorageMeter from '$lib/features/files/components/storage-meter.svelte';
+	import UserPicker from '$lib/features/orgs/components/user-picker.svelte';
+	import { fileLocations, moveTargets, type FileLocation } from '$lib/features/files/locations';
+	import { plural } from '$lib/core/format';
+	import { session } from '$lib/core/session.svelte';
+	import { storage } from '$lib/features/files/storage.svelte';
+	import { teams } from '$lib/features/teams/store.svelte';
 	import { cn } from '$lib/utils';
 
 	// ---- Where we are: location, search, purpose and sort live in the URL ----

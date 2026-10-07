@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { getPlatformTrend, getSummary, type PlatformSummary, type UsagePoint } from '$lib/api/admin';
-	import { formatBytes } from '$lib/api/files';
+	import { getPlatformTrend, getSummary, type PlatformSummary, type UsagePoint } from '$lib/features/admin/api';
+	import { formatBytes } from '$lib/features/files/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import RangeToggle from '$lib/components/app/admin/range-toggle.svelte';
-	import TrendChart from '$lib/components/app/admin/trend-chart.svelte';
-	import { plural } from '$lib/format';
+	import RangeToggle from '$lib/features/admin/components/range-toggle.svelte';
+	import TrendChart from '$lib/features/admin/components/trend-chart.svelte';
+	import { plural } from '$lib/core/format';
 
 	let summary = $state<PlatformSummary | null>(null);
 	let error = $state('');

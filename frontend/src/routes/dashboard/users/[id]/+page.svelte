@@ -14,7 +14,7 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import UndoIcon from '@lucide/svelte/icons/undo-2';
 	import XIcon from '@lucide/svelte/icons/x';
-	import { fileUrl, formatBytes, listFiles, locationLabel, type LibraryFile } from '$lib/api/files';
+	import { fileUrl, formatBytes, listFiles, locationLabel, type LibraryFile } from '$lib/features/files/api';
 	import {
 		deleteOrgUser,
 		getFileGrants,
@@ -28,7 +28,7 @@
 		userStatus,
 		type OrgUser,
 		type OrgUserPatch
-	} from '$lib/api/org';
+	} from '$lib/features/orgs/api';
 	import * as Alert from '$lib/components/ui/alert';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Badge } from '$lib/components/ui/badge';
@@ -39,21 +39,21 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Spinner } from '$lib/components/ui/spinner';
-	import CardAvatar from '$lib/components/app/card-avatar.svelte';
-	import FileThumb from '$lib/components/app/file-thumb.svelte';
-	import QuotaInput from '$lib/components/app/quota-input.svelte';
-	import StorageMeter from '$lib/components/app/storage-meter.svelte';
-	import TeamMembershipsInput from '$lib/components/app/team-memberships-input.svelte';
-	import { me } from '$lib/api/auth';
-	import { setUserTeams, type TeamRole } from '$lib/api/teams';
-	import { teams } from '$lib/teams.svelte';
-	import UserAvatar from '$lib/components/app/user-avatar.svelte';
-	import { normalizeCard } from '$lib/card/card';
-	import { cards } from '$lib/cards.svelte';
-	import { formatDateTime, plural, timeAgo } from '$lib/format';
-	import { orgUsers } from '$lib/org-users.svelte';
-	import { generatePassword, signInDetails } from '$lib/password';
-	import { session } from '$lib/session.svelte';
+	import CardAvatar from '$lib/features/cards/components/card-avatar.svelte';
+	import FileThumb from '$lib/features/files/components/file-thumb.svelte';
+	import QuotaInput from '$lib/features/files/components/quota-input.svelte';
+	import StorageMeter from '$lib/features/files/components/storage-meter.svelte';
+	import TeamMembershipsInput from '$lib/features/teams/components/team-memberships-input.svelte';
+	import { me } from '$lib/features/auth/api';
+	import { setUserTeams, type TeamRole } from '$lib/features/teams/api';
+	import { teams } from '$lib/features/teams/store.svelte';
+	import UserAvatar from '$lib/components/shared/user-avatar.svelte';
+	import { normalizeCard } from '$lib/features/cards/card';
+	import { cards } from '$lib/features/cards/store.svelte';
+	import { formatDateTime, plural, timeAgo } from '$lib/core/format';
+	import { orgUsers } from '$lib/features/orgs/users.svelte';
+	import { generatePassword, signInDetails } from '$lib/core/password';
+	import { session } from '$lib/core/session.svelte';
 
 	const userId = $derived(Number(page.params.id));
 

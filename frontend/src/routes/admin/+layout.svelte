@@ -5,11 +5,11 @@
 	import MenuIcon from '@lucide/svelte/icons/menu';
 	import { Button } from '$lib/components/ui/button';
 	import { Spinner } from '$lib/components/ui/spinner';
-	import AdminSidebar from '$lib/components/app/admin/admin-sidebar.svelte';
-	import Logo from '$lib/components/app/logo.svelte';
-	import { adminNav } from '$lib/admin-nav.svelte';
-	import { adminSession } from '$lib/admin-session.svelte';
-	import { theme } from '$lib/theme.svelte';
+	import AdminSidebar from '$lib/features/admin/components/admin-sidebar.svelte';
+	import Logo from '$lib/components/shared/logo.svelte';
+	import { adminNav } from '$lib/features/admin/nav.svelte';
+	import { adminSession } from '$lib/features/admin/session.svelte';
+	import { theme } from '$lib/core/theme.svelte';
 
 	let { children } = $props();
 

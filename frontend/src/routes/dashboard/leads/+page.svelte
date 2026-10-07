@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import LeadsTable from '$lib/components/app/leads-table.svelte';
-	import { normalizeCard } from '$lib/card/card';
-	import { cards } from '$lib/cards.svelte';
-	import { plural } from '$lib/format';
-	import { orgUsers } from '$lib/org-users.svelte';
-	import { session } from '$lib/session.svelte';
-	import { teams } from '$lib/teams.svelte';
+	import LeadsTable from '$lib/features/leads/components/leads-table.svelte';
+	import { normalizeCard } from '$lib/features/cards/card';
+	import { cards } from '$lib/features/cards/store.svelte';
+	import { plural } from '$lib/core/format';
+	import { orgUsers } from '$lib/features/orgs/users.svelte';
+	import { session } from '$lib/core/session.svelte';
+	import { teams } from '$lib/features/teams/store.svelte';
 
 	// Filters live in the URL (?card=ID&user=ID|none&team=ID) so they survive reloads and can be linked to.
 	const card = $derived.by(() => {

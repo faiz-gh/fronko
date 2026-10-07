@@ -1,0 +1,47 @@
+version: "2"
+
+run:
+  # Integration tests sit behind a build tag; lint them too.
+  build-tags:
+    - integration
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose
+    - copyloopvar
+    - errorlint
+    - misspell
+    - nilerr
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - usestdlibvars
+  settings:
+    errcheck:
+      exclude-functions:
+        # Closing a body or rolling back a finished transaction has nothing useful to report.
+        - (io.Closer).Close
+        - (github.com/jackc/pgx/v5.Tx).Rollback
+    staticcheck:
+      # The defaults, minus QF1001: De Morgan rewrites rarely read better.
+      checks: ["all", "-ST1000", "-ST1003", "-ST1016", "-ST1020", "-ST1021", "-ST1022", "-QF1001"]
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      # Tests build requests against httptest servers that never outlive the test.
+      - path: _test\.go
+        linters:
+          - noctx
+          - bodyclose
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/faiz-gh/fronko/backend

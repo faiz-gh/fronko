@@ -25,42 +25,40 @@
 		type CardStat,
 		type MemberStat,
 		type TeamStat
-	} from '$lib/api/analytics';
-	import { listLeads, type Lead } from '$lib/api/lead';
-	import { teamColor } from '$lib/api/teams';
-	import { STATUS_LABEL, userStatus } from '$lib/api/org';
-	import type { Profile } from '$lib/api/profile';
+	} from '$lib/features/analytics/api';
+	import { listLeads, type Lead } from '$lib/features/leads/api';
+	import { teamColor } from '$lib/features/teams/api';
+	import { STATUS_LABEL, userStatus } from '$lib/features/orgs/api';
+	import type { Profile } from '$lib/features/cards/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as ToggleGroup from '$lib/components/ui/toggle-group';
-	import ActivityFeed from '$lib/components/app/activity-feed.svelte';
-	import SeriesChart from '$lib/components/app/charts/series-chart.svelte';
-	import SplitBar from '$lib/components/app/charts/split-bar.svelte';
-	import StatTile from '$lib/components/app/charts/stat-tile.svelte';
-	import CardAvatar from '$lib/components/app/card-avatar.svelte';
-	import CardTile from '$lib/components/app/card-tile.svelte';
-	import CreateUserDialog from '$lib/components/app/create-user-dialog.svelte';
-	import ProfileCard from '$lib/components/app/profile-card.svelte';
-	import QrDialog from '$lib/components/app/qr-dialog.svelte';
-	import NfcDialog from '$lib/components/app/nfc-dialog.svelte';
-	import RecentLeads from '$lib/components/app/recent-leads.svelte';
-	import UserAvatar from '$lib/components/app/user-avatar.svelte';
-	import { emptyCard, normalizeCard } from '$lib/card/card';
-	import { qrContrastIssue } from '$lib/card/qr';
-	import { cards } from '$lib/cards.svelte';
-	import { plural } from '$lib/format';
-	import { orgUsers } from '$lib/org-users.svelte';
-	import { session } from '$lib/session.svelte';
-	import { storage } from '$lib/storage.svelte';
-	import { teams } from '$lib/teams.svelte';
+	import ActivityFeed from '$lib/features/analytics/components/activity-feed.svelte';
+	import SeriesChart from '$lib/components/shared/charts/series-chart.svelte';
+	import SplitBar from '$lib/components/shared/charts/split-bar.svelte';
+	import StatTile from '$lib/components/shared/charts/stat-tile.svelte';
+	import CardAvatar from '$lib/features/cards/components/card-avatar.svelte';
+	import CardTile from '$lib/features/cards/components/card-tile.svelte';
+	import CreateUserDialog from '$lib/features/orgs/components/create-user-dialog.svelte';
+	import ProfileCard from '$lib/features/cards/components/profile-card.svelte';
+	import QrDialog from '$lib/features/cards/components/qr-dialog.svelte';
+	import NfcDialog from '$lib/features/cards/components/nfc-dialog.svelte';
+	import RecentLeads from '$lib/features/leads/components/recent-leads.svelte';
+	import UserAvatar from '$lib/components/shared/user-avatar.svelte';
+	import { emptyCard, normalizeCard } from '$lib/features/cards/card';
+	import { qrContrastIssue } from '$lib/features/cards/qr';
+	import { cards } from '$lib/features/cards/store.svelte';
+	import { plural } from '$lib/core/format';
+	import { orgUsers } from '$lib/features/orgs/users.svelte';
+	import { session } from '$lib/core/session.svelte';
+	import { storage } from '$lib/features/files/storage.svelte';
+	import { teams } from '$lib/features/teams/store.svelte';
 
-	const WEEK_MS = 7 * 24 * 3600 * 1000;
 	const RECENT_LIMIT = 8;
 
 	type RecentLead = Lead & { profile: Profile };
 
 	let recent = $state<RecentLead[] | null>(null);
-	let leadsThisWeek = $state<number | null>(null);
 	let createUserOpen = $state(false);
 
 	const totalLeads = $derived(cards.list?.reduce((sum, p) => sum + p.lead_count, 0) ?? 0);
@@ -74,21 +72,14 @@
 		if (key === fetchedFor) return;
 		fetchedFor = key;
 		const byId = new Map(list.map((p) => [p.id, p]));
-		Promise.all([
-			listLeads({ pageSize: RECENT_LIMIT }),
-			listLeads({ since: new Date(Date.now() - WEEK_MS), pageSize: 1 })
-		])
-			.then(([latest, week]) => {
+		listLeads({ pageSize: RECENT_LIMIT })
+			.then((latest) => {
 				recent = latest.leads.flatMap((l) => {
 					const profile = byId.get(l.profile_id);
 					return profile ? [{ ...l, profile }] : [];
 				});
-				leadsThisWeek = week.total;
 			})
-			.catch(() => {
-				recent = [];
-				leadsThisWeek = null;
-			});
+			.catch(() => (recent = []));
 	});
 
 	// Organisation view

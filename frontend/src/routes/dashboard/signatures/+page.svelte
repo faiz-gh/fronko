@@ -11,8 +11,8 @@
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import SignatureIcon from '@lucide/svelte/icons/signature';
 	import SunIcon from '@lucide/svelte/icons/sun';
-	import { fileUrl } from '$lib/api/files';
-	import { updateProfile } from '$lib/api/profile';
+	import { fileUrl } from '$lib/features/files/api';
+	import { updateProfile } from '$lib/features/cards/api';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
 	import * as Field from '$lib/components/ui/field';
@@ -20,24 +20,23 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import CardAvatar from '$lib/components/app/card-avatar.svelte';
-	import { branding } from '$lib/branding.svelte';
-	import { downloadBlob, normalizeCard, publicUrl, type CardData } from '$lib/card/card';
-	import { session } from '$lib/session.svelte';
-	import { cards } from '$lib/cards.svelte';
+	import CardAvatar from '$lib/features/cards/components/card-avatar.svelte';
+	import { branding } from '$lib/features/branding/store.svelte';
+	import { downloadBlob, normalizeCard, publicUrl, type CardData } from '$lib/features/cards/card';
+	import { session } from '$lib/core/session.svelte';
+	import { cards } from '$lib/features/cards/store.svelte';
 	import {
 		measureImage,
 		renderSignature,
 		signatureDocument,
-		signatureTemplate,
 		type ImageSize
-	} from '$lib/signature/render';
+	} from '$lib/features/signatures/render';
 	import {
 		SIGNATURE_TEMPLATES,
 		SIGNATURE_TEMPLATE_KEYS,
 		type SignatureSettings,
 		type SignatureTemplateKey
-	} from '$lib/signature/templates';
+	} from '$lib/features/signatures/templates';
 	import { cn } from '$lib/utils';
 
 	const selectedId = $derived(Number(page.url.searchParams.get('card')) || cards.list?.[0]?.id || null);

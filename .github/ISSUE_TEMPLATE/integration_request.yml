@@ -1,0 +1,52 @@
+name: Integration request
+description: Ask for a new lead sync, calendar, team import or SSO provider.
+labels: [integration]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Lead Sync (send leads to a CRM or tool)
+        - Calendar Booking
+        - Team Member Import (SCIM or directory sync)
+        - SAML SSO
+        - Something new
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      placeholder: e.g. Pipedrive
+    validations:
+      required: true
+  - type: input
+    id: docs
+    attributes:
+      label: API documentation
+      description: A link to the provider's API, SCIM or SAML documentation.
+  - type: textarea
+    id: use-case
+    attributes:
+      label: How would you use it?
+      description: What should happen in the provider when something happens in Fronko (for example, "each new lead becomes a Pipedrive person and deal")?
+    validations:
+      required: true
+  - type: dropdown
+    id: auth
+    attributes:
+      label: How does the provider authenticate?
+      options:
+        - OAuth 2.0
+        - API key or token
+        - Incoming webhook URL
+        - SAML or SCIM
+        - Not sure
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd like to build this provider myself.
+        - label: I can test it against a real account.

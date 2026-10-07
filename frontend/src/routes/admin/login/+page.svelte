@@ -3,14 +3,14 @@
 	import { page } from '$app/state';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import ShieldIcon from '@lucide/svelte/icons/shield';
-	import { adminLogin } from '$lib/api/admin';
+	import { adminLogin } from '$lib/features/admin/api';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
 	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
 	import { Spinner } from '$lib/components/ui/spinner';
-	import Logo from '$lib/components/app/logo.svelte';
-	import { adminSession } from '$lib/admin-session.svelte';
+	import Logo from '$lib/components/shared/logo.svelte';
+	import { adminSession } from '$lib/features/admin/session.svelte';
 
 	let email = $state('');
 	let password = $state('');
