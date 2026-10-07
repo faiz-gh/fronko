@@ -336,7 +336,7 @@
 							{/if}
 							<p class="text-muted-foreground text-xs">
 								{#if storage.status && !storage.ready}
-									<a href="/dashboard/settings" class="text-foreground underline underline-offset-4">Connect storage</a>
+									<a href="/dashboard/settings?tab=storage" class="text-foreground underline underline-offset-4">Connect storage</a>
 									to add images.
 								{:else}
 									Up to {MAX_GALLERY_IMAGES} images. JPEG, PNG or WebP up to 5 MB each.

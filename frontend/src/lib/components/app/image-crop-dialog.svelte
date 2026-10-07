@@ -8,7 +8,8 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Slider } from '$lib/components/ui/slider';
 	import { Spinner } from '$lib/components/ui/spinner';
-	import { cropImage, rotateImage, type PixelArea } from '$lib/image';
+	import * as ToggleGroup from '$lib/components/ui/toggle-group';
+	import { cropImage, rotateImage, type CropRatio, type ImageFormat, type PixelArea } from '$lib/image';
 
 	/**
 	 * Lets the user frame a freshly picked image before it is uploaded. Setting
@@ -21,6 +22,8 @@
 		shape = 'rect',
 		outputWidth,
 		outputHeight,
+		format = 'webp',
+		ratios,
 		onconfirm
 	}: {
 		file?: File | null;
@@ -29,6 +32,9 @@
 		shape?: 'rect' | 'round';
 		outputWidth: number;
 		outputHeight: number;
+		format?: ImageFormat;
+		/** Shapes to choose from; the first is the default. Overrides aspect and the output size. */
+		ratios?: CropRatio[];
 		onconfirm: (file: File) => void;
 	} = $props();
 
@@ -37,6 +43,8 @@
 	let zoom = $state(1);
 	let area: PixelArea | null = null;
 	let busy = $state(false);
+	let ratioIndex = $state(0);
+	const ratio = $derived(ratios?.[ratioIndex] ?? { label: '', aspect, width: outputWidth, height: outputHeight });
 
 	// A new file gets a fresh object URL and a reset view; the URL is freed when
 	// the file changes or the dialog closes.
@@ -46,6 +54,7 @@
 		src = url;
 		crop = { x: 0, y: 0 };
 		zoom = 1;
+		ratioIndex = 0;
 		return () => {
 			URL.revokeObjectURL(url);
 			if (src !== url) URL.revokeObjectURL(src);
@@ -71,7 +80,7 @@
 		if (!file || !area) return;
 		busy = true;
 		try {
-			const cropped = await cropImage(src, area, outputWidth, outputHeight, file.name);
+			const cropped = await cropImage(src, area, ratio.width, ratio.height, file.name, format);
 			file = null;
 			onconfirm(cropped);
 		} catch (e) {
@@ -94,13 +103,32 @@
 			<Dialog.Description>Drag to reposition, and use the slider or pinch to zoom.</Dialog.Description>
 		</Dialog.Header>
 
+		{#if ratios && ratios.length > 1}
+			<ToggleGroup.Root
+				type="single"
+				variant="outline"
+				size="sm"
+				value={String(ratioIndex)}
+				onValueChange={(v) => {
+					if (!v) return;
+					ratioIndex = Number(v);
+					crop = { x: 0, y: 0 };
+				}}
+				aria-label="Shape"
+			>
+				{#each ratios as r, i (r.label)}
+					<ToggleGroup.Item value={String(i)}>{r.label}</ToggleGroup.Item>
+				{/each}
+			</ToggleGroup.Root>
+		{/if}
+
 		<div class="bg-muted relative h-72 overflow-hidden rounded-lg sm:h-80">
 			{#if src}
 				<Cropper
 					image={src}
 					bind:crop
 					bind:zoom
-					{aspect}
+					aspect={ratio.aspect}
 					cropShape={shape}
 					maxZoom={4}
 					showGrid={shape === 'rect'}

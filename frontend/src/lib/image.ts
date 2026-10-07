@@ -37,10 +37,32 @@ export async function rotateImage(src: string): Promise<string> {
 }
 
 /**
- * Cuts `area` out of `src` and scales it to width×height. Encodes as WebP, or
- * JPEG on browsers that can't (older Safari silently returns PNG for WebP).
+ * Output encoding. WebP is smallest, but email clients (Outlook desktop) can't
+ * show it, so images meant for email signatures use PNG (keeps transparency,
+ * for logos) or JPEG (photos and banners).
  */
-export async function cropImage(src: string, area: PixelArea, width: number, height: number, name: string): Promise<File> {
+/** A crop shape the user can pick, and the pixel size it is saved at. */
+export interface CropRatio {
+	label: string;
+	aspect: number;
+	width: number;
+	height: number;
+}
+
+export type ImageFormat = 'webp' | 'png' | 'jpeg';
+
+/**
+ * Cuts `area` out of `src` and scales it to width×height. WebP falls back to
+ * JPEG on browsers that can't encode it (older Safari silently returns PNG).
+ */
+export async function cropImage(
+	src: string,
+	area: PixelArea,
+	width: number,
+	height: number,
+	name: string,
+	format: ImageFormat = 'webp'
+): Promise<File> {
 	const img = await loadImage(src);
 	const canvas = document.createElement('canvas');
 	canvas.width = width;
@@ -50,9 +72,16 @@ export async function cropImage(src: string, area: PixelArea, width: number, hei
 	ctx.imageSmoothingQuality = 'high';
 	ctx.drawImage(img, area.x, area.y, area.width, area.height, 0, 0, width, height);
 
-	let blob = await toBlob(canvas, 'image/webp', 0.9);
-	let ext = 'webp';
-	if (!blob || blob.type !== 'image/webp') {
+	let blob: Blob | null = null;
+	let ext = 'jpg';
+	if (format === 'png') {
+		blob = await toBlob(canvas, 'image/png', 1);
+		ext = 'png';
+	} else if (format === 'webp') {
+		blob = await toBlob(canvas, 'image/webp', 0.9);
+		ext = 'webp';
+	}
+	if (!blob || blob.type !== `image/${format}`) {
 		blob = await toBlob(canvas, 'image/jpeg', 0.9);
 		ext = 'jpg';
 	}

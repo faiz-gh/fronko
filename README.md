@@ -53,9 +53,10 @@ Fronko is an open-source alternative to hosted platforms such as Popl and Mobilo
 
 ### For card owners
 
-- **Live-preview card editor.** Edit profile details, contact information (with a country-code phone picker), a booking link (Calendly, Cal.com, Google Calendar and others), social links with brand icons, a cropped photo and cover banner, PDF brochures, an accent colour and a light or dark theme.
+- **Live-preview card editor.** A section rail lists every part of the card with a one-line summary, so you see the whole card at a glance and edit one section at a time. Edit profile details, contact information (with a country-code phone picker), a booking link (Calendly, Cal.com, Google Calendar and others), social links with brand icons, a cropped photo and cover banner, PDF brochures, an accent colour and a light or dark theme.
 - **Templates and blocks.** Start from a template (Classic, Event tag, Portfolio, Minimal), then reorder, hide or add blocks: headings, text, an image gallery, an event panel with a role ribbon, and dividers. Three header styles: banner, name badge or compact.
 - **Multiple cards.** Each card has its own link, an NFC link and a QR code you can download as SVG or PNG.
+- **Email signatures.** Turn any card into an email signature from one of five templates (Classic, Corporate, Compact, Bold, Minimal), choose what it includes, then copy it straight into Gmail, Outlook or Apple Mail, or download it as HTML. The HTML is built for mail clients: tables, inline styles and PNG/JPEG images only.
 - **Lead inbox.** Leads from every card land in one place, with card filters, search, pagination and CSV export.
 
 ### For organisations
@@ -63,6 +64,8 @@ Fronko is an open-source alternative to hosted platforms such as Popl and Mobilo
 - **Organisation accounts.** Every sign-up creates an organisation. The owner, and any admins they promote, create accounts for the team. Each new user is emailed their username and a temporary password, then confirms their email and chooses their own password on first sign-in.
 - **Role-based access.** Admins assign cards to people. Each person can edit everything on their cards except the link, and sees only their own cards and the leads those cards collected while assigned to them. Admins see everything and can filter leads by person.
 - **User management.** Admins can suspend users, reset their passwords, or delete them without losing their cards, files or leads.
+- **Branding.** Upload a square organisation logo, cropped on upload. It sits as an emblem on the lower right of every profile photo and appears in email signatures. Either require it on every card and signature, or let each person choose.
+- **Signature rules.** Optionally lock everyone to one signature template, set a brand colour, and add a disclaimer and a clickable banner (cropped to 4:1, 3:1 or 2:1) under every signature.
 - **Files with access control.** Files are kept in three areas: each person's own files (with an optional per-person storage limit), the organisation's private files, and a shared area for company-wide brochures. Admins can give individual people access to extra files.
 
 ### For the people running the server
@@ -90,6 +93,7 @@ graph TD
     D -->|card and file metadata| C
     S -->|short-lived signed links| C
     C -->|Save contact| F[vCard from /api/profiles/slug/vcard]
+    E -->|card + org branding| SIG[Email signature HTML, copied into the mail app]
     C -->|Share your details| G[Lead form]
     G -->|stores lead| D
     D -->|lead inbox, CSV export| E

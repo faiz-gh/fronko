@@ -59,6 +59,7 @@ backend/
 │   │   ├── admin_auth.go         # Platform admin sign-in/out (/auth/admin/*) and /api/admin/me
 │   │   ├── admin.go              # /api/admin/*: usage, trends, suspend/reinstate, feedback inbox, audit log
 │   │   ├── feedback.go           # POST /api/me/feedback (users sending product feedback)
+│   │   ├── branding.go           # GET/PUT /api/org/branding: logo, logo policy, signature settings
 │   │   ├── account.go            # Email verification and change, forgot/reset password, change password
 │   │   ├── files.go              # File library: upload (type sniffing), list, rename, delete, public redirect
 │   │   ├── storage.go            # StorageService (decrypt keys → bucket client) and /api/me/storage
@@ -74,7 +75,7 @@ backend/
 │   │   ├── origin.go             # Same-origin check for state-changing requests
 │   │   └── ratelimit.go          # Per-IP token bucket limiter
 │   ├── mail/                     # SMTP sender (implicit TLS / STARTTLS), log fallback, code and notice templates
-│   ├── models/models.go          # User, EmailCode, Profile, PublicProfile, Lead, StorageSettings, File
+│   ├── models/models.go          # Organization, OrgBranding, User, EmailCode, Profile, PublicProfile, Lead, StorageSettings, File
 │   ├── models/admin.go           # PlatformAdmin, OrgUsage, PlatformSummary, UsagePoint, Feedback, AuditEntry
 │   ├── repository/repository.go  # All SQL; maps pg errors to ErrNotFound / ErrConflict
 │   ├── repository/admin.go       # Platform admins, org usage aggregates, snapshots, suspension, audit log
@@ -172,7 +173,8 @@ These are hard-coded:
 
 ## Database
 
-The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`, 006 changing a verified email, 007 organisations and users, 008 platform admin).
+The schema lives in `migrations/` (001 core tables, 002 leads paging index, 003 `user_storage` and `files`, 004 optional lead phone, 005 user email, `session_version` and `email_codes`, 006 changing a verified email, 007 organisations and users, 008 platform admin, 009 organisation branding).
+- **Branding (009).** `organizations.logo_file` (public id of an org or shared image, `NULL`: no logo), `logo_policy` (`required` or `optional`, checked by `organizations_logo_policy_check`), and `signature` JSONB (`locked_template`, `brand_color`, `disclaimer`, `banner_file`, `banner_url`; see `models.OrgSignature`). `DeleteFile` clears `logo_file` or `signature.banner_file` in the same statement when they name the deleted file. Email signatures themselves are built in the browser; per-card signature choices live in `profiles.data`.
 - **Platform admin (008).** `platform_admins` (separate from `users`; case-insensitive unique email, own `session_version`). `organizations.suspended_at` and `suspended_reason`. `feedback` (with `sender_email` and `org_name` copied in, and `org_id`/`user_id` `ON DELETE SET NULL`, so feedback outlives the org) and `feedback_replies`. `org_usage_snapshots` (one row per org per day) and `platform_usage_snapshots` (daily totals, kept apart so history survives deleted orgs). `admin_audit_log`, which also copies the admin's email.
 - **Organisations (007).** Every user belongs to one `organizations` row (`users.org_id`) with a `role`: `owner` (exactly one per org, enforced by a partial unique index), `admin` or `member`. 007 gave each existing account its own organisation, as owner. `users` also gained `must_change_password` (set while the org-chosen password is in use), `storage_quota_bytes` (`NULL`: unlimited), `suspended_at`, `created_by` and `last_login_at`.
 - **Cards** belong to the org (`profiles.org_id`); `profiles.user_id` is just the creator. `profiles.assigned_user_id` is the one user working on the card (`ON DELETE SET NULL`).
@@ -241,11 +243,11 @@ erDiagram
 
 ### Adding a migration
 
-Add a numbered pair next to the existing files (the next number is 009):
+Add a numbered pair next to the existing files (the next number is 010):
 
 ```
-migrations/009_<description>.up.sql
-migrations/009_<description>.down.sql
+migrations/010_<description>.up.sql
+migrations/010_<description>.down.sql
 ```
 
 The Docker entrypoint runs `migrate ... up` on every container start. Locally, run the same command by hand (see [Run locally](#run-locally)).

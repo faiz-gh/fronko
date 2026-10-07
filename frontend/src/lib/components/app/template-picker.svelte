@@ -17,28 +17,27 @@
 	} = $props();
 </script>
 
+<!-- The organisation's logo emblem on the photo's lower right. -->
+{#snippet emblem()}
+	{#if logo}
+		<span class="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-white ring-1 ring-black/25"></span>
+	{/if}
+{/snippet}
+
 <!-- A tiny wireframe of each template: enough to tell them apart at a glance. -->
 {#snippet wireframe(key: TemplateKey)}
-	<span class="relative flex h-24 flex-col overflow-hidden rounded-lg bg-white ring-1 ring-black/5 dark:bg-neutral-900" aria-hidden="true">
-		{#if logo}
-			<span
-				class={cn(
-					'absolute top-1 h-2 w-4 rounded-[2px] bg-white ring-1 ring-black/10',
-					key === 'minimal' ? 'right-1' : 'left-1'
-				)}
-			></span>
-		{/if}
+	<span class="flex h-24 flex-col overflow-hidden rounded-lg bg-white ring-1 ring-black/5 dark:bg-neutral-900" aria-hidden="true">
 		{#if key === 'event'}
 			<span class="flex flex-col items-center gap-1 py-2" style="background: {accent}">
 				<span class="h-0.5 w-3 rounded-full bg-black/30"></span>
-				<span class="size-4 rounded-full bg-white/90"></span>
+				<span class="relative size-4 rounded-full bg-white/90">{@render emblem()}</span>
 				<span class="h-1.5 w-12 rounded-full bg-white"></span>
 			</span>
 			<span class="mx-2 mt-1.5 h-2 rounded-sm" style="background: {accent}; opacity: 0.6"></span>
 			<span class="mx-2 mt-1 h-2 rounded-sm bg-neutral-200 dark:bg-white/15"></span>
 		{:else if key === 'minimal'}
 			<span class="flex items-center gap-1.5 px-2 pt-3">
-				<span class="size-5 shrink-0 rounded-full" style="background: {accent}"></span>
+				<span class="relative size-5 shrink-0 rounded-full" style="background: {accent}">{@render emblem()}</span>
 				<span class="flex flex-col gap-1">
 					<span class="h-1.5 w-10 rounded-full bg-neutral-800 dark:bg-white/70"></span>
 					<span class="h-1 w-7 rounded-full bg-neutral-300 dark:bg-white/30"></span>
@@ -52,7 +51,7 @@
 		{:else}
 			<span class="h-5 shrink-0" style="background: {accent}"></span>
 			<span class="-mt-2.5 flex flex-col items-center gap-1">
-				<span class="size-5 rounded-full bg-neutral-300 ring-2 ring-white dark:ring-neutral-900"></span>
+				<span class="relative size-5 rounded-full bg-neutral-300 ring-2 ring-white dark:ring-neutral-900">{@render emblem()}</span>
 				<span class="h-1.5 w-10 rounded-full bg-neutral-800 dark:bg-white/70"></span>
 			</span>
 			{#if key === 'portfolio'}
@@ -70,7 +69,7 @@
 	</span>
 {/snippet}
 
-<div class="grid grid-cols-2 gap-3 sm:grid-cols-4" role="radiogroup" aria-label="Template">
+<div class="grid grid-cols-2 gap-3 2xl:grid-cols-4" role="radiogroup" aria-label="Template">
 	{#each Object.entries(TEMPLATES) as [key, t] (key)}
 		<button
 			type="button"

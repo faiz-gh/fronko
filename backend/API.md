@@ -44,6 +44,8 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `DELETE` | [`/api/me/files/{id}`](#delete-apimefilesid) | ✅ | | Delete a file from the bucket and library |
 | `GET`    | [`/api/org`](#get-apiorg) | 🛡️ | | The organisation |
 | `PUT`    | [`/api/org`](#put-apiorg) | 👑 | | Rename it, set the default storage limit |
+| `GET`    | [`/api/org/branding`](#get-apiorgbranding) | ✅ | | Logo, logo policy and email signature settings |
+| `PUT`    | [`/api/org/branding`](#put-apiorgbranding) | 🛡️ | | Set the logo, logo policy and signature settings |
 | `GET`    | [`/api/org/users`](#get-apiorgusers) | 🛡️ | | Everyone in the organisation, with totals |
 | `POST`   | [`/api/org/users`](#post-apiorgusers) | 🛡️ | ✅ auth | Create a user with a temporary password |
 | `GET`    | [`/api/org/users/{id}`](#get-apiorgusersid) | 🛡️ | | One user |
@@ -141,9 +143,12 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
   "id": 42,
   "slug": "faiz",
   "data": { "name": "Faiz", "avatar_file": "90meIH31WrEH0xe9ymyzDA", "documents": [] },
-  "files": [{ "id": "90meIH31WrEH0xe9ymyzDA", "kind": "image", "name": "me.png", "size_bytes": 48211 }]
+  "files": [{ "id": "90meIH31WrEH0xe9ymyzDA", "kind": "image", "name": "me.png", "size_bytes": 48211 }],
+  "org": { "name": "Acme", "logo_file": "tt24UJovNZgYmyTuoygXhg", "logo_policy": "optional" }
 }
 ```
+
+`org` is the card's organisation: its name, its logo (a public file id, served by [`GET /api/files/{id}`](#get-apifilesid), or `null`) and `logo_policy`. The card shows the logo when the policy is `"required"`, or when it's `"optional"` and `data.show_org_logo` isn't `false`. The organisation's signature settings are not exposed here.
 
 The owner's ID and the timestamps are left out on purpose. `files` lists only the library files the card itself references (`data.avatar_file`, `data.cover_file`, `data.documents[].file` and gallery images in `data.blocks[].images[].file`, up to 64) that the card's organisation still has. Nothing else from the organisation's files is revealed.
 
@@ -195,7 +200,7 @@ The owner's ID and the timestamps are left out on purpose. `files` lists only th
 
 ### `data`
 
-`data` is a free-form JSON **object** that the frontend owns. The backend only checks that it is an object, and stores `{}` when it's missing or `null`. It does read a few keys: `avatar_file`, `cover_file`, `documents[].file` and `blocks[].images[].file` name library files, which must be visible to the editor when newly added, and which `GET /api/profiles/{slug}` resolves (up to 64 per card). The vCard endpoint reads the contact fields. For the shape the web app uses, see [`CardData` in the frontend docs](../frontend/README.md#card-data-model).
+`data` is a free-form JSON **object** that the frontend owns. The backend only checks that it is an object, and stores `{}` when it's missing or `null`. It does read a few keys: `avatar_file`, `cover_file`, `documents[].file` and `blocks[].images[].file` name library files, which must be visible to the editor when newly added, and which `GET /api/profiles/{slug}` resolves (up to 64 per card). The vCard endpoint reads the contact fields. `show_org_logo` (boolean) and `signature` (the card's email signature choices) are frontend-only keys the backend just stores. For the shape the web app uses, see [`CardData` in the frontend docs](../frontend/README.md#card-data-model).
 
 ---
 
@@ -603,6 +608,7 @@ Deletes the object from the bucket, then the library entry (`204`). The same rul
 - If the bucket refuses the delete, you get `502` and the entry is kept, so you can retry.
 - If storage was disconnected, only the entry is removed.
 - Cards that used the file stop showing it.
+- If the file was the organisation's logo or signature banner, that setting is cleared in the same step.
 
 ---
 
@@ -621,6 +627,47 @@ Owner and admins only (`403` for members). Admins manage members; only the owner
 ### `PUT /api/org`
 
 👑 Owner only. `{"name": "Acme", "default_quota_bytes": null}`. Both fields are sent; the name is 1–80 chars without control characters (it appears in emails) and the limit 0 to 1 TB or `null`. Returns the organisation.
+
+### `GET /api/org/branding`
+
+✅ Anyone in the organisation (the editor and the Signatures page need it), so this one isn't 🛡️.
+
+```json
+{
+  "name": "Acme",
+  "logo_file": "tt24UJovNZgYmyTuoygXhg",
+  "logo_policy": "required",
+  "signature": {
+    "locked_template": "corporate",
+    "brand_color": "#dc2626",
+    "disclaimer": "Confidential: for the named recipient only.",
+    "banner_file": "iatlE9Ig8c5o8hgdVDLxOw",
+    "banner_url": "https://example.com/event"
+  }
+}
+```
+
+- `logo_file`: public id of an image in the organisation's files, or `null`. The web app crops it square (512×512 PNG).
+- `logo_policy`: `"required"` (every card and signature shows the logo) or `"optional"` (each card chooses; on by default).
+- `signature`: every key is optional and left out when empty.
+  - `locked_template`: when set, the only template employees can use. One of `classic`, `corporate`, `compact`, `bold`, `minimal`.
+  - `brand_color`: `#rrggbb`; replaces each card's accent in signatures.
+  - `disclaimer`: up to 1000 characters, shown under every signature.
+  - `banner_file` / `banner_url`: an image shown under every signature, and where clicking it goes. The web app crops the banner to 4:1, 3:1 or 2:1 (JPEG).
+
+### `PUT /api/org/branding`
+
+🛡️ Owner and admins. Send the whole object above, without `name`. Returns it saved.
+
+`400` when:
+- `logo_policy` is something other than `"required"` or `"optional"`. Leaving it out means `"optional"`.
+- `locked_template` isn't one of the five templates.
+- `brand_color` isn't `#` followed by six hex digits.
+- `disclaimer` is over 1000 characters.
+- `banner_url` isn't a full `http(s)://` URL.
+- `logo_file` or `banner_file` isn't an image in the organisation's own or shared files. Personal files are refused, since the logo and banner are public.
+
+Blank strings are trimmed. A blank `logo_file` means no logo.
 
 ### `GET /api/org/users`
 

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { toast } from 'svelte-sonner';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
@@ -17,6 +19,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Field from '$lib/components/ui/field';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Spinner } from '$lib/components/ui/spinner';
@@ -81,6 +84,26 @@
 			keysHelp: 'Use an access key with read and write access to this bucket only.'
 		}
 	};
+
+	// Settings are split into tabs; ?tab= remembers the open one so links can point at it.
+	const tabs = $derived([
+		{ value: 'account', label: 'Account' },
+		...(session.isAdmin
+			? [
+					{ value: 'organisation', label: 'Organisation' },
+					{ value: 'branding', label: 'Branding' }
+				]
+			: []),
+		{ value: 'storage', label: 'Storage' }
+	]);
+	const tab = $derived.by(() => {
+		const requested = page.url.searchParams.get('tab');
+		return tabs.some((t) => t.value === requested) ? requested! : 'account';
+	});
+
+	function setTab(value: string) {
+		goto(value === 'account' ? '?' : `?tab=${value}`, { replace: true, reset: false });
+	}
 
 	let changingEmail = $state(false);
 
@@ -261,344 +284,355 @@
 </svelte:head>
 
 <div class="mx-auto flex w-full max-w-[1200px] flex-col px-4 py-6 sm:px-8 lg:px-10 lg:py-10">
-	<header class="flex flex-col gap-1 pb-2">
-		<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Settings</h1>
-		<p class="text-muted-foreground text-sm">
-			{session.isOwner
-				? 'Your account, your organisation, and storage for photos and brochures.'
-				: 'Your account and password.'}
-		</p>
-	</header>
-
-	<FormSection id="account" title="Account" description="How you sign in. Either works on the sign-in page.">
-		<dl class="grid gap-5 text-sm sm:grid-cols-2">
-			<div class="flex flex-col gap-1.5">
-				<dt class="text-muted-foreground">Username</dt>
-				<dd class="font-medium">{session.username}</dd>
-			</div>
-			{#if !session.isOwner}
-				<div class="flex flex-col gap-1.5">
-					<dt class="text-muted-foreground">Organisation</dt>
-					<dd class="font-medium">{session.orgName} · {session.role ? ROLE_LABEL[session.role] : ''}</dd>
-				</div>
-			{/if}
-			<div class="flex flex-col gap-1.5">
-				<dt class="text-muted-foreground">Email</dt>
-				<dd class="flex flex-wrap items-center gap-2 font-medium">
-					<span class="break-all">{session.email}</span>
-					{#if session.emailVerified}
-						<Badge variant="secondary" class="gap-1">
-							<CircleCheckIcon class="size-3" />
-							Verified
-						</Badge>
-					{/if}
-					{#if session.isOwner && !changingEmail}
-						<Button variant="link" size="sm" class="h-auto px-0" onclick={() => (changingEmail = true)}>Change</Button>
-					{/if}
-				</dd>
-				{#if !session.isOwner}
-					<dd class="text-muted-foreground text-xs">Managed by {session.orgName}. Ask them if it needs to change.</dd>
-				{/if}
-			</div>
-		</dl>
-		{#if changingEmail}
-			<div class="mt-5">
-				<ChangeEmailForm onclose={() => (changingEmail = false)} />
-			</div>
-		{/if}
-	</FormSection>
-
-	<FormSection
-		id="password"
-		title="Password"
-		description="Changing it signs you out on every other device. You stay signed in here."
-	>
-		<form onsubmit={submitPassword} class="flex flex-col gap-6">
-			<Field.Group class="grid gap-5 sm:grid-cols-2">
-				<Field.Field class="sm:col-span-2 sm:max-w-[calc(50%-0.625rem)]">
-					<Field.Label for="current-password">Current password</Field.Label>
-					<Input
-						id="current-password"
-						type="password"
-						autocomplete="current-password"
-						bind:value={currentPassword}
-						disabled={changingPassword}
-					/>
-				</Field.Field>
-				<Field.Field data-invalid={!!newPasswordError || undefined}>
-					<Field.Label for="new-password">New password</Field.Label>
-					<Input
-						id="new-password"
-						type="password"
-						autocomplete="new-password"
-						bind:value={newPassword}
-						disabled={changingPassword}
-						aria-invalid={!!newPasswordError || undefined}
-					/>
-					{#if newPasswordError}
-						<Field.Error>{newPasswordError}</Field.Error>
-					{:else}
-						<Field.Description>At least 8 characters.</Field.Description>
-					{/if}
-				</Field.Field>
-				<Field.Field data-invalid={!!confirmPasswordError || undefined}>
-					<Field.Label for="confirm-password">Confirm new password</Field.Label>
-					<Input
-						id="confirm-password"
-						type="password"
-						autocomplete="new-password"
-						bind:value={confirmPassword}
-						disabled={changingPassword}
-						aria-invalid={!!confirmPasswordError || undefined}
-					/>
-					{#if confirmPasswordError}
-						<Field.Error>{confirmPasswordError}</Field.Error>
-					{/if}
-				</Field.Field>
-			</Field.Group>
-
-			{#if passwordMessage}
-				<Alert.Root variant="destructive">
-					<CircleAlertIcon />
-					<Alert.Title>{passwordMessage}</Alert.Title>
-				</Alert.Root>
-			{/if}
-
-			<div>
-				<Button type="submit" disabled={!canChangePassword}>
-					{#if changingPassword}<Spinner data-icon="inline-start" />{/if}
-					Change password
-				</Button>
-			</div>
-		</form>
-	</FormSection>
-
-	{#if session.isAdmin}
-		<FormSection
-			id="organisation"
-			title="Organisation"
-			description={session.isOwner
-				? 'Shown to your team. New users start with the default storage limit; you can change it per person.'
-				: 'Only the owner can change these.'}
-		>
-			{#if !org}
-				<Skeleton class="h-24 rounded-xl" />
-			{:else}
-				<form onsubmit={saveOrg} class="flex flex-col gap-6">
-					<Field.Group class="gap-5">
-						<Field.Field class="sm:max-w-sm">
-							<Field.Label for="org-name">Name</Field.Label>
-							<Input id="org-name" bind:value={orgName} maxlength={80} disabled={!session.isOwner || savingOrg} required />
-						</Field.Field>
-						<Field.Field>
-							<Field.Label for="org-quota">Default storage per user</Field.Label>
-							<QuotaInput id="org-quota" bind:value={defaultQuota} disabled={!session.isOwner || savingOrg} />
-							<Field.Description>
-								For each person's own files. Shared and organisation files don't count. Changing this doesn't affect
-								existing users.
-							</Field.Description>
-						</Field.Field>
-					</Field.Group>
-					{#if session.isOwner}
-						<div>
-							<Button type="submit" disabled={!orgChanged || savingOrg}>
-								{#if savingOrg}<Spinner data-icon="inline-start" />{/if}
-								Save organisation
-							</Button>
+	<Tabs.Root value={tab} onValueChange={setTab} class="gap-0">
+		<header class="flex flex-col gap-1 border-b">
+			<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Settings</h1>
+			<p class="text-muted-foreground text-sm">
+				{session.isAdmin
+					? 'Your account, your organisation and its branding, and storage for photos and brochures.'
+					: 'Your account, password and storage.'}
+			</p>
+			<Tabs.List variant="line" class="mt-4 -mb-px h-10 gap-4 p-0">
+				{#each tabs as t (t.value)}
+					<Tabs.Trigger value={t.value} class="flex-none px-0.5">{t.label}</Tabs.Trigger>
+				{/each}
+			</Tabs.List>
+		</header>
+		<Tabs.Content value="account">
+			<FormSection id="account" title="Account" description="How you sign in. Either works on the sign-in page.">
+				<dl class="grid gap-5 text-sm sm:grid-cols-2">
+					<div class="flex flex-col gap-1.5">
+						<dt class="text-muted-foreground">Username</dt>
+						<dd class="font-medium">{session.username}</dd>
+					</div>
+					{#if !session.isOwner}
+						<div class="flex flex-col gap-1.5">
+							<dt class="text-muted-foreground">Organisation</dt>
+							<dd class="font-medium">{session.orgName} · {session.role ? ROLE_LABEL[session.role] : ''}</dd>
 						</div>
 					{/if}
-				</form>
-			{/if}
-		</FormSection>
-
-		<FormSection
-			id="branding"
-			title="Branding"
-			description="Your logo on cards and email signatures, and what every signature includes."
-		>
-			<BrandingSettings />
-		</FormSection>
-	{/if}
-
-	{#if !session.isOwner}
-		<FormSection
-			id="storage"
-			title="Storage"
-			description="{session.orgName} provides storage for your photos and brochures. Shared files don't count toward your limit."
-		>
-			{#if status}
-				{#if !status.configured}
-					<p class="text-muted-foreground text-sm">
-						{session.orgName} hasn't connected storage yet, so uploads aren't available.
-					</p>
-				{:else}
-					<StorageMeter used={status.used_bytes} quota={status.quota_bytes} class="max-w-sm" />
-				{/if}
-			{:else}
-				<Skeleton class="h-10 max-w-sm" />
-			{/if}
-		</FormSection>
-	{:else if storage.error}
-		<Alert.Root variant="destructive" class="mt-6">
-			<CircleAlertIcon />
-			<Alert.Title>{storage.error}</Alert.Title>
-		</Alert.Root>
-	{:else if !status}
-		<div class="mt-8 flex flex-col gap-4">
-			<Skeleton class="h-8 w-56" />
-			<Skeleton class="h-72 rounded-xl" />
-		</div>
-	{:else if !status.enabled}
-		<div class="bg-card mt-8 flex flex-col gap-2 rounded-xl border p-6">
-			<p class="font-medium">File storage isn't enabled on this server</p>
-			<p class="text-muted-foreground max-w-2xl text-sm">
-				Whoever runs this Fronko server needs to set <code class="bg-muted rounded px-1 py-0.5 text-xs">SECRETS_KEY</code>
-				(a 32-byte key, e.g. <code class="bg-muted rounded px-1 py-0.5 text-xs">openssl rand -base64 32</code>). It's used to
-				encrypt your storage keys.
-			</p>
-		</div>
-	{:else}
-		<FormSection
-			id="storage"
-			title="Storage"
-			description="Photos and PDF brochures for your whole organisation are stored in your own S3-compatible bucket. The bucket can stay private: visitors get short-lived links."
-		>
-			<form onsubmit={save} class="flex flex-col gap-6">
-				<div
-					class={cn(
-						'flex items-center gap-3 rounded-xl border px-4 py-3 text-sm',
-						configured ? 'bg-card' : 'bg-muted/40 border-dashed'
-					)}
-				>
-					{#if configured}
-						<span class="grid size-8 place-items-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-							<CircleCheckIcon class="size-4" />
-						</span>
-						<span class="flex min-w-0 flex-col">
-							<span class="flex items-center gap-1.5 font-medium">
-								<StorageProviderIcon provider={status.provider ?? 'other'} class="size-3.5 shrink-0" />
-								Connected to {PRESETS[status.provider ?? 'other'].label}
-							</span>
-							<span class="text-muted-foreground truncate text-xs">
-								{status.bucket} · {plural(status.file_count, 'file')}
-								{#if status.verified_at}· verified {timeAgo(status.verified_at)}{/if}
-							</span>
-						</span>
-					{:else}
-						<span class="bg-muted text-muted-foreground grid size-8 place-items-center rounded-full">
-							<PlugIcon class="size-4" />
-						</span>
-						<span class="flex flex-col">
-							<span class="font-medium">Not connected</span>
-							<span class="text-muted-foreground text-xs">Uploads are off until you connect a bucket.</span>
-						</span>
-					{/if}
-				</div>
-
-				<Field.Field>
-					<Field.Label>Provider</Field.Label>
-					<div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5" role="radiogroup" aria-label="Provider">
-						{#each Object.entries(PRESETS) as [key, p] (key)}
-							<button
-								type="button"
-								role="radio"
-								aria-checked={provider === key}
-								onclick={() => choosePreset(key as StorageProvider)}
-								class={cn(
-									'flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors',
-									provider === key ? 'border-foreground ring-foreground ring-1' : 'hover:border-foreground/30'
-								)}
-							>
-								<StorageProviderIcon provider={key as StorageProvider} class="size-4 shrink-0" />
-								{p.label}
-							</button>
-						{/each}
+					<div class="flex flex-col gap-1.5">
+						<dt class="text-muted-foreground">Email</dt>
+						<dd class="flex flex-wrap items-center gap-2 font-medium">
+							<span class="break-all">{session.email}</span>
+							{#if session.emailVerified}
+								<Badge variant="secondary" class="gap-1">
+									<CircleCheckIcon class="size-3" />
+									Verified
+								</Badge>
+							{/if}
+							{#if session.isOwner && !changingEmail}
+								<Button variant="link" size="sm" class="h-auto px-0" onclick={() => (changingEmail = true)}>Change</Button>
+							{/if}
+						</dd>
+						{#if !session.isOwner}
+							<dd class="text-muted-foreground text-xs">Managed by {session.orgName}. Ask them if it needs to change.</dd>
+						{/if}
 					</div>
-				</Field.Field>
-
-				<Field.Group class="grid gap-5 sm:grid-cols-2">
-					<Field.Field class="sm:col-span-2">
-						<Field.Label for="endpoint">Endpoint</Field.Label>
-						<Input id="endpoint" bind:value={endpoint} placeholder={preset.endpoint} class="font-mono text-sm" autocomplete="off" />
-						<Field.Description>The S3 API URL only, without the bucket name or a path.</Field.Description>
-					</Field.Field>
-					<Field.Field>
-						<Field.Label for="bucket">Bucket</Field.Label>
-						<Input id="bucket" bind:value={bucket} placeholder="my-fronko-files" autocomplete="off" />
-					</Field.Field>
-					<Field.Field>
-						<Field.Label for="region">Region</Field.Label>
-						<Input id="region" bind:value={region} placeholder={preset.region} autocomplete="off" />
-					</Field.Field>
-					<Field.Field>
-						<Field.Label for="access-key">Access key ID</Field.Label>
-						<Input
-							id="access-key"
-							bind:value={accessKeyId}
-							placeholder={configured ? `Saved · ends in ${status.access_key_hint}` : ''}
-							autocomplete="off"
-							spellcheck={false}
-							class="font-mono text-sm"
-						/>
-					</Field.Field>
-					<Field.Field>
-						<Field.Label for="secret-key">Secret access key</Field.Label>
-						<Input
-							id="secret-key"
-							type="password"
-							bind:value={secretAccessKey}
-							placeholder={configured ? 'Saved · leave blank to keep' : ''}
-							autocomplete="new-password"
-							class="font-mono text-sm"
-						/>
-					</Field.Field>
-					<Field.Description class="sm:col-span-2">{preset.keysHelp}</Field.Description>
-					<Field.Field orientation="horizontal" class="sm:col-span-2">
-						<Field.Content>
-							<Field.Label for="path-style">Path-style URLs</Field.Label>
-							<Field.Description>On for Cloudflare R2, MinIO and most self-hosted providers. Off for AWS S3 and Backblaze B2.</Field.Description>
-						</Field.Content>
-						<Switch id="path-style" bind:checked={pathStyle} />
-					</Field.Field>
-				</Field.Group>
-
-				<p class="text-muted-foreground flex items-start gap-2 text-xs">
-					<LockIcon class="mt-px size-3.5 shrink-0" />
-					Keys are encrypted before they're stored and are never shown again, not even to you. Use a key that can only
-					access this bucket.
-				</p>
-
-				{#if message}
-					<Alert.Root variant={message.ok ? 'default' : 'destructive'}>
-						{#if message.ok}<CircleCheckIcon />{:else}<CircleAlertIcon />{/if}
-						<Alert.Title>{message.text}</Alert.Title>
-					</Alert.Root>
+				</dl>
+				{#if changingEmail}
+					<div class="mt-5">
+						<ChangeEmailForm onclose={() => (changingEmail = false)} />
+					</div>
 				{/if}
+			</FormSection>
 
-				<div class="flex flex-wrap items-center gap-2">
-					<Button type="submit" disabled={!canSubmit}>
-						{#if saving}<Spinner data-icon="inline-start" />{/if}
-						{configured ? 'Save changes' : 'Connect storage'}
-					</Button>
-					<Button type="button" variant="outline" onclick={test} disabled={!canSubmit}>
-						{#if testing}<Spinner data-icon="inline-start" />{/if}
-						Test connection
-					</Button>
-					{#if configured}
-						<Button type="button" variant="ghost" class="text-destructive ml-auto" onclick={() => (confirmDisconnect = true)}>
-							Disconnect
-						</Button>
+			<FormSection
+				id="password"
+				title="Password"
+				description="Changing it signs you out on every other device. You stay signed in here."
+			>
+				<form onsubmit={submitPassword} class="flex flex-col gap-6">
+					<Field.Group class="grid gap-5 sm:grid-cols-2">
+						<Field.Field class="sm:col-span-2 sm:max-w-[calc(50%-0.625rem)]">
+							<Field.Label for="current-password">Current password</Field.Label>
+							<Input
+								id="current-password"
+								type="password"
+								autocomplete="current-password"
+								bind:value={currentPassword}
+								disabled={changingPassword}
+							/>
+						</Field.Field>
+						<Field.Field data-invalid={!!newPasswordError || undefined}>
+							<Field.Label for="new-password">New password</Field.Label>
+							<Input
+								id="new-password"
+								type="password"
+								autocomplete="new-password"
+								bind:value={newPassword}
+								disabled={changingPassword}
+								aria-invalid={!!newPasswordError || undefined}
+							/>
+							{#if newPasswordError}
+								<Field.Error>{newPasswordError}</Field.Error>
+							{:else}
+								<Field.Description>At least 8 characters.</Field.Description>
+							{/if}
+						</Field.Field>
+						<Field.Field data-invalid={!!confirmPasswordError || undefined}>
+							<Field.Label for="confirm-password">Confirm new password</Field.Label>
+							<Input
+								id="confirm-password"
+								type="password"
+								autocomplete="new-password"
+								bind:value={confirmPassword}
+								disabled={changingPassword}
+								aria-invalid={!!confirmPasswordError || undefined}
+							/>
+							{#if confirmPasswordError}
+								<Field.Error>{confirmPasswordError}</Field.Error>
+							{/if}
+						</Field.Field>
+					</Field.Group>
+
+					{#if passwordMessage}
+						<Alert.Root variant="destructive">
+							<CircleAlertIcon />
+							<Alert.Title>{passwordMessage}</Alert.Title>
+						</Alert.Root>
 					{/if}
+
+					<div>
+						<Button type="submit" disabled={!canChangePassword}>
+							{#if changingPassword}<Spinner data-icon="inline-start" />{/if}
+							Change password
+						</Button>
+					</div>
+				</form>
+			</FormSection>
+		</Tabs.Content>
+		{#if session.isAdmin}
+			<Tabs.Content value="organisation">
+				<FormSection
+					id="organisation"
+					title="Organisation"
+					description={session.isOwner
+						? 'Shown to your team. New users start with the default storage limit; you can change it per person.'
+						: 'Only the owner can change these.'}
+				>
+					{#if !org}
+						<Skeleton class="h-24 rounded-xl" />
+					{:else}
+						<form onsubmit={saveOrg} class="flex flex-col gap-6">
+							<Field.Group class="gap-5">
+								<Field.Field class="sm:max-w-sm">
+									<Field.Label for="org-name">Name</Field.Label>
+									<Input id="org-name" bind:value={orgName} maxlength={80} disabled={!session.isOwner || savingOrg} required />
+								</Field.Field>
+								<Field.Field>
+									<Field.Label for="org-quota">Default storage per user</Field.Label>
+									<QuotaInput id="org-quota" bind:value={defaultQuota} disabled={!session.isOwner || savingOrg} />
+									<Field.Description>
+										For each person's own files. Shared and organisation files don't count. Changing this doesn't affect
+										existing users.
+									</Field.Description>
+								</Field.Field>
+							</Field.Group>
+							{#if session.isOwner}
+								<div>
+									<Button type="submit" disabled={!orgChanged || savingOrg}>
+										{#if savingOrg}<Spinner data-icon="inline-start" />{/if}
+										Save organisation
+									</Button>
+								</div>
+							{/if}
+						</form>
+					{/if}
+				</FormSection>
+			</Tabs.Content>
+			<Tabs.Content value="branding">
+				<FormSection
+					id="branding"
+					title="Branding"
+					description="Your logo on cards and email signatures, and what every signature includes."
+				>
+					<BrandingSettings />
+				</FormSection>
+			</Tabs.Content>
+		{/if}
+		<Tabs.Content value="storage">
+			{#if !session.isOwner}
+				<FormSection
+					id="storage"
+					title="Storage"
+					description="{session.orgName} provides storage for your photos and brochures. Shared files don't count toward your limit."
+				>
+					{#if status}
+						{#if !status.configured}
+							<p class="text-muted-foreground text-sm">
+								{session.orgName} hasn't connected storage yet, so uploads aren't available.
+							</p>
+						{:else}
+							<StorageMeter used={status.used_bytes} quota={status.quota_bytes} class="max-w-sm" />
+						{/if}
+					{:else}
+						<Skeleton class="h-10 max-w-sm" />
+					{/if}
+				</FormSection>
+			{:else if storage.error}
+				<Alert.Root variant="destructive" class="mt-6">
+					<CircleAlertIcon />
+					<Alert.Title>{storage.error}</Alert.Title>
+				</Alert.Root>
+			{:else if !status}
+				<div class="mt-8 flex flex-col gap-4">
+					<Skeleton class="h-8 w-56" />
+					<Skeleton class="h-72 rounded-xl" />
 				</div>
-				{#if configured && (input.bucket !== status.bucket || input.endpoint !== status.endpoint)}
-					<p class="text-sm text-amber-700 dark:text-amber-400">
-						Files you've already uploaded stay in {status.bucket}. They'll keep loading only if these keys can still read
-						that bucket.
+			{:else if !status.enabled}
+				<div class="bg-card mt-8 flex flex-col gap-2 rounded-xl border p-6">
+					<p class="font-medium">File storage isn't enabled on this server</p>
+					<p class="text-muted-foreground max-w-2xl text-sm">
+						Whoever runs this Fronko server needs to set <code class="bg-muted rounded px-1 py-0.5 text-xs">SECRETS_KEY</code>
+						(a 32-byte key, e.g. <code class="bg-muted rounded px-1 py-0.5 text-xs">openssl rand -base64 32</code>). It's used to
+						encrypt your storage keys.
 					</p>
-				{/if}
-			</form>
-		</FormSection>
-	{/if}
+				</div>
+			{:else}
+				<FormSection
+					id="storage"
+					title="Storage"
+					description="Photos and PDF brochures for your whole organisation are stored in your own S3-compatible bucket. The bucket can stay private: visitors get short-lived links."
+				>
+					<form onsubmit={save} class="flex flex-col gap-6">
+						<div
+							class={cn(
+								'flex items-center gap-3 rounded-xl border px-4 py-3 text-sm',
+								configured ? 'bg-card' : 'bg-muted/40 border-dashed'
+							)}
+						>
+							{#if configured}
+								<span class="grid size-8 place-items-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+									<CircleCheckIcon class="size-4" />
+								</span>
+								<span class="flex min-w-0 flex-col">
+									<span class="flex items-center gap-1.5 font-medium">
+										<StorageProviderIcon provider={status.provider ?? 'other'} class="size-3.5 shrink-0" />
+										Connected to {PRESETS[status.provider ?? 'other'].label}
+									</span>
+									<span class="text-muted-foreground truncate text-xs">
+										{status.bucket} · {plural(status.file_count, 'file')}
+										{#if status.verified_at}· verified {timeAgo(status.verified_at)}{/if}
+									</span>
+								</span>
+							{:else}
+								<span class="bg-muted text-muted-foreground grid size-8 place-items-center rounded-full">
+									<PlugIcon class="size-4" />
+								</span>
+								<span class="flex flex-col">
+									<span class="font-medium">Not connected</span>
+									<span class="text-muted-foreground text-xs">Uploads are off until you connect a bucket.</span>
+								</span>
+							{/if}
+						</div>
+
+						<Field.Field>
+							<Field.Label>Provider</Field.Label>
+							<div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5" role="radiogroup" aria-label="Provider">
+								{#each Object.entries(PRESETS) as [key, p] (key)}
+									<button
+										type="button"
+										role="radio"
+										aria-checked={provider === key}
+										onclick={() => choosePreset(key as StorageProvider)}
+										class={cn(
+											'flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors',
+											provider === key ? 'border-foreground ring-foreground ring-1' : 'hover:border-foreground/30'
+										)}
+									>
+										<StorageProviderIcon provider={key as StorageProvider} class="size-4 shrink-0" />
+										{p.label}
+									</button>
+								{/each}
+							</div>
+						</Field.Field>
+
+						<Field.Group class="grid gap-5 sm:grid-cols-2">
+							<Field.Field class="sm:col-span-2">
+								<Field.Label for="endpoint">Endpoint</Field.Label>
+								<Input id="endpoint" bind:value={endpoint} placeholder={preset.endpoint} class="font-mono text-sm" autocomplete="off" />
+								<Field.Description>The S3 API URL only, without the bucket name or a path.</Field.Description>
+							</Field.Field>
+							<Field.Field>
+								<Field.Label for="bucket">Bucket</Field.Label>
+								<Input id="bucket" bind:value={bucket} placeholder="my-fronko-files" autocomplete="off" />
+							</Field.Field>
+							<Field.Field>
+								<Field.Label for="region">Region</Field.Label>
+								<Input id="region" bind:value={region} placeholder={preset.region} autocomplete="off" />
+							</Field.Field>
+							<Field.Field>
+								<Field.Label for="access-key">Access key ID</Field.Label>
+								<Input
+									id="access-key"
+									bind:value={accessKeyId}
+									placeholder={configured ? `Saved · ends in ${status.access_key_hint}` : ''}
+									autocomplete="off"
+									spellcheck={false}
+									class="font-mono text-sm"
+								/>
+							</Field.Field>
+							<Field.Field>
+								<Field.Label for="secret-key">Secret access key</Field.Label>
+								<Input
+									id="secret-key"
+									type="password"
+									bind:value={secretAccessKey}
+									placeholder={configured ? 'Saved · leave blank to keep' : ''}
+									autocomplete="new-password"
+									class="font-mono text-sm"
+								/>
+							</Field.Field>
+							<Field.Description class="sm:col-span-2">{preset.keysHelp}</Field.Description>
+							<Field.Field orientation="horizontal" class="sm:col-span-2">
+								<Field.Content>
+									<Field.Label for="path-style">Path-style URLs</Field.Label>
+									<Field.Description>On for Cloudflare R2, MinIO and most self-hosted providers. Off for AWS S3 and Backblaze B2.</Field.Description>
+								</Field.Content>
+								<Switch id="path-style" bind:checked={pathStyle} />
+							</Field.Field>
+						</Field.Group>
+
+						<p class="text-muted-foreground flex items-start gap-2 text-xs">
+							<LockIcon class="mt-px size-3.5 shrink-0" />
+							Keys are encrypted before they're stored and are never shown again, not even to you. Use a key that can only
+							access this bucket.
+						</p>
+
+						{#if message}
+							<Alert.Root variant={message.ok ? 'default' : 'destructive'}>
+								{#if message.ok}<CircleCheckIcon />{:else}<CircleAlertIcon />{/if}
+								<Alert.Title>{message.text}</Alert.Title>
+							</Alert.Root>
+						{/if}
+
+						<div class="flex flex-wrap items-center gap-2">
+							<Button type="submit" disabled={!canSubmit}>
+								{#if saving}<Spinner data-icon="inline-start" />{/if}
+								{configured ? 'Save changes' : 'Connect storage'}
+							</Button>
+							<Button type="button" variant="outline" onclick={test} disabled={!canSubmit}>
+								{#if testing}<Spinner data-icon="inline-start" />{/if}
+								Test connection
+							</Button>
+							{#if configured}
+								<Button type="button" variant="ghost" class="text-destructive ml-auto" onclick={() => (confirmDisconnect = true)}>
+									Disconnect
+								</Button>
+							{/if}
+						</div>
+						{#if configured && (input.bucket !== status.bucket || input.endpoint !== status.endpoint)}
+							<p class="text-sm text-amber-700 dark:text-amber-400">
+								Files you've already uploaded stay in {status.bucket}. They'll keep loading only if these keys can still read
+								that bucket.
+							</p>
+						{/if}
+					</form>
+				</FormSection>
+			{/if}
+		</Tabs.Content>
+	</Tabs.Root>
 </div>
 
 <AlertDialog.Root bind:open={confirmDisconnect}>

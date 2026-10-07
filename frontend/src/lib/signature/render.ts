@@ -150,7 +150,8 @@ function joined(items: Item[], color: string, sep = ' &nbsp;|&nbsp; '): string {
 }
 
 function logoHtml(p: Parts, maxH: number): string {
-	return p.logo ? img(p.logo.src, p.logo.alt, fit(p.logo.size, 180, maxH)) : '';
+	// Logos are square; the width cap only matters for older, wider uploads.
+	return p.logo ? img(p.logo.src, p.logo.alt, fit(p.logo.size, maxH * 3, maxH)) : '';
 }
 
 function photoHtml(p: Parts, size: number): string {
@@ -173,7 +174,7 @@ function classic(p: Parts): string {
 		...p.contacts.map((c) => row(itemHtml(c, TEXT))),
 		p.socials.length ? row(joined(p.socials, p.accent), 'padding-top:4px;') : '',
 		p.cardLink ? row(a(p.cardLink, 'View my digital card →', p.accent, 'font-weight:bold;'), 'padding-top:4px;') : '',
-		p.logo ? row(logoHtml(p, 32), 'padding-top:10px;') : ''
+		p.logo ? row(logoHtml(p, 36), 'padding-top:10px;') : ''
 	].join('');
 	const photo = p.photo ? `<td style="vertical-align:top;padding-right:14px;">${photoHtml(p, 72)}</td>` : '';
 	return table(
@@ -197,7 +198,7 @@ function corporate(p: Parts): string {
 				BASE
 			);
 	const lines = [
-		p.logo ? row(logoHtml(p, 40), 'padding-bottom:10px;') : '',
+		p.logo ? row(logoHtml(p, 48), 'padding-bottom:10px;') : '',
 		row(head),
 		p.company ? row(`<span style="font-weight:bold;">${esc(p.company)}</span>`, 'padding-top:2px;') : '',
 		row('', `border-top:1px solid ${p.accent};font-size:0;line-height:0;height:1px;padding-top:8px;`),
@@ -212,7 +213,7 @@ function compact(p: Parts): string {
 	const first = `<span style="font-weight:bold;">${esc(p.name)}</span>${p.role ? `<span style="color:${MUTED};"> · ${esc(p.role)}</span>` : ''}`;
 	const items = [...p.contacts, ...(p.cardLink ? [{ text: 'My card', href: p.cardLink }] : [])];
 	const second = joined(items, p.accent);
-	const logo = p.logo ? `<td style="vertical-align:middle;padding-right:10px;">${logoHtml(p, 24)}</td>` : '';
+	const logo = p.logo ? `<td style="vertical-align:middle;padding-right:10px;">${logoHtml(p, 32)}</td>` : '';
 	const text = table(row(first) + (second ? row(second, 'font-size:12px;') : ''), BASE);
 	return table(`<tr>${logo}<td style="vertical-align:middle;">${text}</td></tr>`, BASE);
 }
@@ -235,7 +236,7 @@ function bold(p: Parts): string {
 		...p.contacts.map((c) => row(itemHtml(c, TEXT))),
 		p.socials.length ? row(joined(p.socials, p.accent), 'padding-top:4px;') : '',
 		button,
-		p.logo ? row(logoHtml(p, 32), 'padding-top:12px;') : ''
+		p.logo ? row(logoHtml(p, 40), 'padding-top:12px;') : ''
 	].join('');
 	const photo = p.photo ? `<td style="vertical-align:top;padding-right:16px;">${photoHtml(p, 80)}</td>` : '';
 	return table(
@@ -261,7 +262,8 @@ const LAYOUTS: Record<SignatureTemplateKey, (p: Parts) => string> = { classic, c
 function footer(p: Parts): string {
 	const parts: string[] = [];
 	if (p.banner) {
-		const box = fit(p.banner.size, 400, 120);
+		// 600 px is the usual email width; a 4:1 banner shows at 600 × 150.
+		const box = fit(p.banner.size, 600, 200);
 		const image = img(p.banner.src, '', box);
 		parts.push(row(p.banner.href ? `<a href="${esc(p.banner.href)}" style="text-decoration:none;">${image}</a>` : image, 'padding-top:12px;'));
 	}
