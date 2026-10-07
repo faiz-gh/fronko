@@ -163,7 +163,7 @@
 									<CardAvatar {card} fallback={profile.slug} />
 									<span class="flex min-w-0 flex-1 flex-col">
 										<span class="truncate text-sm font-medium">{card.name || profile.slug}</span>
-										<span class="text-muted-foreground truncate font-mono text-[11px]">/p/{profile.slug}</span>
+										<span class="text-muted-foreground truncate font-mono text-[11px]">/p/{session.orgHandle}/{profile.slug}</span>
 									</span>
 									{#if profile.lead_count > 0}
 										<span

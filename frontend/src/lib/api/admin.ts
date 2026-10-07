@@ -13,6 +13,8 @@ export interface PlatformAdmin {
 export interface OrgUsage {
 	id: number;
 	name: string;
+	/** The organisation's part of its card links, /p/{handle}/… */
+	handle: string;
 	created_at: string;
 	owner_email: string | null;
 	suspended_at: string | null;

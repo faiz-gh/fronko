@@ -327,7 +327,7 @@
 											<span class="mt-1.5 size-2 shrink-0 rounded-full" style="background: {info.color}"></span>
 											<span class="flex min-w-0 flex-col">
 												<span class="truncate text-sm">{info.name}</span>
-												<span class="text-muted-foreground truncate font-mono text-[11px]">/p/{info.slug}</span>
+												<span class="text-muted-foreground truncate font-mono text-[11px]">/p/{session.orgHandle}/{info.slug}</span>
 											</span>
 										</button>
 									{/if}

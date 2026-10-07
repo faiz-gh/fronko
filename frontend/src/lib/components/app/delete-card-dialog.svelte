@@ -4,6 +4,7 @@
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { cards } from '$lib/cards.svelte';
+	import { session } from '$lib/session.svelte';
 
 	let {
 		target = $bindable(null),
@@ -26,7 +27,7 @@
 		try {
 			await deleteProfile(profile.id);
 			cards.remove(profile.id);
-			toast.success(`Deleted /p/${profile.slug}`);
+			toast.success(`Deleted /p/${session.orgHandle}/${profile.slug}`);
 			target = null;
 			ondeleted?.(profile);
 		} catch (e) {
@@ -40,7 +41,7 @@
 <AlertDialog.Root open={target !== null} onOpenChange={(open) => !open && (target = null)}>
 	<AlertDialog.Content>
 		<AlertDialog.Header>
-			<AlertDialog.Title>Delete /p/{target?.slug}?</AlertDialog.Title>
+			<AlertDialog.Title>Delete /p/{session.orgHandle}/{target?.slug}?</AlertDialog.Title>
 			<AlertDialog.Description>
 				The public link stops working immediately, and its {leadCount} captured
 				{leadCount === 1 ? 'lead is' : 'leads are'} deleted too. This can't be undone.

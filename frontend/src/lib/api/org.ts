@@ -6,6 +6,8 @@ import type { TeamMembership, TeamRef } from './teams';
 export interface Organization {
 	id: number;
 	name: string;
+	/** The organisation's part of every card link, /p/{handle}/{slug}. */
+	handle: string;
 	/** Storage limit new users start with; null is unlimited. */
 	default_quota_bytes: number | null;
 	created_at: string;
@@ -62,6 +64,17 @@ export function updateOrganization(name: string, defaultQuotaBytes: number | nul
 	return apiClient<Organization>('/api/org', {
 		method: 'PUT',
 		body: JSON.stringify({ name, default_quota_bytes: defaultQuotaBytes })
+	});
+}
+
+/**
+ * Admins only. Changes every card link; links already on QR codes, NFC cards
+ * and email signatures stop working.
+ */
+export function updateOrgHandle(handle: string): Promise<Organization> {
+	return apiClient<Organization>('/api/org/handle', {
+		method: 'PUT',
+		body: JSON.stringify({ handle })
 	});
 }
 

@@ -1,6 +1,6 @@
 import { fileUrl } from '$lib/api/files';
 import { showsOrgLogo, type OrgBranding } from '$lib/api/org';
-import { avatarSrc, displayUrl, linkLabel, publicUrl, safeUrl, type AccentKey, type CardData } from '$lib/card/card';
+import { avatarSrc, displayUrl, linkLabel, safeUrl, type AccentKey, type CardData } from '$lib/card/card';
 import { e164, formatPhone } from '$lib/phone';
 import { SIGNATURE_TEMPLATES, isSignatureTemplate, type SignatureTemplateKey } from './templates';
 
@@ -94,7 +94,7 @@ interface Parts {
 	disclaimer: string;
 }
 
-function collect(card: CardData, slug: string, org: OrgBranding | null, opts: RenderOptions, template: SignatureTemplateKey): Parts {
+function collect(card: CardData, cardUrl: string, org: OrgBranding | null, opts: RenderOptions, template: SignatureTemplateKey): Parts {
 	const s = card.signature;
 	const sig = org?.signature ?? {};
 
@@ -135,7 +135,7 @@ function collect(card: CardData, slug: string, org: OrgBranding | null, opts: Re
 		logo,
 		contacts,
 		socials,
-		cardLink: s.show_card_link && slug ? publicUrl(slug) : null,
+		cardLink: s.show_card_link && cardUrl ? cardUrl : null,
 		banner: sig.banner_file ? { src: absolute(fileUrl(sig.banner_file)), href: bannerHref, size: opts.bannerSize ?? null } : null,
 		disclaimer: sig.disclaimer?.trim() ?? ''
 	};
@@ -297,9 +297,10 @@ export function signatureTemplate(card: CardData, org: OrgBranding | null): Sign
 	return isSignatureTemplate(locked) ? locked : card.signature.template;
 }
 
-export function renderSignature(card: CardData, slug: string, org: OrgBranding | null, opts: RenderOptions = {}): RenderedSignature {
+/** `cardUrl` is the card's public link (see publicUrl), or '' for none. */
+export function renderSignature(card: CardData, cardUrl: string, org: OrgBranding | null, opts: RenderOptions = {}): RenderedSignature {
 	const template = opts.template ?? signatureTemplate(card, org);
-	const p = collect(card, slug, org, opts, template);
+	const p = collect(card, cardUrl, org, opts, template);
 	const html = `<div style="font-family:${FONT};">${LAYOUTS[template](p)}${footer(p)}</div>`;
 	return { template, html, text: plainText(p) };
 }

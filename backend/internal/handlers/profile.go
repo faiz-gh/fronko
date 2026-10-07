@@ -23,6 +23,14 @@ const (
 	maxSlugLen = 48
 )
 
+const errSlugTaken = "another card in your organisation already uses that link"
+
+// validHandle checks an organisation's link handle: the same characters as
+// a card slug, 3-32 long.
+func validHandle(handle string) bool {
+	return len(handle) >= repository.MinHandleLen && len(handle) <= repository.MaxHandleLen && slugPattern.MatchString(handle)
+}
+
 type ProfileHandler struct {
 	repo *repository.Repository
 	// frontendOrigins are where the app is served when it isn't proxied
@@ -72,9 +80,9 @@ func profileIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return id, true
 }
 
-// Public: GET /api/profiles/{slug}
-func (h *ProfileHandler) GetProfileBySlug(w http.ResponseWriter, r *http.Request) {
-	profile, err := h.repo.GetProfileBySlug(r.Context(), r.PathValue("slug"))
+// Public: GET /api/profiles/{org}/{slug}, the card behind /p/{org}/{slug}.
+func (h *ProfileHandler) GetPublicProfile(w http.ResponseWriter, r *http.Request) {
+	profile, err := h.repo.GetProfileByPath(r.Context(), r.PathValue("org"), r.PathValue("slug"))
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "profile not found")
@@ -92,7 +100,7 @@ func (h *ProfileHandler) GetProfileBySlug(w http.ResponseWriter, r *http.Request
 	}
 
 	// Resolve only the files this card uses, and only ones its organisation still has.
-	public := models.PublicProfile{ID: profile.ID, Slug: profile.Slug, Data: profile.Data, Files: []models.PublicFile{}}
+	public := models.PublicProfile{ID: profile.ID, Slug: profile.Slug, OrgHandle: profile.OrgHandle, Data: profile.Data, Files: []models.PublicFile{}}
 	if b, err := h.repo.GetOrgBranding(r.Context(), profile.OrgID); err != nil {
 		log.Printf("profile org branding: %v", err)
 	} else {
@@ -208,7 +216,7 @@ func (h *ProfileHandler) CreateProfile(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.repo.CreateProfile(r.Context(), profile); err != nil {
 		if errors.Is(err, repository.ErrConflict) {
-			writeError(w, http.StatusConflict, "that slug is already taken")
+			writeError(w, http.StatusConflict, errSlugTaken)
 			return
 		}
 		log.Printf("create profile: %v", err)
@@ -263,7 +271,7 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, repository.ErrNotFound):
 			writeError(w, http.StatusNotFound, "profile not found")
 		case errors.Is(err, repository.ErrConflict):
-			writeError(w, http.StatusConflict, "that slug is already taken")
+			writeError(w, http.StatusConflict, errSlugTaken)
 		default:
 			log.Printf("update profile: %v", err)
 			writeError(w, http.StatusInternalServerError, "failed to update profile")

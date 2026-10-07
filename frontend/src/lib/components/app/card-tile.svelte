@@ -7,6 +7,7 @@
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import QrCodeIcon from '@lucide/svelte/icons/qr-code';
+	import SmartphoneNfcIcon from '@lucide/svelte/icons/smartphone-nfc';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import { setCardAssignee } from '$lib/api/org';
 	import type { Profile } from '$lib/api/profile';
@@ -23,10 +24,12 @@
 	let {
 		profile,
 		onqr,
+		onnfc,
 		ondelete
 	}: {
 		profile: Profile;
 		onqr: (profile: Profile) => void;
+		onnfc: (profile: Profile) => void;
 		/** Admins only. */
 		ondelete?: (profile: Profile) => void;
 	} = $props();
@@ -36,7 +39,7 @@
 
 	async function copyLink() {
 		try {
-			await navigator.clipboard.writeText(publicUrl(profile.slug));
+			await navigator.clipboard.writeText(publicUrl(session.orgHandle, profile.slug));
 			toast.success('Link copied');
 		} catch {
 			toast.error('Could not copy to clipboard');
@@ -89,9 +92,13 @@
 								<PencilIcon />
 								Edit
 							</DropdownMenu.Item>
-							<DropdownMenu.Item onSelect={() => window.open(`/p/${profile.slug}`, '_blank')}>
+							<DropdownMenu.Item onSelect={() => window.open(publicUrl(session.orgHandle, profile.slug), '_blank')}>
 								<ExternalLinkIcon />
 								View public page
+							</DropdownMenu.Item>
+							<DropdownMenu.Item onSelect={() => onnfc(profile)}>
+								<SmartphoneNfcIcon />
+								Write to NFC card
 							</DropdownMenu.Item>
 							<DropdownMenu.Item onSelect={() => goto(`/dashboard/leads?card=${profile.id}`)}>
 								<InboxIcon />
@@ -137,7 +144,7 @@
 			{:else if profile.assigned_user && profile.assigned_user.username !== session.username}
 				<span class="truncate">{profile.assigned_user.username}</span>
 			{:else}
-				<span class="truncate font-mono">/p/{profile.slug}</span>
+				<span class="truncate font-mono">/p/{session.orgHandle}/{profile.slug}</span>
 			{/if}
 			<span class={profile.lead_count > 0 ? 'text-foreground shrink-0 font-medium' : 'shrink-0'}>
 				{plural(profile.lead_count, 'lead')}

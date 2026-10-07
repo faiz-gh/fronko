@@ -133,3 +133,12 @@ func TestValidateBranding(t *testing.T) {
 	bad(models.OrgBranding{Signature: models.OrgSignature{BannerURL: "javascript:alert(1)"}})
 	bad(models.OrgBranding{Signature: models.OrgSignature{BannerURL: "acme.test"}})
 }
+
+func TestValidHandle(t *testing.T) {
+	for _, h := range []string{"acme", "acme-corp", "a1b", "abcdefghijklmnopqrstuvwxyz123456"} {
+		assert.True(t, validHandle(h), h)
+	}
+	for _, h := range []string{"", "ab", "Acme", "acme_corp", "-acme", "acme-", "ac--me", "abcdefghijklmnopqrstuvwxyz1234567", "acme/john"} {
+		assert.False(t, validHandle(h), h)
+	}
+}

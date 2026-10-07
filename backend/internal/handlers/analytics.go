@@ -252,7 +252,7 @@ type eventRequest struct {
 	} `json:"events"`
 }
 
-// Public: POST /api/profiles/{slug}/events. The public card's tracker sends
+// Public: POST /api/profiles/{org}/{slug}/events. The public card's tracker sends
 // batches here with navigator.sendBeacon (as text/plain). It answers 204
 // whether or not anything was stored, so it reveals nothing about the card.
 func (h *AnalyticsHandler) Collect(w http.ResponseWriter, r *http.Request) {
@@ -276,7 +276,7 @@ func (h *AnalyticsHandler) Collect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profile, err := h.repo.GetProfileBySlug(r.Context(), r.PathValue("slug"))
+	profile, err := h.repo.GetProfileByPath(r.Context(), r.PathValue("org"), r.PathValue("slug"))
 	if err != nil || profile.OrgSuspended {
 		if err != nil && !errors.Is(err, repository.ErrNotFound) {
 			log.Printf("collect events: %v", err)

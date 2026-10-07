@@ -107,12 +107,12 @@ func requestOrigin(r *http.Request) string {
 	return scheme + "://" + r.Host
 }
 
-// Public: GET /api/profiles/{slug}/vcard[?via=nfc|qr|link&s=<session>].
+// Public: GET /api/profiles/{org}/{slug}/vcard[?via=nfc|qr|link&s=<session>].
 // Opening it shows the phone's "Add contact" sheet, which is how a card's
 // "save contact" tap works. Each download counts as a contact save; via and s
 // tie it to the visit that asked for it.
 func (h *ProfileHandler) VCard(w http.ResponseWriter, r *http.Request) {
-	profile, err := h.repo.GetProfileBySlug(r.Context(), r.PathValue("slug"))
+	profile, err := h.repo.GetProfileByPath(r.Context(), r.PathValue("org"), r.PathValue("slug"))
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "profile not found")
@@ -133,5 +133,5 @@ func (h *ProfileHandler) VCard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/vcard; charset=utf-8")
 	w.Header().Set("Content-Disposition", `inline; filename="`+profile.Slug+`.vcf"`)
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(buildVCard(profile.Data, frontendOrigin(r, h.frontendOrigins)+"/p/"+profile.Slug)))
+	_, _ = w.Write([]byte(buildVCard(profile.Data, frontendOrigin(r, h.frontendOrigins)+"/p/"+profile.OrgHandle+"/"+profile.Slug)))
 }

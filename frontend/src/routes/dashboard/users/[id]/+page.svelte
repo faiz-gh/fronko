@@ -438,7 +438,7 @@
 								<CardAvatar {card} fallback={profile.slug} />
 								<a href="/dashboard/{profile.id}" class="flex min-w-0 flex-1 flex-col hover:underline">
 									<span class="truncate text-sm font-medium">{card.name || profile.slug}</span>
-									<span class="text-muted-foreground truncate font-mono text-[11px]">/p/{profile.slug}</span>
+									<span class="text-muted-foreground truncate font-mono text-[11px]">/p/{session.orgHandle}/{profile.slug}</span>
 								</a>
 								{#if canManage}
 									<Button variant="ghost" size="sm" onclick={() => assign(profile.id, null)}>Unassign</Button>

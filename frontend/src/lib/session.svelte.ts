@@ -15,6 +15,8 @@ class Session {
 	emailVerified = $state(false);
 	role = $state<Role | null>(null);
 	orgName = $state('');
+	/** The organisation's part of every card link, /p/{orgHandle}/{slug}. */
+	orgHandle = $state('');
 	mustChangePassword = $state(false);
 	/** Teams the user is in, with their role in each. */
 	teams = $state<TeamRef[]>([]);
@@ -81,6 +83,7 @@ class Session {
 		this.emailVerified = user.email_verified;
 		this.role = user.role;
 		this.orgName = user.org_name;
+		this.orgHandle = user.org_handle;
 		this.mustChangePassword = user.must_change_password;
 		this.teams = user.teams ?? [];
 		this.status = 'authenticated';
@@ -92,6 +95,7 @@ class Session {
 		this.emailVerified = false;
 		this.role = null;
 		this.orgName = '';
+		this.orgHandle = '';
 		this.mustChangePassword = false;
 		this.teams = [];
 		this.status = 'anonymous';

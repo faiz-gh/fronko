@@ -559,7 +559,7 @@
 											<a href="/dashboard/analytics?card={c.profile_id}{range !== '30' ? `&range=${range}` : ''}" class="font-medium hover:underline">
 												{c.name || c.slug}
 											</a>
-											<div class="text-muted-foreground font-mono text-[11px]">/p/{c.slug}</div>
+											<div class="text-muted-foreground font-mono text-[11px]">/p/{session.orgHandle}/{c.slug}</div>
 										</Table.Cell>
 										{#if session.seesOthers}
 											<Table.Cell class="text-muted-foreground">{c.assigned_user?.username ?? 'Organisation'}</Table.Cell>

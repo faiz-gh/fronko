@@ -217,7 +217,7 @@
 						class="bg-card absolute top-16 -left-2 hidden w-32 flex-col gap-2 rounded-2xl border p-2.5 shadow-xl sm:flex lg:-left-6"
 						aria-hidden="true"
 					>
-						<QrCode url="https://fronko.example/p/amara" class="p-1.5 shadow-none ring-0" />
+						<QrCode url="https://fronko.example/p/acme/amara" class="p-1.5 shadow-none ring-0" />
 						<span class="text-muted-foreground flex items-center justify-center gap-1.5 text-xs font-medium">
 							<QrCodeIcon class="size-3.5" /> Scan to open
 						</span>

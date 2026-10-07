@@ -521,16 +521,24 @@ export function downloadBlob(blob: Blob, filename: string) {
  * "Add contact" sheet. On the public card, `visit` ties the save to the visit
  * for analytics.
  */
-export function vcardUrl(slug: string, visit?: { via: string; session: string }): string {
-	const base = apiUrl(`/api/profiles/${encodeURIComponent(slug)}/vcard`);
+export function vcardUrl(org: string, slug: string, visit?: { via: string; session: string }): string {
+	const base = apiUrl(`/api/profiles/${cardPath(org, slug)}/vcard`);
 	return visit ? `${base}?${new URLSearchParams({ via: visit.via, s: visit.session })}` : base;
 }
 
-export function publicUrl(slug: string): string {
-	return `${location.origin}/p/${slug}`;
+/**
+ * A card's place in its link, `{org}/{slug}`: the organisation's handle, then
+ * the card's slug, which only has to be unique inside the organisation.
+ */
+export function cardPath(org: string, slug: string): string {
+	return `${encodeURIComponent(org)}/${encodeURIComponent(slug)}`;
+}
+
+export function publicUrl(org: string, slug: string): string {
+	return `${location.origin}/p/${cardPath(org, slug)}`;
 }
 
 /** The link to write to an NFC tag or encode in a QR code; it runs the card's tap action. */
-export function tapUrl(slug: string, via: TapSource): string {
-	return `${publicUrl(slug)}?via=${via}`;
+export function tapUrl(org: string, slug: string, via: TapSource): string {
+	return `${publicUrl(org, slug)}?via=${via}`;
 }

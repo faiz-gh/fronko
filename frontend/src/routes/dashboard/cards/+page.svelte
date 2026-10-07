@@ -12,6 +12,7 @@
 	import CardTile from '$lib/components/app/card-tile.svelte';
 	import DeleteCardDialog from '$lib/components/app/delete-card-dialog.svelte';
 	import QrDialog from '$lib/components/app/qr-dialog.svelte';
+	import NfcDialog from '$lib/components/app/nfc-dialog.svelte';
 	import TeamPicker from '$lib/components/app/team-picker.svelte';
 	import UserPicker from '$lib/components/app/user-picker.svelte';
 	import { normalizeCard } from '$lib/card/card';
@@ -77,6 +78,8 @@
 
 	let qrTarget = $state<Profile | null>(null);
 	let qrOpen = $state(false);
+	let nfcTarget = $state<Profile | null>(null);
+	let nfcOpen = $state(false);
 	let deleteTarget = $state<Profile | null>(null);
 </script>
 
@@ -162,6 +165,10 @@
 							qrTarget = p;
 							qrOpen = true;
 						}}
+						onnfc={(p) => {
+							nfcTarget = p;
+							nfcOpen = true;
+						}}
 						ondelete={session.isAdmin ? (p) => (deleteTarget = p) : undefined}
 					/>
 				{:else}
@@ -177,5 +184,11 @@
 	slug={qrTarget?.slug ?? ''}
 	name={qrTarget ? normalizeCard(qrTarget.data).name : ''}
 	style={qrTarget ? normalizeCard(qrTarget.data).qr : undefined}
+/>
+<NfcDialog
+	bind:open={nfcOpen}
+	profileId={nfcTarget?.id ?? 0}
+	slug={nfcTarget?.slug ?? ''}
+	name={nfcTarget ? normalizeCard(nfcTarget.data).name : ''}
 />
 <DeleteCardDialog bind:target={deleteTarget} />

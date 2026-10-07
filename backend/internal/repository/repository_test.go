@@ -190,6 +190,29 @@ func TestRepositoryIntegration(t *testing.T) {
 		assert.ErrorIs(t, err, repository.ErrNotFound)
 	})
 
+	t.Run("Organisation Handles", func(t *testing.T) {
+		first := newOwner(t, "Handle Co")
+		second := newOwner(t, "handle-co")
+		a, err := repo.GetOrganization(ctx, first.OrgID)
+		require.NoError(t, err)
+		b, err := repo.GetOrganization(ctx, second.OrgID)
+		require.NoError(t, err)
+		assert.Equal(t, "handle-co-org", a.Handle)
+		assert.Equal(t, "handle-co-org-2", b.Handle, "a taken handle gets a number")
+
+		assert.ErrorIs(t, repo.SetOrgHandle(ctx, second.OrgID, "Handle-Co-Org"), repository.ErrConflict, "case-insensitive")
+		require.NoError(t, repo.SetOrgHandle(ctx, first.OrgID, "handleco"))
+		require.NoError(t, repo.SetOrgHandle(ctx, second.OrgID, "handle-co-org"), "the old handle is released")
+		assert.ErrorIs(t, repo.SetOrgHandle(ctx, 999999, "nobody"), repository.ErrNotFound)
+
+		// Too little of the name to use: the username is the fallback
+		short := &models.User{Username: "fallback-user", PasswordHash: "hash"}
+		require.NoError(t, repo.CreateOrgWithOwner(ctx, "!!", short))
+		c, err := repo.GetOrganization(ctx, short.OrgID)
+		require.NoError(t, err)
+		assert.Equal(t, "fallback-user", c.Handle)
+	})
+
 	t.Run("Profile Flow", func(t *testing.T) {
 		user := newOwner(t, "profileuser")
 		scope := adminScope(user)
@@ -215,11 +238,17 @@ func TestRepositoryIntegration(t *testing.T) {
 		}
 		require.NoError(t, repo.CreateProfile(ctx, profile2))
 
-		// Get By Slug
-		fetched, err := repo.GetProfileBySlug(ctx, "My-Awesome-Slug") // Testing case-insensitivity
+		// Get by link, /p/{handle}/{slug}; both parts are case-insensitive
+		org, err := repo.GetOrganization(ctx, user.OrgID)
+		require.NoError(t, err)
+		assert.Equal(t, "profileuser-org", org.Handle, "made from the organisation name")
+		fetched, err := repo.GetProfileByPath(ctx, "ProfileUser-Org", "My-Awesome-Slug")
 		assert.NoError(t, err)
 		assert.Equal(t, profile.ID, fetched.ID)
 		assert.Equal(t, user.OrgID, fetched.OrgID)
+		assert.Equal(t, "profileuser-org", fetched.OrgHandle)
+		_, err = repo.GetProfileByPath(ctx, "someone-else", "my-awesome-slug")
+		assert.ErrorIs(t, err, repository.ErrNotFound)
 
 		// Update Profile
 		profile.Data = json.RawMessage(`{"theme": "blue"}`)
@@ -234,12 +263,20 @@ func TestRepositoryIntegration(t *testing.T) {
 		assert.Equal(t, json.RawMessage(`{"theme": "light"}`), profiles[0].Data) // profile2
 		assert.Equal(t, json.RawMessage(`{"theme": "blue"}`), profiles[1].Data)  // profile (updated)
 
-		// Slugs are unique case-insensitively
+		// Slugs are unique case-insensitively within the organisation
 		dup := &models.Profile{OrgID: user.OrgID, UserID: user.ID, Slug: "MY-AWESOME-SLUG", Data: json.RawMessage(`{}`)}
 		assert.ErrorIs(t, repo.CreateProfile(ctx, dup), repository.ErrConflict)
 
 		// Other organisations can't read, update or delete the profile
 		other := newOwner(t, "intruder")
+
+		// ...but they can use the same slug for their own card
+		same := &models.Profile{OrgID: other.OrgID, UserID: other.ID, Slug: "my-awesome-slug", Data: json.RawMessage(`{}`)}
+		require.NoError(t, repo.CreateProfile(ctx, same))
+		theirs, err := repo.GetProfileByPath(ctx, "intruder-org", "my-awesome-slug")
+		require.NoError(t, err)
+		assert.Equal(t, same.ID, theirs.ID)
+		require.NoError(t, repo.DeleteProfile(ctx, same.ID, other.OrgID))
 
 		_, err = repo.GetProfile(ctx, adminScope(other), profile.ID)
 		assert.ErrorIs(t, err, repository.ErrNotFound)

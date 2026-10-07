@@ -20,6 +20,7 @@ type PlatformAdmin struct {
 type OrgUsage struct {
 	ID                 int64      `json:"id"`
 	Name               string     `json:"name"`
+	Handle             string     `json:"handle"`
 	CreatedAt          time.Time  `json:"created_at"`
 	OwnerEmail         *string    `json:"owner_email"`
 	SuspendedAt        *time.Time `json:"suspended_at"`

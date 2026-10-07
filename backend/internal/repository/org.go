@@ -15,9 +15,9 @@ import (
 func (r *Repository) GetOrganization(ctx context.Context, orgID int64) (*models.Organization, error) {
 	var o models.Organization
 	err := r.db.QueryRow(ctx,
-		`SELECT org_id, name, default_quota_bytes, created_at, updated_at, suspended_at, suspended_reason
+		`SELECT org_id, name, handle, default_quota_bytes, created_at, updated_at, suspended_at, suspended_reason
 		FROM organizations WHERE org_id = $1`, orgID,
-	).Scan(&o.ID, &o.Name, &o.DefaultQuotaBytes, &o.CreatedAt, &o.UpdatedAt, &o.SuspendedAt, &o.SuspendedReason)
+	).Scan(&o.ID, &o.Name, &o.Handle, &o.DefaultQuotaBytes, &o.CreatedAt, &o.UpdatedAt, &o.SuspendedAt, &o.SuspendedReason)
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -28,9 +28,16 @@ func (r *Repository) GetOrganization(ctx context.Context, orgID int64) (*models.
 func (r *Repository) UpdateOrganization(ctx context.Context, o *models.Organization) error {
 	err := r.db.QueryRow(ctx, `
 		UPDATE organizations SET name = $2, default_quota_bytes = $3, updated_at = now()
-		WHERE org_id = $1 RETURNING created_at, updated_at`, o.ID, o.Name, o.DefaultQuotaBytes,
-	).Scan(&o.CreatedAt, &o.UpdatedAt)
+		WHERE org_id = $1 RETURNING handle, created_at, updated_at`, o.ID, o.Name, o.DefaultQuotaBytes,
+	).Scan(&o.Handle, &o.CreatedAt, &o.UpdatedAt)
 	return mapError(err)
+}
+
+// SetOrgHandle changes the organisation's link handle. Every card link
+// changes with it, and the old handle is free for anyone to take.
+// ErrConflict if another organisation uses it.
+func (r *Repository) SetOrgHandle(ctx context.Context, orgID int64, handle string) error {
+	return r.execOne(ctx, `UPDATE organizations SET handle = $2, updated_at = now() WHERE org_id = $1`, orgID, handle)
 }
 
 // orgUserQuery reads users with what they hold: cards assigned to them,
