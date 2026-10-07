@@ -49,6 +49,7 @@ type querier interface {
 
 // Scope limits a query to what a signed-in user may see: everything in their
 // organisation for owners and admins, or only their own things for members.
+// Team leads also see the cards and leads of the people in the teams they lead.
 type Scope struct {
 	OrgID  int64
 	UserID int64
@@ -63,6 +64,17 @@ func (s Scope) memberID() int64 {
 	return s.UserID
 }
 
+// visibleTo is a condition on a user id column: true when the cards and leads
+// that user holds are visible to the user in parameter $n (memberID). That's
+// everyone for admins ($n = 0); otherwise themselves and the members of the
+// teams they lead.
+func visibleTo(col string, n int) string {
+	return fmt.Sprintf(`($%[1]d::bigint = 0 OR %[2]s = $%[1]d OR %[2]s IN (
+		SELECT tm.user_id FROM team_members tm
+		JOIN team_members ld ON ld.team_id = tm.team_id AND ld.role = 'lead'
+		WHERE ld.user_id = $%[1]d))`, n, col)
+}
+
 func New(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
@@ -73,8 +85,17 @@ func New(db *pgxpool.Pool) *Repository {
 
 // CreateUser inserts a user into an existing organisation (user.OrgID).
 // Registering a new organisation goes through CreateOrgWithOwner instead.
-func (r *Repository) CreateUser(ctx context.Context, user *models.User) error {
-	return createUser(ctx, r.db, user)
+// Any teams given (outside the org are ignored) are joined in the same transaction.
+func (r *Repository) CreateUser(ctx context.Context, user *models.User, teams ...models.TeamMembership) error {
+	if len(teams) == 0 {
+		return createUser(ctx, r.db, user)
+	}
+	return pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+		if err := createUser(ctx, tx, user); err != nil {
+			return err
+		}
+		return replaceUserTeams(ctx, tx, user.OrgID, user.ID, teams)
+	})
 }
 
 func createUser(ctx context.Context, q querier, user *models.User) error {
@@ -154,15 +175,20 @@ func (r *Repository) GetUserInOrg(ctx context.Context, userID, orgID int64) (*mo
 // GetSessionState is the per-request check behind the JWT middleware.
 func (r *Repository) GetSessionState(ctx context.Context, userID int64) (models.SessionState, error) {
 	var s models.SessionState
+	var teams []byte
 	err := r.db.QueryRow(ctx, `
 		SELECT u.session_version, u.email_verified_at IS NOT NULL, u.org_id, u.role,
 		       u.suspended_at IS NOT NULL, u.must_change_password,
-		       o.suspended_at IS NOT NULL, COALESCE(o.suspended_reason, '')
+		       o.suspended_at IS NOT NULL, COALESCE(o.suspended_reason, ''), `+userTeamsJSON("u.user_id")+`
 		FROM users u JOIN organizations o ON o.org_id = u.org_id
 		WHERE u.user_id = $1`, userID,
 	).Scan(&s.Version, &s.Verified, &s.OrgID, &s.Role, &s.Suspended, &s.MustChangePassword,
-		&s.OrgSuspended, &s.OrgSuspendedReason)
-	return s, mapError(err)
+		&s.OrgSuspended, &s.OrgSuspendedReason, &teams)
+	if err != nil {
+		return s, mapError(err)
+	}
+	s.Teams, err = decodeTeamRefs(teams)
+	return s, err
 }
 
 // TouchLastLogin records a successful sign-in.
@@ -273,29 +299,42 @@ func (r *Repository) DeleteEmailCode(ctx context.Context, userID int64, purpose 
 // Profile Methods
 // ----------------------------------------------------------------------------
 
+// CreateProfile saves a new card and records which library files it uses.
 func (r *Repository) CreateProfile(ctx context.Context, profile *models.Profile) error {
-	query := `
-		INSERT INTO profiles (org_id, user_id, assigned_user_id, slug, data)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING profile_id, created_at, updated_at`
-	err := r.db.QueryRow(ctx, query, profile.OrgID, profile.UserID, profile.AssignedUserID, profile.Slug, profile.Data).Scan(
-		&profile.ID, &profile.CreatedAt, &profile.UpdatedAt,
-	)
-	return mapError(err)
+	return pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+		query := `
+			INSERT INTO profiles (org_id, user_id, assigned_user_id, slug, data)
+			VALUES ($1, $2, $3, $4, $5)
+			RETURNING profile_id, created_at, updated_at`
+		err := tx.QueryRow(ctx, query, profile.OrgID, profile.UserID, profile.AssignedUserID, profile.Slug, profile.Data).Scan(
+			&profile.ID, &profile.CreatedAt, &profile.UpdatedAt,
+		)
+		if err != nil {
+			return mapError(err)
+		}
+		return syncFileRefs(ctx, tx, profile.ID, profile.OrgID, profile.Data)
+	})
 }
 
 // UpdateProfile saves slug and data on a card the scope can edit (any card in
-// the org for admins, an assigned card for members); otherwise ErrNotFound.
+// the org for admins, an assigned card for members, and their teammates'
+// cards for team leads); otherwise ErrNotFound. It also records which library
+// files the card now uses.
 func (r *Repository) UpdateProfile(ctx context.Context, scope Scope, profile *models.Profile) error {
-	query := `
-		UPDATE profiles
-		SET slug = $1, data = $2, updated_at = now()
-		WHERE profile_id = $3 AND org_id = $4 AND ($5::bigint = 0 OR assigned_user_id = $5)
-		RETURNING created_at, updated_at`
-	err := r.db.QueryRow(ctx, query, profile.Slug, profile.Data, profile.ID, scope.OrgID, scope.memberID()).Scan(
-		&profile.CreatedAt, &profile.UpdatedAt,
-	)
-	return mapError(err)
+	return pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+		query := `
+			UPDATE profiles
+			SET slug = $1, data = $2, updated_at = now()
+			WHERE profile_id = $3 AND org_id = $4 AND ` + visibleTo("assigned_user_id", 5) + `
+			RETURNING created_at, updated_at`
+		err := tx.QueryRow(ctx, query, profile.Slug, profile.Data, profile.ID, scope.OrgID, scope.memberID()).Scan(
+			&profile.CreatedAt, &profile.UpdatedAt,
+		)
+		if err != nil {
+			return mapError(err)
+		}
+		return syncFileRefs(ctx, tx, profile.ID, scope.OrgID, profile.Data)
+	})
 }
 
 // DeleteProfile deletes a card in orgID; otherwise ErrNotFound.
@@ -326,12 +365,13 @@ func (r *Repository) SetProfileAssignee(ctx context.Context, profileID, orgID in
 }
 
 // profileSelect reads a card with its assignee and the lead count the scope
-// sees: every lead for admins, only their own leads for members ($2).
-const profileSelect = `
+// sees: every lead for admins, otherwise their own leads and, for team leads,
+// their teammates' ($2).
+var profileSelect = `
 	SELECT p.profile_id, p.org_id, p.user_id, p.assigned_user_id, au.username, p.slug, p.data,
 	       p.created_at, p.updated_at,
 	       (SELECT COUNT(*) FROM leads l
-	        WHERE l.profile_id = p.profile_id AND ($2::bigint = 0 OR l.assigned_user_id = $2))
+	        WHERE l.profile_id = p.profile_id AND ` + visibleTo("l.assigned_user_id", 2) + `)
 	FROM profiles p
 	LEFT JOIN users au ON au.user_id = p.assigned_user_id`
 
@@ -365,10 +405,11 @@ func (r *Repository) GetProfileBySlug(ctx context.Context, slug string) (*models
 }
 
 // GetProfile returns a card the scope can see (any card in the org for
-// admins, an assigned card for members); otherwise ErrNotFound.
+// admins, an assigned card for members, teammates' cards for team leads);
+// otherwise ErrNotFound.
 func (r *Repository) GetProfile(ctx context.Context, scope Scope, profileID int64) (*models.Profile, error) {
 	return scanProfile(r.db.QueryRow(ctx, profileSelect+`
-		WHERE p.org_id = $1 AND ($2::bigint = 0 OR p.assigned_user_id = $2) AND p.profile_id = $3`,
+		WHERE p.org_id = $1 AND `+visibleTo("p.assigned_user_id", 2)+` AND p.profile_id = $3`,
 		scope.OrgID, scope.memberID(), profileID))
 }
 
@@ -376,7 +417,7 @@ func (r *Repository) GetProfile(ctx context.Context, scope Scope, profileID int6
 // its lead count.
 func (r *Repository) ListProfiles(ctx context.Context, scope Scope) ([]*models.Profile, error) {
 	rows, err := r.db.Query(ctx, profileSelect+`
-		WHERE p.org_id = $1 AND ($2::bigint = 0 OR p.assigned_user_id = $2)
+		WHERE p.org_id = $1 AND `+visibleTo("p.assigned_user_id", 2)+`
 		ORDER BY p.created_at DESC`, scope.OrgID, scope.memberID())
 	if err != nil {
 		return nil, err
@@ -441,10 +482,12 @@ type LeadFilter struct {
 	UserID int64
 	// Unassigned keeps only leads that arrived while the organisation held the card.
 	Unassigned bool
-	Search     string    // case-insensitive substring of name, email, phone number or notes
-	Since      time.Time // received at or after this time
-	Limit      int
-	Offset     int
+	// TeamID keeps only leads that arrived while someone in this team held the card.
+	TeamID int64
+	Search string    // case-insensitive substring of name, email, phone number or notes
+	Since  time.Time // received at or after this time
+	Limit  int
+	Offset int
 }
 
 // likePattern escapes LIKE wildcards so user input matches literally.
@@ -456,7 +499,7 @@ func likePattern(s string) string {
 // ListLeads returns one page of the leads the scope can see, newest first,
 // plus how many match the filter in total. Admins see every lead on the
 // organisation's cards; members only the leads that arrived while they held
-// the card. Leads outside the scope are never included, whatever the filter says.
+// the card, and team leads also their teammates' leads. Leads outside the scope are never included, whatever the filter says.
 func (r *Repository) ListLeads(ctx context.Context, scope Scope, f LeadFilter) ([]*models.Lead, int64, error) {
 	var since *time.Time
 	if !f.Since.IsZero() {
@@ -467,18 +510,19 @@ func (r *Repository) ListLeads(ctx context.Context, scope Scope, f LeadFilter) (
 		search = likePattern(f.Search)
 	}
 
-	const where = `
+	where := `
 		FROM leads l
 		JOIN profiles p ON p.profile_id = l.profile_id
 		LEFT JOIN users u ON u.user_id = l.assigned_user_id
 		WHERE p.org_id = $1
-		  AND ($2::bigint = 0 OR l.assigned_user_id = $2)
+		  AND ` + visibleTo("l.assigned_user_id", 2) + `
 		  AND ($3::bigint = 0 OR l.profile_id = $3)
 		  AND ($4::text = '' OR l.name ILIKE $4 OR l.email ILIKE $4 OR l.phone_number ILIKE $4 OR l.notes ILIKE $4)
 		  AND ($5::timestamptz IS NULL OR l.created_at >= $5)
 		  AND ($6::bigint = 0 OR l.assigned_user_id = $6)
-		  AND (NOT $7::bool OR l.assigned_user_id IS NULL)`
-	args := []any{scope.OrgID, scope.memberID(), f.ProfileID, search, since, f.UserID, f.Unassigned}
+		  AND (NOT $7::bool OR l.assigned_user_id IS NULL)
+		  AND ($8::bigint = 0 OR l.assigned_user_id IN (SELECT tm.user_id FROM team_members tm WHERE tm.team_id = $8))`
+	args := []any{scope.OrgID, scope.memberID(), f.ProfileID, search, since, f.UserID, f.Unassigned, f.TeamID}
 
 	var total int64
 	if err := r.db.QueryRow(ctx, `SELECT COUNT(*)`+where, args...).Scan(&total); err != nil {
@@ -488,7 +532,7 @@ func (r *Repository) ListLeads(ctx context.Context, scope Scope, f LeadFilter) (
 	rows, err := r.db.Query(ctx,
 		`SELECT `+leadColumns+where+`
 		ORDER BY l.created_at DESC, l.lead_id DESC
-		LIMIT $8 OFFSET $9`,
+		LIMIT $9 OFFSET $10`,
 		append(args, f.Limit, f.Offset)...)
 	if err != nil {
 		return nil, 0, err
@@ -572,253 +616,4 @@ func (r *Repository) DeleteStorageSettings(ctx context.Context, userID int64) er
 		return ErrNotFound
 	}
 	return nil
-}
-
-// ----------------------------------------------------------------------------
-// File Methods
-// ----------------------------------------------------------------------------
-
-// ErrQuotaExceeded means a personal upload would take the user past their storage limit.
-var ErrQuotaExceeded = errors.New("storage quota exceeded")
-
-// fileColumns lists the columns scanFile expects, for files f joined to their uploader as u.
-const fileColumns = `f.file_id, f.public_id, f.org_id, f.user_id, f.area, u.username, f.former_owner,
-	f.bucket, f.object_key, f.kind, f.content_type, f.size_bytes, f.original_name, f.title, f.created_at`
-
-const fileFrom = ` FROM files f LEFT JOIN users u ON u.user_id = f.user_id`
-
-// fileVisible is true when the scope ($1 org, $2 user, $3 admin) may see file f:
-// admins see everything in the org; members see their own personal files, the
-// shared area, and files granted to them.
-const fileVisible = `(f.org_id = $1 AND ($3::bool
-	OR f.area = 'shared'
-	OR (f.area = 'personal' AND f.user_id = $2)
-	OR EXISTS (SELECT 1 FROM file_grants g WHERE g.file_id = f.file_id AND g.user_id = $2)))`
-
-// fileEditable is true when the scope may rename or delete file f: admins
-// anything in the org, members only their own personal files.
-const fileEditable = `(f.org_id = $1 AND ($3::bool OR (f.area = 'personal' AND f.user_id = $2)))`
-
-func (s Scope) fileArgs() []any { return []any{s.OrgID, s.UserID, s.Admin} }
-
-func scanFile(row pgx.Row) (*models.File, error) {
-	var f models.File
-	var owner *string
-	err := row.Scan(&f.ID, &f.PublicID, &f.OrgID, &f.UserID, &f.Area, &owner, &f.FormerOwner,
-		&f.Bucket, &f.ObjectKey, &f.Kind, &f.ContentType, &f.SizeBytes, &f.OriginalName, &f.Title, &f.CreatedAt)
-	if err != nil {
-		return nil, mapError(err)
-	}
-	if owner != nil {
-		f.Owner = &models.UserRef{ID: f.UserID, Username: *owner}
-	}
-	return &f, nil
-}
-
-func collectFiles(rows pgx.Rows, err error) ([]*models.File, error) {
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	files := []*models.File{}
-	for rows.Next() {
-		f, err := scanFile(rows)
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, f)
-	}
-	return files, rows.Err()
-}
-
-// CreateFile records an uploaded file. A personal file counts against its
-// owner's quota: the owner's row is locked while the total is checked, so
-// concurrent uploads can't overshoot, and ErrQuotaExceeded is returned if it
-// wouldn't fit.
-func (r *Repository) CreateFile(ctx context.Context, f *models.File) error {
-	return pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
-		if f.Area == models.AreaPersonal {
-			var quota *int64
-			if err := tx.QueryRow(ctx, `SELECT storage_quota_bytes FROM users WHERE user_id = $1 FOR UPDATE`, f.UserID).Scan(&quota); err != nil {
-				return mapError(err)
-			}
-			if quota != nil {
-				used, err := usedBytes(ctx, tx, f.UserID)
-				if err != nil {
-					return err
-				}
-				if used+f.SizeBytes > *quota {
-					return ErrQuotaExceeded
-				}
-			}
-		}
-		query := `
-			INSERT INTO files (public_id, org_id, user_id, area, bucket, object_key, kind, content_type, size_bytes, original_name, title)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-			RETURNING file_id, created_at`
-		err := tx.QueryRow(ctx, query, f.PublicID, f.OrgID, f.UserID, f.Area, f.Bucket, f.ObjectKey, f.Kind, f.ContentType,
-			f.SizeBytes, f.OriginalName, f.Title).Scan(&f.ID, &f.CreatedAt)
-		return mapError(err)
-	})
-}
-
-func usedBytes(ctx context.Context, q querier, userID int64) (int64, error) {
-	var used int64
-	err := q.QueryRow(ctx,
-		`SELECT COALESCE(SUM(size_bytes), 0) FROM files WHERE user_id = $1 AND area = 'personal'`, userID).Scan(&used)
-	return used, err
-}
-
-// UsedBytes is the total size of a user's personal files: what their quota limits.
-func (r *Repository) UsedBytes(ctx context.Context, userID int64) (int64, error) {
-	return usedBytes(ctx, r.db, userID)
-}
-
-// FileFilter narrows a file listing. Zero values mean "no filter".
-type FileFilter struct {
-	Kind string // "image" or "pdf"
-	Area string // "personal", "org" or "shared"
-	// UserID keeps only files uploaded by (for personal files: belonging to) this user.
-	UserID int64
-	// GrantedTo keeps only files explicitly granted to this user.
-	GrantedTo int64
-	Limit     int
-	Offset    int
-}
-
-// ListFiles returns one page of the files the scope can see, newest first,
-// and the total matching.
-func (r *Repository) ListFiles(ctx context.Context, scope Scope, ff FileFilter) ([]*models.File, int64, error) {
-	where := fileFrom + ` WHERE ` + fileVisible + `
-		AND ($4::text = '' OR f.kind = $4)
-		AND ($5::text = '' OR f.area = $5)
-		AND ($6::bigint = 0 OR f.user_id = $6)
-		AND ($7::bigint = 0 OR EXISTS (SELECT 1 FROM file_grants g2 WHERE g2.file_id = f.file_id AND g2.user_id = $7))`
-	args := append(scope.fileArgs(), ff.Kind, ff.Area, ff.UserID, ff.GrantedTo)
-
-	var total int64
-	if err := r.db.QueryRow(ctx, `SELECT COUNT(*)`+where, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-	files, err := collectFiles(r.db.Query(ctx, `SELECT `+fileColumns+where+`
-		ORDER BY f.created_at DESC, f.file_id DESC LIMIT $8 OFFSET $9`, append(args, ff.Limit, ff.Offset)...))
-	if err != nil {
-		return nil, 0, err
-	}
-	return files, total, nil
-}
-
-// CountFilesForOrg is shown in settings so the owner knows what a bucket change affects.
-func (r *Repository) CountFilesForOrg(ctx context.Context, orgID int64) (int64, error) {
-	var n int64
-	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM files WHERE org_id = $1`, orgID).Scan(&n)
-	return n, err
-}
-
-// GetFile returns a file the scope can see; otherwise ErrNotFound.
-func (r *Repository) GetFile(ctx context.Context, scope Scope, publicID string) (*models.File, error) {
-	return scanFile(r.db.QueryRow(ctx,
-		`SELECT `+fileColumns+fileFrom+` WHERE `+fileVisible+` AND f.public_id = $4`,
-		append(scope.fileArgs(), publicID)...))
-}
-
-// GetEditableFile returns a file the scope may rename or delete; otherwise ErrNotFound.
-func (r *Repository) GetEditableFile(ctx context.Context, scope Scope, publicID string) (*models.File, error) {
-	return scanFile(r.db.QueryRow(ctx,
-		`SELECT `+fileColumns+fileFrom+` WHERE `+fileEditable+` AND f.public_id = $4`,
-		append(scope.fileArgs(), publicID)...))
-}
-
-func (r *Repository) GetFileByPublicID(ctx context.Context, publicID string) (*models.File, error) {
-	return scanFile(r.db.QueryRow(ctx, `SELECT `+fileColumns+fileFrom+` WHERE f.public_id = $1`, publicID))
-}
-
-// GetOrgFilesByPublicIDs returns those of the given files that belong to orgID, in no particular order.
-func (r *Repository) GetOrgFilesByPublicIDs(ctx context.Context, orgID int64, publicIDs []string) ([]*models.File, error) {
-	if len(publicIDs) == 0 {
-		return []*models.File{}, nil
-	}
-	return collectFiles(r.db.Query(ctx,
-		`SELECT `+fileColumns+fileFrom+` WHERE f.org_id = $1 AND f.public_id = ANY($2)`, orgID, publicIDs))
-}
-
-// CountVisibleFiles reports how many of the given files the scope can see.
-func (r *Repository) CountVisibleFiles(ctx context.Context, scope Scope, publicIDs []string) (int, error) {
-	if len(publicIDs) == 0 {
-		return 0, nil
-	}
-	var n int
-	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM files f WHERE `+fileVisible+` AND f.public_id = ANY($4)`,
-		append(scope.fileArgs(), publicIDs)...).Scan(&n)
-	return n, err
-}
-
-// UpdateFileTitle renames a file the scope may edit; otherwise ErrNotFound.
-func (r *Repository) UpdateFileTitle(ctx context.Context, scope Scope, publicID, title string) (*models.File, error) {
-	var id int64
-	err := r.db.QueryRow(ctx, `UPDATE files f SET title = $5 WHERE `+fileEditable+` AND f.public_id = $4 RETURNING f.file_id`,
-		append(scope.fileArgs(), publicID, title)...).Scan(&id)
-	if err != nil {
-		return nil, mapError(err)
-	}
-	return scanFile(r.db.QueryRow(ctx, `SELECT `+fileColumns+fileFrom+` WHERE f.file_id = $1`, id))
-}
-
-// DeleteFile removes the record of a file in orgID; otherwise ErrNotFound.
-// The caller checks the user may delete it (GetEditableFile).
-func (r *Repository) DeleteFile(ctx context.Context, fileID, orgID int64) error {
-	// The organisation's logo or signature banner may point at the file;
-	// forget it there too so no card or signature shows a broken image.
-	var n int
-	err := r.db.QueryRow(ctx, `
-		WITH d AS (DELETE FROM files WHERE file_id = $1 AND org_id = $2 RETURNING public_id),
-		o AS (
-			UPDATE organizations SET
-				logo_file = CASE WHEN logo_file IN (SELECT public_id FROM d) THEN NULL ELSE logo_file END,
-				signature = CASE WHEN signature->>'banner_file' IN (SELECT public_id FROM d)
-					THEN signature - 'banner_file' ELSE signature END
-			WHERE org_id = $2 AND (logo_file IN (SELECT public_id FROM d)
-				OR signature->>'banner_file' IN (SELECT public_id FROM d))
-		)
-		SELECT COUNT(*) FROM d`, fileID, orgID).Scan(&n)
-	if err != nil {
-		return mapError(err)
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-// ListFileGrants returns the users a file has been granted to, by username.
-func (r *Repository) ListFileGrants(ctx context.Context, fileID int64) ([]models.UserRef, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT u.user_id, u.username FROM file_grants g JOIN users u ON u.user_id = g.user_id
-		WHERE g.file_id = $1 ORDER BY LOWER(u.username)`, fileID)
-	if err != nil {
-		return nil, err
-	}
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (models.UserRef, error) {
-		var u models.UserRef
-		err := row.Scan(&u.ID, &u.Username)
-		return u, err
-	})
-}
-
-// ReplaceFileGrants sets exactly which users a file is granted to. Ids of
-// users outside orgID are ignored.
-func (r *Repository) ReplaceFileGrants(ctx context.Context, fileID, orgID, grantedBy int64, userIDs []int64) error {
-	if userIDs == nil {
-		userIDs = []int64{} // a nil slice is NULL, which would match nothing below
-	}
-	return pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DELETE FROM file_grants WHERE file_id = $1 AND NOT (user_id = ANY($2))`, fileID, userIDs); err != nil {
-			return err
-		}
-		_, err := tx.Exec(ctx, `
-			INSERT INTO file_grants (file_id, user_id, granted_by)
-			SELECT $1, u.user_id, $3 FROM users u WHERE u.org_id = $4 AND u.user_id = ANY($2)
-			ON CONFLICT DO NOTHING`, fileID, userIDs, grantedBy, orgID)
-		return mapError(err)
-	})
 }

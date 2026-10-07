@@ -28,7 +28,7 @@ func TestAdminIntegration(t *testing.T) {
 	defer pool.Close()
 	repo := repository.New(pool)
 
-	_, err = pool.Exec(ctx, "TRUNCATE TABLE organizations, users, profiles, leads, user_storage, files, file_grants, email_codes, platform_admins, feedback, feedback_replies, org_usage_snapshots, platform_usage_snapshots, admin_audit_log RESTART IDENTITY CASCADE")
+	_, err = pool.Exec(ctx, "TRUNCATE TABLE organizations, users, profiles, leads, user_storage, files, file_grants, teams, team_members, file_team_grants, file_refs, email_codes, platform_admins, feedback, feedback_replies, org_usage_snapshots, platform_usage_snapshots, admin_audit_log RESTART IDENTITY CASCADE")
 	require.NoError(t, err)
 
 	email := func(s string) *string { return &s }
@@ -78,6 +78,12 @@ func TestAdminIntegration(t *testing.T) {
 	newLead(t, card2)
 	newFile(t, acme, models.AreaOrg, "acme-f1", 1000)
 	newFile(t, rep, models.AreaPersonal, "acme-f2", 234)
+	// A team and a logo: counted, never named.
+	require.NoError(t, repo.CreateTeam(ctx, &models.Team{OrgID: acme.OrgID, Name: "Secret Sales"}))
+	logo := "acme-f1"
+	require.NoError(t, repo.UpdateOrgBranding(ctx, acme.OrgID, &models.OrgBranding{
+		LogoFile: &logo, LogoPolicy: models.LogoRequired, Signature: models.OrgSignature{LockedTemplate: "classic"},
+	}))
 
 	// Empty: just the owner.
 	empty := newOwner(t, "empty-owner", "Empty Co")
@@ -101,6 +107,11 @@ func TestAdminIntegration(t *testing.T) {
 		require.NotNil(t, got.StorageProvider)
 		assert.Equal(t, "r2", *got.StorageProvider)
 		assert.Nil(t, got.SuspendedAt)
+		assert.EqualValues(t, 1, got.TeamCount)
+		assert.True(t, got.LogoSet)
+		assert.Equal(t, models.LogoRequired, got.LogoPolicy)
+		assert.True(t, got.SignatureLocked)
+		assert.Equal(t, map[string]int64{"other": 2}, got.FilesByPurpose)
 
 		none, err := repo.GetOrgUsage(ctx, empty.OrgID)
 		require.NoError(t, err)
@@ -111,6 +122,10 @@ func TestAdminIntegration(t *testing.T) {
 		assert.Zero(t, none.StorageUsedBytes)
 		assert.False(t, none.StorageConnected)
 		assert.Nil(t, none.StorageProvider)
+		assert.Zero(t, none.TeamCount)
+		assert.False(t, none.LogoSet)
+		assert.False(t, none.SignatureLocked)
+		assert.Empty(t, none.FilesByPurpose)
 
 		_, err = repo.GetOrgUsage(ctx, 999999)
 		assert.ErrorIs(t, err, repository.ErrNotFound)
@@ -118,7 +133,7 @@ func TestAdminIntegration(t *testing.T) {
 		// The JSON the panel receives has no card data, leads or member details.
 		raw, err := json.Marshal(got)
 		require.NoError(t, err)
-		for _, leak := range []string{"card contents", "lead@example.com", "acme-rep", "acme-admin", "acme-f1"} {
+		for _, leak := range []string{"card contents", "lead@example.com", "acme-rep", "acme-admin", "acme-f1", "Secret Sales"} {
 			assert.NotContains(t, string(raw), leak)
 		}
 	})
@@ -161,6 +176,13 @@ func TestAdminIntegration(t *testing.T) {
 		assert.EqualValues(t, 1, s.OrgsWithStorage)
 		assert.EqualValues(t, 1234, s.StorageUsedBytes)
 		assert.EqualValues(t, 2, s.NewOrgs30d)
+		assert.EqualValues(t, 1, s.TeamCount)
+		assert.EqualValues(t, 1, s.OrgsWithTeams)
+		assert.EqualValues(t, 1, s.OrgsWithLogo)
+
+		byTeams, _, err := repo.ListOrgUsage(ctx, repository.OrgUsageFilter{Sort: "teams", Limit: 10})
+		require.NoError(t, err)
+		assert.Equal(t, acme.OrgID, byTeams[0].ID, "sorted by teams")
 	})
 
 	t.Run("Snapshots", func(t *testing.T) {
@@ -175,6 +197,7 @@ func TestAdminIntegration(t *testing.T) {
 		assert.Equal(t, today.UTC().Format(time.DateOnly), points[0].Date)
 		assert.EqualValues(t, 4, points[0].LeadCount)
 		assert.EqualValues(t, 1234, points[0].StorageUsedBytes)
+		assert.EqualValues(t, 1, points[0].TeamCount)
 
 		// An older day shows up in order; one outside the window doesn't.
 		require.NoError(t, repo.TakeUsageSnapshot(ctx, today.AddDate(0, 0, -3)))
@@ -186,6 +209,9 @@ func TestAdminIntegration(t *testing.T) {
 		assert.EqualValues(t, 2, platform[1].OrgCount)
 		assert.EqualValues(t, 4, platform[1].LeadCount)
 		assert.EqualValues(t, 2, platform[1].NewOrgs, "both orgs were created today")
+		assert.EqualValues(t, 1, platform[1].TeamCount)
+		assert.EqualValues(t, 1, platform[1].OrgsWithTeams)
+		assert.EqualValues(t, 1, platform[1].OrgsWithLogo)
 	})
 
 	t.Run("Suspend Org", func(t *testing.T) {

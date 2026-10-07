@@ -11,6 +11,9 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { Switch } from '$lib/components/ui/switch';
 	import QuotaInput from './quota-input.svelte';
+	import TeamMembershipsInput from './team-memberships-input.svelte';
+	import type { TeamRole } from '$lib/api/teams';
+	import { teams } from '$lib/teams.svelte';
 	import { orgUsers } from '$lib/org-users.svelte';
 	import { generatePassword, signInDetails } from '$lib/password';
 	import { session } from '$lib/session.svelte';
@@ -22,6 +25,7 @@
 	let password = $state(generatePassword());
 	let admin = $state(false);
 	let quota = $state<number | null>(null);
+	let memberships = $state<{ team_id: number; role: TeamRole }[]>([]);
 	let creating = $state(false);
 	let error = $state('');
 	let created = $state<{ username: string; email: string; password: string } | null>(null);
@@ -47,6 +51,7 @@
 		email = '';
 		password = generatePassword();
 		admin = false;
+		memberships = [];
 		error = '';
 		created = null;
 	}
@@ -62,9 +67,11 @@
 				email: email.trim(),
 				password,
 				role: admin ? 'admin' : 'member',
-				quota_bytes: quota
+				quota_bytes: quota,
+				teams: memberships
 			});
 			orgUsers.upsert(user);
+			if (memberships.length) teams.refresh();
 			oncreated?.(user);
 			created = { username: user.username, email: user.email ?? email.trim(), password };
 		} catch (e) {
@@ -86,7 +93,7 @@
 </script>
 
 <Dialog.Root bind:open onOpenChange={(o) => !o && reset()}>
-	<Dialog.Content class="sm:max-w-lg">
+	<Dialog.Content class="max-h-[92svh] overflow-y-auto sm:max-w-lg">
 		{#if created}
 			<Dialog.Header>
 				<span class="bg-brand-soft text-brand mb-2 grid size-10 place-items-center rounded-full">
@@ -182,6 +189,13 @@
 						<QuotaInput id="new-user-quota" bind:value={quota} />
 						<Field.Description>Shared files don't count toward this.</Field.Description>
 					</Field.Field>
+					{#if teams.list?.length}
+						<Field.Field>
+							<Field.Label>Teams</Field.Label>
+							<TeamMembershipsInput bind:value={memberships} />
+							<Field.Description>They'll see their teams' files. Leads also see their teammates' cards and leads.</Field.Description>
+						</Field.Field>
+					{/if}
 					{#if session.isOwner}
 						<Field.Field orientation="horizontal">
 							<Switch id="new-user-admin" bind:checked={admin} />

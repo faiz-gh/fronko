@@ -41,6 +41,8 @@ type Principal struct {
 	UserID int64
 	OrgID  int64
 	Role   string
+	// Teams the user is in, with their role in each.
+	Teams []models.TeamRef
 }
 
 // IsAdmin is true for the organisation's owner and admins.
@@ -48,6 +50,36 @@ func (p Principal) IsAdmin() bool { return p.Role == models.RoleOwner || p.Role 
 
 // IsOwner is true only for the account that registered the organisation.
 func (p Principal) IsOwner() bool { return p.Role == models.RoleOwner }
+
+// InTeam reports whether the user is in the team, as a member or a lead.
+func (p Principal) InTeam(teamID int64) bool {
+	for _, t := range p.Teams {
+		if t.ID == teamID {
+			return true
+		}
+	}
+	return false
+}
+
+// LeadsTeam reports whether the user is a lead of the team.
+func (p Principal) LeadsTeam(teamID int64) bool {
+	for _, t := range p.Teams {
+		if t.ID == teamID && t.Role == models.TeamRoleLead {
+			return true
+		}
+	}
+	return false
+}
+
+// LeadsAnyTeam reports whether the user leads at least one team.
+func (p Principal) LeadsAnyTeam() bool {
+	for _, t := range p.Teams {
+		if t.Role == models.TeamRoleLead {
+			return true
+		}
+	}
+	return false
+}
 
 // PrincipalFrom returns the authenticated principal. Only call it from
 // handlers mounted behind JWTMiddleware.
@@ -207,7 +239,7 @@ func JWTMiddleware(authService *auth.Service, sessions SessionChecker) func(http
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), principalKey, Principal{UserID: userID, OrgID: state.OrgID, Role: state.Role})
+			ctx := context.WithValue(r.Context(), principalKey, Principal{UserID: userID, OrgID: state.OrgID, Role: state.Role, Teams: state.Teams})
 			ctx = context.WithValue(ctx, stateKey, state)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

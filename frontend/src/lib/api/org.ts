@@ -1,6 +1,7 @@
 import { apiClient } from './client';
 import type { Role } from './auth';
 import type { Profile } from './profile';
+import type { TeamMembership, TeamRef } from './teams';
 
 export interface Organization {
 	id: number;
@@ -30,6 +31,8 @@ export interface OrgUser {
 	lead_count: number;
 	/** Size of their personal files. */
 	used_bytes: number;
+	/** Teams they're in, with their role in each. */
+	teams: TeamRef[];
 }
 
 /** Where a user is with their account, most urgent first. */
@@ -78,6 +81,8 @@ export interface NewOrgUser {
 	role: 'member' | 'admin';
 	/** Omit to use the organisation's default; null is unlimited. */
 	quota_bytes?: number | null;
+	/** Teams to put them in. */
+	teams?: Omit<TeamMembership, 'user_id'>[];
 }
 
 export function createOrgUser(user: NewOrgUser): Promise<OrgUser> {
@@ -120,14 +125,21 @@ export interface UserRef {
 	username: string;
 }
 
-export function getFileGrants(fileId: string): Promise<{ users: UserRef[] }> {
-	return apiClient<{ users: UserRef[] }>(`/api/org/files/${encodeURIComponent(fileId)}/grants`);
+/** Who a file has been given to, beyond everyone who sees it anyway. */
+export interface FileGrants {
+	users: UserRef[];
+	teams: TeamRef[];
 }
 
-export function setFileGrants(fileId: string, userIds: number[]): Promise<{ users: UserRef[] }> {
-	return apiClient<{ users: UserRef[] }>(`/api/org/files/${encodeURIComponent(fileId)}/grants`, {
+export function getFileGrants(fileId: string): Promise<FileGrants> {
+	return apiClient<FileGrants>(`/api/org/files/${encodeURIComponent(fileId)}/grants`);
+}
+
+/** Replaces the users and/or teams a file is granted to; a list left out stays as it is. */
+export function setFileGrants(fileId: string, grants: { userIds?: number[]; teamIds?: number[] }): Promise<FileGrants> {
+	return apiClient<FileGrants>(`/api/org/files/${encodeURIComponent(fileId)}/grants`, {
 		method: 'PUT',
-		body: JSON.stringify({ user_ids: userIds })
+		body: JSON.stringify({ user_ids: grants.userIds, team_ids: grants.teamIds })
 	});
 }
 

@@ -1,5 +1,6 @@
 import { goto } from '$app/navigation';
 import { logout, me, type AuthUser, type Role } from '$lib/api/auth';
+import type { TeamRef } from '$lib/api/teams';
 
 type Status = 'unknown' | 'authenticated' | 'anonymous';
 
@@ -15,6 +16,8 @@ class Session {
 	role = $state<Role | null>(null);
 	orgName = $state('');
 	mustChangePassword = $state(false);
+	/** Teams the user is in, with their role in each. */
+	teams = $state<TeamRef[]>([]);
 	/** Set when the platform suspended the organisation; the login page shows it. */
 	suspendedReason = $state<string | null>(null);
 
@@ -30,6 +33,20 @@ class Session {
 	/** Only the owner manages storage and organisation settings. */
 	get isOwner() {
 		return this.role === 'owner';
+	}
+
+	/** Teams the user leads: they look after those teams' files and see their people's cards and leads. */
+	get ledTeams(): TeamRef[] {
+		return this.teams.filter((t) => t.role === 'lead');
+	}
+
+	get isLead() {
+		return this.ledTeams.length > 0;
+	}
+
+	/** Admins and team leads see more than their own cards and leads. */
+	get seesOthers() {
+		return this.isAdmin || this.isLead;
 	}
 
 	/** Signed in, verified, and using a password they chose: the dashboard is open. */
@@ -65,6 +82,7 @@ class Session {
 		this.role = user.role;
 		this.orgName = user.org_name;
 		this.mustChangePassword = user.must_change_password;
+		this.teams = user.teams ?? [];
 		this.status = 'authenticated';
 	}
 
@@ -75,6 +93,7 @@ class Session {
 		this.role = null;
 		this.orgName = '';
 		this.mustChangePassword = false;
+		this.teams = [];
 		this.status = 'anonymous';
 	}
 

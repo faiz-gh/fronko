@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import type { TeamRef } from './teams';
 
 /** owner registered the organisation; admins help run it; members work on the cards assigned to them. */
 export type Role = 'owner' | 'admin' | 'member';
@@ -14,6 +15,8 @@ export interface AuthUser {
 	org_name: string;
 	/** Still using the temporary password the organisation set. */
 	must_change_password: boolean;
+	/** Teams they're in, with their role in each. */
+	teams?: TeamRef[];
 }
 
 /** `identifier` is a username or an email address. */

@@ -32,7 +32,7 @@ func TestRepositoryIntegration(t *testing.T) {
 	repo := repository.New(pool)
 
 	// Clean up tables before testing
-	_, err = pool.Exec(ctx, "TRUNCATE TABLE organizations, users, profiles, leads, user_storage, files, file_grants, email_codes, platform_admins, feedback, feedback_replies, org_usage_snapshots, platform_usage_snapshots, admin_audit_log RESTART IDENTITY CASCADE")
+	_, err = pool.Exec(ctx, "TRUNCATE TABLE organizations, users, profiles, leads, user_storage, files, file_grants, teams, team_members, file_team_grants, file_refs, email_codes, platform_admins, feedback, feedback_replies, org_usage_snapshots, platform_usage_snapshots, admin_audit_log RESTART IDENTITY CASCADE")
 	require.NoError(t, err)
 
 	// newOwner registers an organisation and its owner.
@@ -487,9 +487,9 @@ func TestRepositoryIntegration(t *testing.T) {
 		// Members can only edit their own personal files, even visible ones
 		_, err = repo.GetEditableFile(ctx, memberScope(rep), img.PublicID)
 		assert.ErrorIs(t, err, repository.ErrNotFound)
-		_, err = repo.UpdateFileTitle(ctx, memberScope(rep), pdf2.PublicID, "mine now")
+		_, err = repo.UpdateFile(ctx, memberScope(rep), pdf2.PublicID, repository.FilePatch{Title: ptr("mine now")})
 		assert.ErrorIs(t, err, repository.ErrNotFound)
-		_, err = repo.UpdateFileTitle(ctx, memberScope(rep), repFile.PublicID, "My notes")
+		_, err = repo.UpdateFile(ctx, memberScope(rep), repFile.PublicID, repository.FilePatch{Title: ptr("My notes")})
 		assert.NoError(t, err)
 
 		require.NoError(t, repo.ReplaceFileGrants(ctx, img.ID, owner.OrgID, owner.ID, nil))
@@ -499,7 +499,7 @@ func TestRepositoryIntegration(t *testing.T) {
 		// Other organisations see nothing
 		_, err = repo.GetFile(ctx, adminScope(owner), foreign.PublicID)
 		assert.ErrorIs(t, err, repository.ErrNotFound)
-		_, err = repo.UpdateFileTitle(ctx, adminScope(owner), foreign.PublicID, "mine now")
+		_, err = repo.UpdateFile(ctx, adminScope(owner), foreign.PublicID, repository.FilePatch{Title: ptr("mine now")})
 		assert.ErrorIs(t, err, repository.ErrNotFound)
 		assert.ErrorIs(t, repo.DeleteFile(ctx, foreign.ID, owner.OrgID), repository.ErrNotFound)
 
@@ -508,7 +508,7 @@ func TestRepositoryIntegration(t *testing.T) {
 		require.Len(t, byIDs, 1, "only the organisation's files resolve")
 		assert.Equal(t, img.PublicID, byIDs[0].PublicID)
 
-		renamed, err := repo.UpdateFileTitle(ctx, adminScope(owner), pdf1.PublicID, "Spring brochure")
+		renamed, err := repo.UpdateFile(ctx, adminScope(owner), pdf1.PublicID, repository.FilePatch{Title: ptr("Spring brochure")})
 		require.NoError(t, err)
 		assert.Equal(t, "Spring brochure", renamed.Title)
 
@@ -717,4 +717,311 @@ func TestRepositoryIntegration(t *testing.T) {
 		assert.Equal(t, "Confidential", got.Signature.Disclaimer, "other settings are kept")
 		assert.ErrorIs(t, repo.DeleteFile(ctx, logo.ID, owner.OrgID), repository.ErrNotFound)
 	})
+
+	t.Run("Teams", func(t *testing.T) {
+		owner := newOwner(t, "teamer")
+		other := newOwner(t, "teamer-other")
+		alice := newMember(t, owner, "teamer-alice", models.RoleMember)
+		bob := newMember(t, owner, "teamer-bob", models.RoleMember)
+		stranger := newMember(t, other, "teamer-stranger", models.RoleMember)
+
+		sales := &models.Team{OrgID: owner.OrgID, Name: "Sales", Color: "#ff0000"}
+		require.NoError(t, repo.CreateTeam(ctx, sales))
+		finance := &models.Team{OrgID: owner.OrgID, Name: "Finance"}
+		require.NoError(t, repo.CreateTeam(ctx, finance))
+		assert.ErrorIs(t, repo.CreateTeam(ctx, &models.Team{OrgID: owner.OrgID, Name: "sales"}), repository.ErrConflict,
+			"names are unique per organisation, ignoring case")
+		require.NoError(t, repo.CreateTeam(ctx, &models.Team{OrgID: other.OrgID, Name: "Sales"}), "other orgs may reuse a name")
+
+		// Members from another organisation are ignored.
+		require.NoError(t, repo.ReplaceTeamMembers(ctx, owner.OrgID, sales.ID, []models.TeamMembership{
+			{UserID: alice.ID, Role: models.TeamRoleLead}, {UserID: bob.ID, Role: models.TeamRoleMember}, {UserID: stranger.ID, Role: models.TeamRoleMember},
+		}))
+		members, err := repo.ListTeamMembers(ctx, sales.ID)
+		require.NoError(t, err)
+		require.Len(t, members, 2)
+		assert.Equal(t, "teamer-alice", members[0].Username, "leads first")
+		assert.Equal(t, models.TeamRoleLead, members[0].Role)
+
+		// A user can be in several teams.
+		require.NoError(t, repo.ReplaceUserTeams(ctx, owner.OrgID, bob.ID, []models.TeamMembership{
+			{TeamID: sales.ID, Role: models.TeamRoleMember}, {TeamID: finance.ID, Role: models.TeamRoleLead},
+		}))
+		teams, err := repo.ListUserTeams(ctx, bob.ID)
+		require.NoError(t, err)
+		require.Len(t, teams, 2)
+		assert.Equal(t, "Finance", teams[0].Name)
+		assert.Equal(t, models.TeamRoleLead, teams[0].Role)
+
+		state, err := repo.GetSessionState(ctx, alice.ID)
+		require.NoError(t, err)
+		require.Len(t, state.Teams, 1)
+		assert.Equal(t, sales.ID, state.Teams[0].ID)
+
+		users, err := repo.ListOrgUsers(ctx, owner.OrgID)
+		require.NoError(t, err)
+		for _, u := range users {
+			if u.ID == bob.ID {
+				assert.Len(t, u.Teams, 2)
+			}
+			if u.ID == owner.ID {
+				assert.NotNil(t, u.Teams)
+				assert.Empty(t, u.Teams)
+			}
+		}
+
+		got, err := repo.GetTeam(ctx, owner.OrgID, sales.ID)
+		require.NoError(t, err)
+		assert.EqualValues(t, 2, got.MemberCount)
+		assert.EqualValues(t, 1, got.LeadCount)
+		_, err = repo.GetTeam(ctx, other.OrgID, sales.ID)
+		assert.ErrorIs(t, err, repository.ErrNotFound)
+
+		all, err := repo.ListTeams(ctx, owner.OrgID, 0)
+		require.NoError(t, err)
+		assert.Len(t, all, 2)
+		mine, err := repo.ListTeams(ctx, owner.OrgID, alice.ID)
+		require.NoError(t, err)
+		require.Len(t, mine, 1)
+		assert.Equal(t, "Sales", mine[0].Name)
+
+		// New users can join teams as they're created.
+		carol := &models.User{OrgID: owner.OrgID, Role: models.RoleMember, Username: "teamer-carol", PasswordHash: "hash"}
+		require.NoError(t, repo.CreateUser(ctx, carol, models.TeamMembership{TeamID: finance.ID, Role: models.TeamRoleMember}))
+		teams, _ = repo.ListUserTeams(ctx, carol.ID)
+		assert.Len(t, teams, 1)
+
+		// Deleting a team keeps its files, as the organisation's.
+		teamFile := &models.File{PublicID: "team-file-1", OrgID: owner.OrgID, UserID: alice.ID, Area: models.AreaTeam, TeamID: &sales.ID,
+			Bucket: "b", ObjectKey: "k", Kind: "image", ContentType: "image/png", OriginalName: "a.png"}
+		require.NoError(t, repo.CreateFile(ctx, teamFile))
+		require.NoError(t, repo.DeleteTeam(ctx, owner.OrgID, sales.ID))
+		f, err := repo.GetFile(ctx, adminScope(owner), teamFile.PublicID)
+		require.NoError(t, err)
+		assert.Equal(t, models.AreaOrg, f.Area)
+		assert.Nil(t, f.Team)
+		teams, _ = repo.ListUserTeams(ctx, alice.ID)
+		assert.Empty(t, teams)
+		assert.ErrorIs(t, repo.DeleteTeam(ctx, owner.OrgID, sales.ID), repository.ErrNotFound)
+	})
+
+	t.Run("Team File Access", func(t *testing.T) {
+		owner := newOwner(t, "tf")
+		lead := newMember(t, owner, "tf-lead", models.RoleMember)
+		member := newMember(t, owner, "tf-member", models.RoleMember)
+		outsider := newMember(t, owner, "tf-outsider", models.RoleMember)
+		sales := &models.Team{OrgID: owner.OrgID, Name: "Sales"}
+		require.NoError(t, repo.CreateTeam(ctx, sales))
+		finance := &models.Team{OrgID: owner.OrgID, Name: "Finance"}
+		require.NoError(t, repo.CreateTeam(ctx, finance))
+		require.NoError(t, repo.ReplaceTeamMembers(ctx, owner.OrgID, sales.ID, []models.TeamMembership{
+			{UserID: lead.ID, Role: models.TeamRoleLead}, {UserID: member.ID, Role: models.TeamRoleMember},
+		}))
+		require.NoError(t, repo.ReplaceTeamMembers(ctx, owner.OrgID, finance.ID, []models.TeamMembership{
+			{UserID: outsider.ID, Role: models.TeamRoleMember},
+		}))
+
+		newFile := func(u *models.User, area, id string, team *int64) *models.File {
+			f := &models.File{PublicID: id, OrgID: u.OrgID, UserID: u.ID, Area: area, TeamID: team, Bucket: "b",
+				ObjectKey: "k/" + id, Kind: "image", ContentType: "image/png", OriginalName: id + ".png"}
+			require.NoError(t, repo.CreateFile(ctx, f))
+			return f
+		}
+		salesFile := newFile(owner, models.AreaTeam, "tf-sales", &sales.ID)
+		financeFile := newFile(owner, models.AreaTeam, "tf-finance", &finance.ID)
+		orgFile := newFile(owner, models.AreaOrg, "tf-org", nil)
+		grantedToTeam := newFile(owner, models.AreaOrg, "tf-granted", nil)
+		require.NoError(t, repo.ReplaceFileTeamGrants(ctx, grantedToTeam.ID, owner.OrgID, owner.ID, []int64{sales.ID}))
+		leadsOwn := newFile(lead, models.AreaPersonal, "tf-leads-own", nil)
+
+		visible := func(s repository.Scope, f *models.File) bool {
+			_, err := repo.GetFile(ctx, s, f.PublicID)
+			return err == nil
+		}
+		editable := func(s repository.Scope, f *models.File) bool {
+			_, err := repo.GetEditableFile(ctx, s, f.PublicID)
+			return err == nil
+		}
+		for _, c := range []struct {
+			name              string
+			scope             repository.Scope
+			file              *models.File
+			canSee, canChange bool
+		}{
+			{"lead sees and edits team file", memberScope(lead), salesFile, true, true},
+			{"member sees team file", memberScope(member), salesFile, true, false},
+			{"outsider can't see another team's file", memberScope(outsider), salesFile, false, false},
+			{"outsider sees own team's file", memberScope(outsider), financeFile, true, false},
+			{"lead can't see another team's file", memberScope(lead), financeFile, false, false},
+			{"members don't see org files", memberScope(member), orgFile, false, false},
+			{"team grant reaches members", memberScope(member), grantedToTeam, true, false},
+			{"team grant doesn't reach others", memberScope(outsider), grantedToTeam, false, false},
+			{"teammates don't see each other's personal files", memberScope(member), leadsOwn, false, false},
+			{"admins see everything", adminScope(owner), financeFile, true, true},
+		} {
+			assert.Equal(t, c.canSee, visible(c.scope, c.file), c.name)
+			assert.Equal(t, c.canChange, editable(c.scope, c.file), c.name)
+		}
+
+		files, total, err := repo.ListFiles(ctx, memberScope(member), repository.FileFilter{Area: models.AreaTeam, TeamID: sales.ID, Limit: 10})
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, total)
+		require.Len(t, files, 1)
+		require.NotNil(t, files[0].Team)
+		assert.Equal(t, "Sales", files[0].Team.Name)
+
+		_, total, err = repo.ListFiles(ctx, memberScope(member), repository.FileFilter{GrantedTo: member.ID, Limit: 10})
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, total, "files granted through a team count as shared with me")
+
+		// Leads move their own files into their team.
+		area := models.AreaTeam
+		moved, err := repo.UpdateFile(ctx, memberScope(lead), leadsOwn.PublicID, repository.FilePatch{Area: &area, TeamID: &sales.ID})
+		require.NoError(t, err)
+		assert.Equal(t, models.AreaTeam, moved.Area)
+		assert.True(t, visible(memberScope(member), leadsOwn), "now the team sees it")
+
+		teams, err := repo.ListFileTeamGrants(ctx, grantedToTeam.ID)
+		require.NoError(t, err)
+		require.Len(t, teams, 1)
+		assert.Equal(t, sales.ID, teams[0].ID)
+	})
+
+	t.Run("Team Lead Cards And Leads", func(t *testing.T) {
+		owner := newOwner(t, "tl")
+		lead := newMember(t, owner, "tl-lead", models.RoleMember)
+		mate := newMember(t, owner, "tl-mate", models.RoleMember)
+		outsider := newMember(t, owner, "tl-outsider", models.RoleMember)
+		team := &models.Team{OrgID: owner.OrgID, Name: "Sales"}
+		require.NoError(t, repo.CreateTeam(ctx, team))
+		require.NoError(t, repo.ReplaceTeamMembers(ctx, owner.OrgID, team.ID, []models.TeamMembership{
+			{UserID: lead.ID, Role: models.TeamRoleLead}, {UserID: mate.ID, Role: models.TeamRoleMember},
+		}))
+
+		card := func(slug string, u *models.User) *models.Profile {
+			p := &models.Profile{OrgID: owner.OrgID, UserID: owner.ID, AssignedUserID: &u.ID, Slug: slug, Data: json.RawMessage(`{}`)}
+			require.NoError(t, repo.CreateProfile(ctx, p))
+			require.NoError(t, repo.CreateLead(ctx, &models.Lead{ProfileID: p.ID, Name: "Lead for " + slug, Email: "x@example.com"}))
+			return p
+		}
+		leadCard := card("tl-lead-card", lead)
+		mateCard := card("tl-mate-card", mate)
+		outsiderCard := card("tl-outsider-card", outsider)
+
+		cards, err := repo.ListProfiles(ctx, memberScope(lead))
+		require.NoError(t, err)
+		var ids []int64
+		for _, c := range cards {
+			ids = append(ids, c.ID)
+		}
+		assert.ElementsMatch(t, []int64{leadCard.ID, mateCard.ID}, ids, "leads see their team's cards")
+
+		got, err := repo.GetProfile(ctx, memberScope(lead), mateCard.ID)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, got.LeadCount)
+		_, err = repo.GetProfile(ctx, memberScope(lead), outsiderCard.ID)
+		assert.ErrorIs(t, err, repository.ErrNotFound)
+		require.NoError(t, repo.UpdateProfile(ctx, memberScope(lead), mateCard), "leads can edit teammates' cards")
+
+		// Plain members still only see their own.
+		cards, err = repo.ListProfiles(ctx, memberScope(mate))
+		require.NoError(t, err)
+		require.Len(t, cards, 1)
+		assert.Equal(t, mateCard.ID, cards[0].ID)
+
+		_, total, err := repo.ListLeads(ctx, memberScope(lead), repository.LeadFilter{Limit: 10})
+		require.NoError(t, err)
+		assert.EqualValues(t, 2, total)
+		_, total, err = repo.ListLeads(ctx, memberScope(mate), repository.LeadFilter{Limit: 10})
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, total)
+		_, total, err = repo.ListLeads(ctx, adminScope(owner), repository.LeadFilter{TeamID: team.ID, Limit: 10})
+		require.NoError(t, err)
+		assert.EqualValues(t, 2, total, "admins filter leads by team")
+	})
+
+	t.Run("File Purposes And Usage", func(t *testing.T) {
+		owner := newOwner(t, "fp")
+		rep := newMember(t, owner, "fp-rep", models.RoleMember)
+		newFile := func(id, kind, purpose, title string, size int64) *models.File {
+			f := &models.File{PublicID: id, OrgID: owner.OrgID, UserID: owner.ID, Area: models.AreaShared, Bucket: "b",
+				ObjectKey: "k/" + id, Kind: kind, Purpose: purpose, ContentType: "x", SizeBytes: size, OriginalName: id, Title: title}
+			require.NoError(t, repo.CreateFile(ctx, f))
+			time.Sleep(5 * time.Millisecond)
+			return f
+		}
+		avatar := newFile("fp-avatar-000000000001", "image", models.PurposeAvatar, "Headshot", 30)
+		cover := newFile("fp-cover-0000000000001", "image", models.PurposeCover, "Beach cover", 20)
+		brochure := newFile("fp-brochure-0000000001", "pdf", models.PurposeBrochure, "Price list", 50)
+		plain := newFile("fp-plain-0000000000001", "image", "", "", 10)
+		assert.Equal(t, models.PurposeOther, plain.Purpose, "purpose defaults to other")
+
+		// Purpose, search and sort.
+		files, total, err := repo.ListFiles(ctx, adminScope(owner), repository.FileFilter{Purposes: []string{models.PurposeAvatar, models.PurposeCover}, Limit: 10})
+		require.NoError(t, err)
+		assert.EqualValues(t, 2, total)
+		_, total, err = repo.ListFiles(ctx, adminScope(owner), repository.FileFilter{Search: "beach", Limit: 10})
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, total)
+		_, total, err = repo.ListFiles(ctx, adminScope(owner), repository.FileFilter{Search: "100%", Limit: 10})
+		require.NoError(t, err)
+		assert.EqualValues(t, 0, total, "wildcards match literally")
+		files, _, err = repo.ListFiles(ctx, adminScope(owner), repository.FileFilter{Sort: repository.FileSortSize, Limit: 10})
+		require.NoError(t, err)
+		assert.Equal(t, brochure.PublicID, files[0].PublicID)
+		files, _, err = repo.ListFiles(ctx, adminScope(owner), repository.FileFilter{Sort: repository.FileSortName, Limit: 10})
+		require.NoError(t, err)
+		assert.Equal(t, cover.PublicID, files[0].PublicID, "by title, then file name")
+		files, _, err = repo.ListFiles(ctx, adminScope(owner), repository.FileFilter{Sort: repository.FileSortOldest, Limit: 10})
+		require.NoError(t, err)
+		assert.Equal(t, avatar.PublicID, files[0].PublicID)
+
+		counts, err := repo.CountFilesByPurpose(ctx, adminScope(owner), repository.FileFilter{Purposes: []string{models.PurposeAvatar}})
+		require.NoError(t, err)
+		assert.Equal(t, map[string]int64{"avatar": 1, "cover": 1, "brochure": 1, "other": 1}, counts)
+
+		// Cards record which files they use, kept up to date on every save.
+		data := `{"name":"Rep card","avatar_file":"` + avatar.PublicID + `","documents":[{"file":"` + brochure.PublicID + `"}]}`
+		repCard := &models.Profile{OrgID: owner.OrgID, UserID: owner.ID, AssignedUserID: &rep.ID, Slug: "fp-rep", Data: json.RawMessage(data)}
+		require.NoError(t, repo.CreateProfile(ctx, repCard))
+		ownerCard := &models.Profile{OrgID: owner.OrgID, UserID: owner.ID, Slug: "fp-owner", Data: json.RawMessage(`{"cover_file":"` + avatar.PublicID + `"}`)}
+		require.NoError(t, repo.CreateProfile(ctx, ownerCard))
+
+		f, err := repo.GetFile(ctx, adminScope(owner), avatar.PublicID)
+		require.NoError(t, err)
+		assert.EqualValues(t, 2, f.UseCount)
+
+		usage, err := repo.GetFileUsage(ctx, memberScope(rep), f)
+		require.NoError(t, err)
+		require.Len(t, usage.Cards, 1, "only cards the member can see are listed")
+		assert.Equal(t, "Rep card", usage.Cards[0].Name)
+		assert.Equal(t, repository.SlotAvatar, usage.Cards[0].Slot)
+		assert.EqualValues(t, 1, usage.HiddenCards)
+
+		ownerCard.Data = json.RawMessage(`{}`)
+		require.NoError(t, repo.UpdateProfile(ctx, adminScope(owner), ownerCard))
+		f, _ = repo.GetFile(ctx, adminScope(owner), avatar.PublicID)
+		assert.EqualValues(t, 1, f.UseCount, "saving a card drops files it no longer uses")
+
+		// The org logo counts as a use.
+		logoID := cover.PublicID
+		require.NoError(t, repo.UpdateOrgBranding(ctx, owner.OrgID, &models.OrgBranding{LogoFile: &logoID, LogoPolicy: models.LogoOptional}))
+		f, _ = repo.GetFile(ctx, adminScope(owner), cover.PublicID)
+		assert.EqualValues(t, 1, f.UseCount)
+		usage, err = repo.GetFileUsage(ctx, adminScope(owner), f)
+		require.NoError(t, err)
+		assert.True(t, usage.OrgLogo)
+
+		// Renaming and re-purposing.
+		title, purpose := "Team photo", models.PurposeGallery
+		updated, err := repo.UpdateFile(ctx, adminScope(owner), plain.PublicID, repository.FilePatch{Title: &title, Purpose: &purpose})
+		require.NoError(t, err)
+		assert.Equal(t, "Team photo", updated.Title)
+		assert.Equal(t, models.PurposeGallery, updated.Purpose)
+		assert.Equal(t, models.AreaShared, updated.Area, "area untouched")
+		_, err = repo.UpdateFile(ctx, memberScope(rep), plain.PublicID, repository.FilePatch{Title: &title})
+		assert.ErrorIs(t, err, repository.ErrNotFound, "members can't change shared files")
+	})
 }
+
+func ptr[T any](v T) *T { return &v }

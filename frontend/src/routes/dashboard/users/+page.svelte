@@ -3,6 +3,7 @@
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
 	import UsersIcon from '@lucide/svelte/icons/users';
+	import { teamColor } from '$lib/api/teams';
 	import { ROLE_LABEL, STATUS_LABEL, userStatus, type OrgUser, type UserStatus } from '$lib/api/org';
 	import { Badge, type BadgeVariant } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -12,13 +13,16 @@
 	import * as Table from '$lib/components/ui/table';
 	import CreateUserDialog from '$lib/components/app/create-user-dialog.svelte';
 	import StorageMeter from '$lib/components/app/storage-meter.svelte';
+	import TeamPicker from '$lib/components/app/team-picker.svelte';
 	import UserAvatar from '$lib/components/app/user-avatar.svelte';
 	import { formatDateTime, plural, timeAgo } from '$lib/format';
 	import { orgUsers } from '$lib/org-users.svelte';
 	import { session } from '$lib/session.svelte';
+	import { teams } from '$lib/teams.svelte';
 
 	let createOpen = $state(false);
 	let query = $state('');
+	let team = $state<number | null>(null);
 
 	// Admins only: members are sent back to the overview.
 	$effect(() => {
@@ -33,8 +37,11 @@
 	const people = $derived(orgUsers.assignable);
 	const visible = $derived.by(() => {
 		const q = query.trim().toLowerCase();
-		if (!q) return people;
-		return people.filter((u) => u.username.toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q));
+		return people.filter(
+			(u) =>
+				(team === null || u.teams.some((t) => t.id === team)) &&
+				(!q || u.username.toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q))
+		);
 	});
 	const pending = $derived(people.filter((u) => ['unverified', 'temporary_password'].includes(userStatus(u))).length);
 
@@ -113,9 +120,14 @@
 			</Empty.Content>
 		</Empty.Root>
 	{:else}
-		<div class="relative max-w-sm">
-			<SearchIcon class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-			<Input bind:value={query} placeholder="Search username or email" class="pl-9" aria-label="Search users" />
+		<div class="flex flex-wrap items-center gap-2">
+			{#if teams.list?.length}
+				<TeamPicker value={team} options={teams.list} onchange={(v) => (team = v)} />
+			{/if}
+			<div class="relative min-w-0 basis-full sm:max-w-sm sm:flex-1 sm:basis-auto">
+				<SearchIcon class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+				<Input bind:value={query} placeholder="Search username or email" class="pl-9" aria-label="Search users" />
+			</div>
 		</div>
 
 		<div class="bg-card overflow-hidden rounded-xl border">
@@ -123,6 +135,7 @@
 				<Table.Header>
 					<Table.Row class="bg-muted/40 hover:bg-muted/40">
 						<Table.Head class="h-10 pl-5">User</Table.Head>
+						<Table.Head class="hidden h-10 xl:table-cell">Teams</Table.Head>
 						<Table.Head class="hidden h-10 md:table-cell">Status</Table.Head>
 						<Table.Head class="hidden h-10 text-right sm:table-cell">Cards</Table.Head>
 						<Table.Head class="hidden h-10 text-right sm:table-cell">Leads</Table.Head>
@@ -157,6 +170,23 @@
 									</div>
 								</div>
 							</Table.Cell>
+							<Table.Cell class="hidden max-w-64 py-3 xl:table-cell">
+								{#if user.teams.length}
+									<span class="flex flex-wrap gap-1">
+										{#each user.teams as t (t.id)}
+											<span
+												class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
+												title={t.role === 'lead' ? `Leads ${t.name}` : t.name}
+											>
+												<span class="size-1.5 rounded-full" style="background: {teamColor(t)}"></span>
+												{t.name}{t.role === 'lead' ? ' · Lead' : ''}
+											</span>
+										{/each}
+									</span>
+								{:else}
+									<span class="text-muted-foreground text-xs">—</span>
+								{/if}
+							</Table.Cell>
 							<Table.Cell class="hidden py-3 md:table-cell">
 								<Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>
 							</Table.Cell>
@@ -174,8 +204,8 @@
 						</Table.Row>
 					{:else}
 						<Table.Row class="hover:bg-transparent">
-							<Table.Cell colspan={6} class="text-muted-foreground h-32 text-center">
-								No users match “{query.trim()}”.
+							<Table.Cell colspan={7} class="text-muted-foreground h-32 text-center">
+								No users match this filter.
 							</Table.Cell>
 						</Table.Row>
 					{/each}

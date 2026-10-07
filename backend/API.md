@@ -38,10 +38,14 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `PUT`    | [`/api/me/storage`](#put-apimestorage) | 👑 | | Check, then save storage settings |
 | `POST`   | [`/api/me/storage/test`](#post-apimestoragetest) | 👑 | | Check storage settings without saving |
 | `DELETE` | [`/api/me/storage`](#delete-apimestorage) | 👑 | | Forget the storage keys |
-| `GET`    | [`/api/me/files`](#get-apimefiles) | ✅ | | Paginated files I can see, by area |
-| `POST`   | [`/api/me/files`](#post-apimefiles) | ✅ | ✅ upload | Upload a photo or PDF |
-| `PATCH`  | [`/api/me/files/{id}`](#patch-apimefilesid) | ✅ | | Rename a file |
+| `GET`    | [`/api/me/files`](#get-apimefiles) | ✅ | | Paginated files I can see, with filters, search and sort |
+| `GET`    | [`/api/me/files/counts`](#get-apimefilescounts) | ✅ | | How many files there are for each purpose |
+| `POST`   | [`/api/me/files`](#post-apimefiles) | ✅ | ✅ upload | Upload a photo or PDF, with an optional preview |
+| `PATCH`  | [`/api/me/files/{id}`](#patch-apimefilesid) | ✅ | | Rename, re-purpose or move a file |
 | `DELETE` | [`/api/me/files/{id}`](#delete-apimefilesid) | ✅ | | Delete a file from the bucket and library |
+| `POST`   | [`/api/me/files/bulk`](#post-apimefilesbulk) | ✅ | | Delete or update many files at once |
+| `GET`    | [`/api/me/files/{id}/usage`](#get-apimefilesidusage) | ✅ | | Where a file is used |
+| `GET`    | [`/api/me/files/{id}/content`](#get-apimefilesidcontent) | ✅ | | A file's bytes, from this origin |
 | `GET`    | [`/api/org`](#get-apiorg) | 🛡️ | | The organisation |
 | `PUT`    | [`/api/org`](#put-apiorg) | 👑 | | Rename it, set the default storage limit |
 | `GET`    | [`/api/org/branding`](#get-apiorgbranding) | ✅ | | Logo, logo policy and email signature settings |
@@ -52,6 +56,13 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `PATCH`  | [`/api/org/users/{id}`](#patch-apiorgusersid) | 🛡️ | | Correct an unverified email, set the storage limit, role or suspension |
 | `POST`   | [`/api/org/users/{id}/password`](#post-apiorgusersidpassword) | 🛡️ | ✅ auth | Give a user a new temporary password |
 | `DELETE` | [`/api/org/users/{id}`](#delete-apiorgusersid) | 🛡️ | | Delete a user, keeping their cards, files and leads |
+| `PUT`    | [`/api/org/users/{id}/teams`](#put-apiorgusersidteams) | 🛡️ | | Replace the teams a user is in |
+| `GET`    | [`/api/org/teams`](#get-apiorgteams) | ✅ | | Teams (admins: all; others: their own) |
+| `POST`   | [`/api/org/teams`](#post-apiorgteams) | 🛡️ | | Create a team |
+| `GET`    | [`/api/org/teams/{id}`](#get-apiorgteamsid) | ✅ | | A team and its people (admins and the team's members) |
+| `PATCH`  | [`/api/org/teams/{id}`](#patch-apiorgteamsid) | 🛡️ | | Rename a team, change its description or colour |
+| `DELETE` | [`/api/org/teams/{id}`](#delete-apiorgteamsid) | 🛡️ | | Delete a team, keeping its files as the organisation's |
+| `PUT`    | [`/api/org/teams/{id}/members`](#put-apiorgteamsidmembers) | 🛡️ | | Replace who is in a team and their roles |
 | `PUT`    | [`/api/org/profiles/{id}/assignee`](#put-apiorgprofilesidassignee) | 🛡️ | | Assign a card to a user, or back to the organisation |
 | `GET`    | [`/api/org/files/{id}/grants`](#get-apiorgfilesidgrants) | 🛡️ | | Who a file has been granted to |
 | `PUT`    | [`/api/org/files/{id}/grants`](#put-apiorgfilesidgrants) | 🛡️ | | Replace who a file is granted to |
@@ -111,11 +122,14 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
   "email_verified": true,
   "role": "owner",
   "org_name": "Acme",
-  "must_change_password": false
+  "must_change_password": false,
+  "teams": [{ "id": 3, "name": "Sales", "color": "#e11d48", "role": "lead" }]
 }
 ```
 
-`email` is `null` only for accounts created before emails were required; they must add and verify one before using the app. `role` is `owner`, `admin` or `member`. `must_change_password` is `true` while the user still has a temporary password their organisation set.
+`email` is `null` only for accounts created before emails were required; they must add and verify one before using the app. `role` is `owner`, `admin` or `member`. `teams` lists the teams the user is in; their `role` in each is `lead` or `member`.
+
+**Teams.** An organisation can group its people into teams, and anyone can be in several. Being in a team lets you see the team's files. A team's **leads** also add, change and delete the team's files, and they see and edit the cards of the people in their teams, along with those people's leads. Creating, deleting and reassigning cards stays with admins. Org users (`GET /api/org/users`) carry the same `teams` list. `must_change_password` is `true` while the user still has a temporary password their organisation set.
 
 **Email codes.** Verification and password-reset codes are 6 digits, valid for 15 minutes, and allow 5 guesses, after which a new code is needed. A new code can be requested once every 60 seconds; requesting one replaces the previous code. Codes are stored only as an HMAC.
 
@@ -160,21 +174,33 @@ The owner's ID and the timestamps are left out on purpose. `files` lists only th
   "area": "personal",
   "owner": { "id": 24, "username": "jane" },
   "kind": "pdf",
+  "purpose": "brochure",
   "content_type": "application/pdf",
   "size_bytes": 411,
   "name": "partnership.pdf",
   "title": "Partnership brochure",
-  "created_at": "2026-10-03T20:53:27Z"
+  "width": null,
+  "height": null,
+  "pages": 4,
+  "has_thumb": true,
+  "use_count": 2,
+  "created_at": "2026-10-03T20:53:27Z",
+  "updated_at": "2026-10-03T20:53:27Z"
 }
 ```
 
 `id` is a random 22-character public ID (128 bits), the only file identifier the API exposes. `kind` is `image` or `pdf`.
+
+`purpose` says what the file is for: `logo`, `banner`, `avatar` (profile photo), `cover`, `gallery`, `brochure` or `other`. PDFs are `brochure` or `other`; images can be anything except `brochure`.
+
+`width` and `height` (images) and `pages` (PDFs) are what the browser reported at upload; they're `null` for older files. `has_thumb` says there's a small preview at `/api/files/{id}?size=thumb`. `use_count` counts the cards using the file, plus one each if it's the organisation's logo or signature banner.
 
 `area` is one of:
 
 - `personal`: a user's own file. `owner` is that user. It counts toward their storage limit.
 - `org`: the organisation's private file, visible to admins and to members it's been granted to. `owner` is whoever uploaded it.
 - `shared`: visible to everyone in the organisation.
+- `team`: a team's file, visible to its members and editable by its leads. `team` is `{"id", "name", "color"}`.
 
 `former_owner` (only present when set) is the username of a deleted user whose personal file this was.
 
@@ -463,7 +489,8 @@ Returns one page of the leads the caller can see, newest first (ties broken by n
 | Param | Default | Rules |
 | ----- | ------- | ----- |
 | `profile_id` | none | Only this card's leads. A card outside the caller's view returns an empty page, never its leads |
-| `user_id` | none | Owner and admins only (`403` otherwise). Leads that arrived while this user held the card, or `none` for those that arrived while the organisation held it |
+| `user_id` | none | Owner, admins and team leads (`403` otherwise; `none` is admins only). Leads that arrived while this user held the card, or `none` for those that arrived while the organisation held it |
+| `team_id` | none | Owner, admins, and leads of that team (`403` otherwise). Leads that arrived while someone in the team held the card |
 | `q` | none | Trimmed, at most 100 chars. Case-insensitive substring match on name, email, phone number or notes. `%` and `_` match literally |
 | `since` | none | RFC 3339 timestamp (`2026-10-01T00:00:00Z`). Only leads received at or after it |
 | `page` | `1` | 1-based |
@@ -563,22 +590,44 @@ Deletes the saved keys (`204`). Nothing is removed from the bucket, but files ca
 
 ### `GET /api/me/files`
 
-Paginated files the caller can see, newest first. Owners and admins see every file in the organisation. Members see their personal files, the shared area, and files granted to them.
+Paginated files the caller can see. Owners and admins see every file in the organisation. Members see their personal files, the shared area, their teams' files, and files granted to them or to one of their teams.
 
 | Param | Rules |
 | ----- | ----- |
 | `kind` | `image` or `pdf` |
-| `area` | `personal`, `org`, `shared`, or `granted` (files granted to the caller, or for admins to `user_id`) |
+| `area` | `personal`, `org`, `shared`, `team`, or `granted` (files granted to the caller or their teams, or for admins to `user_id`) |
+| `team_id` | One team's files |
 | `user_id` | Owner and admins only (`403` otherwise): one user's files |
+| `purpose` | Comma-separated purposes, e.g. `logo,banner` |
+| `q` | Case-insensitive search of titles and file names, up to 100 characters |
+| `sort` | `newest` (the default), `oldest`, `name` or `size` (largest first) |
 | `page`, `page_size` | 1-based; default 24, max 100 |
 
 **Response:** `200 {"files": [File], "total": 5, "page": 1, "page_size": 24}`
 
+### `GET /api/me/files/counts`
+
+Takes the same filters as listing, except that `purpose` is ignored. Returns `200 {"counts": {"logo": 2, "brochure": 5}, "total": 7}`. Purposes that have no files are left out.
+
 ### `POST /api/me/files`
 
-`multipart/form-data` with a `file` part, an optional `title` part (up to 120 chars) and an optional `area` part. Rate limited per IP: burst of 10, then 1 every 6s.
+`multipart/form-data` with a `file` part, plus these optional parts. Rate limited per IP: burst of 10, then 1 every 6s.
 
-Members always upload to `personal` (any other `area` is `403`), and those files count toward their storage limit. Owners and admins upload to `org` (the default) or `shared`.
+| Part | Rules |
+| ---- | ----- |
+| `title` | Up to 120 characters |
+| `area` | Where the file goes (see below) |
+| `team_id` | Required when `area` is `team` |
+| `purpose` | Defaults to `brochure` for PDFs and `other` for images |
+| `width`, `height` | Images: their size in pixels |
+| `pages` | PDFs: their page count |
+| `thumb` | A preview image (JPEG, PNG or WebP, up to 300 KB). A missing, oversized or unreadable preview is skipped; the upload still succeeds |
+
+Where an upload can go:
+- Members upload to `personal`, and those files count toward their storage limit.
+- Team leads can also upload to `team`, for the teams they lead.
+- Owners and admins upload to `org` (the default), `shared`, or any team's area.
+- Anything else is `403`.
 
 The type is decided by **sniffing the bytes**, never from the file name or the client's `Content-Type`:
 
@@ -587,12 +636,13 @@ The type is decided by **sniffing the bytes**, never from the file name or the c
 | JPEG, PNG, WebP images | 5 MB |
 | PDF | 20 MB |
 
-The object is written to the organisation's bucket as `fronko/<org_id>/<user_id>/<file id>.<ext>`.
+The object is written to the organisation's bucket as `fronko/<org_id>/<user_id>/<file id>.<ext>`, and the preview next to it as `<file id>.thumb.<ext>`.
 
 | Status | Body |
 | ------ | ---- |
 | `201` | [`File`](#file) |
-| `403` | A member tried to upload outside their personal files |
+| `400` | The purpose doesn't fit the file, or the team isn't in the organisation |
+| `403` | The caller can't upload to that area or team |
 | `409` | `"connect your storage in Settings first"` |
 | `413` | Over the size limit (requests over 25 MB are stopped by nginx first), or `"you've reached your storage limit; …"`. The limit is checked again under a row lock when the file is recorded, so concurrent uploads can't overshoot |
 | `415` | `"only JPEG, PNG or WebP images and PDF files can be uploaded"` |
@@ -600,7 +650,19 @@ The object is written to the organisation's bucket as `fronko/<org_id>/<user_id>
 
 ### `PATCH /api/me/files/{id}`
 
-`{"title": "Spring price list"}`. Returns the updated [`File`](#file). Members can only rename their own personal files; owners and admins any file in the organisation. Anything else is `404`.
+`{"title": "Spring price list", "purpose": "brochure", "area": "team", "team_id": 3}`. Every field is optional. Returns the updated [`File`](#file).
+
+Who can change what:
+- Members can only change their own personal files.
+- Team leads can change their teams' files.
+- Owners and admins can change any file in the organisation.
+- Anything else is `404`.
+
+`area` (with `team_id` for teams) moves the file:
+- Nobody can move a file into `personal`.
+- Owners and admins can move files to `org`, `shared` or any team.
+- Team leads can move their own personal files, and their teams' files, into a team they lead.
+- Any other move is `403`.
 
 ### `DELETE /api/me/files/{id}`
 
@@ -609,6 +671,30 @@ Deletes the object from the bucket, then the library entry (`204`). The same rul
 - If storage was disconnected, only the entry is removed.
 - Cards that used the file stop showing it.
 - If the file was the organisation's logo or signature banner, that setting is cleared in the same step.
+- Its preview is deleted too.
+
+### `POST /api/me/files/bulk`
+
+`{"ids": ["…", "…"], "action": "delete"}` or `{"ids": [...], "action": "update", "patch": {"purpose": "gallery"}}`. Takes 1–100 IDs. Each file is handled as if by its own `DELETE` or `PATCH`. Returns `200 {"done": ["…"], "failed": [{"id": "…", "error": "file not found"}]}`.
+
+### `GET /api/me/files/{id}/usage`
+
+Where a file the caller can see is used:
+
+```json
+{
+  "cards": [{ "profile_id": 7, "slug": "jane", "name": "Jane Doe", "slot": "avatar" }],
+  "hidden_cards": 1,
+  "org_logo": false,
+  "signature_banner": false
+}
+```
+
+`slot` is `avatar`, `cover`, `document` or `gallery`. Cards the caller can't see are only counted, in `hidden_cards`.
+
+### `GET /api/me/files/{id}/content`
+
+The bytes of a file the caller can see, served as an attachment with `Cache-Control: private, no-store`. The app uses this to crop an existing image into a new copy, because the bucket usually doesn't allow the browser to read objects cross-origin. Returns `404` for a file the caller can't see, and `502` if storage can't be read.
 
 ---
 
@@ -750,13 +836,51 @@ Deletes the user (`204`) without losing their work, in one transaction:
 
 `{"user_id": 24}` assigns the card to that user; `{"user_id": null}` returns it to the organisation. Past leads stay with whoever held the card when they arrived. Returns the [`Profile`](#profile-owner-view); `400` `"that user isn't in your organisation"`.
 
+### `PUT /api/org/users/{id}/teams`
+
+`{"teams": [{"team_id": 3, "role": "lead"}, {"team_id": 5}]}` replaces the teams a user is in. `role` is `lead` or `member` (the default). Teams outside the organisation are ignored. Anyone in the organisation can be put in teams, including admins and the owner. Returns the org user. `POST /api/org/users` also takes an optional `teams` list in the same shape.
+
+### `GET /api/org/teams`
+
+Owners and admins get every team; everyone else gets the teams they're in. Teams are sorted by name:
+
+```json
+[{ "id": 3, "name": "Sales", "description": "", "color": "#e11d48", "member_count": 6, "lead_count": 1, "file_count": 12, "created_at": "…", "updated_at": "…" }]
+```
+
+### `POST /api/org/teams`
+
+`{"name": "Sales", "description": "Field sales", "color": "#e11d48", "members": [{"user_id": 24, "role": "lead"}]}`.
+- `name` is 1–60 characters and unique within the organisation, ignoring case (`409` otherwise).
+- `description` is up to 280 characters.
+- `color` is `#rrggbb` or empty.
+- `members` is optional.
+
+Returns `201` and the team with its `members`.
+
+### `GET /api/org/teams/{id}`
+
+The team plus `members: [{"id", "username", "email", "org_role", "role", "added_at"}]`, leads first. Only owners, admins and the team's own members can see it; anyone else gets `404`.
+
+### `PATCH /api/org/teams/{id}`
+
+`{"name", "description", "color"}` with the same rules as creating a team. Returns the team with its members.
+
+### `DELETE /api/org/teams/{id}`
+
+Deletes the team (`204`). Its files move to the `org` area so cards using them keep working. Memberships and grants to the team are removed.
+
+### `PUT /api/org/teams/{id}/members`
+
+`{"members": [{"user_id": 24, "role": "lead"}, {"user_id": 31}]}` replaces who is in the team. Users outside the organisation are ignored. Returns the team with its members.
+
 ### `GET /api/org/files/{id}/grants`
 
-`{"users": [{"id": 24, "username": "jane"}]}`: the users a file has been granted to, beyond everyone who sees it anyway. Shared files can't have grants (`400`).
+`{"users": [{"id": 24, "username": "jane"}], "teams": [{"id": 3, "name": "Sales", "color": "#e11d48"}]}`: the users and teams a file has been granted to, beyond everyone who sees it anyway. Shared files can't have grants (`400`).
 
 ### `PUT /api/org/files/{id}/grants`
 
-`{"user_ids": [24, 31]}` replaces the list (`[]` revokes all). IDs outside the organisation are ignored. Returns the new list. A card that already uses a file keeps showing it after access is revoked, until someone removes it from the card.
+`{"user_ids": [24, 31], "team_ids": [3]}` replaces either list (`[]` revokes all; a list that isn't sent is left alone). IDs outside the organisation are ignored. Returns the new lists. A card that already uses a file keeps showing it after access is revoked, until someone removes it from the card.
 
 ---
 
@@ -790,6 +914,8 @@ Serves a library file to anyone who has its ID: on cards, the photo and brochure
 - The signed URL is valid for 15 minutes.
 - The response has `Content-Type` and `Content-Disposition: inline; filename=…` set.
 - The redirect is sent with `Cache-Control: private, max-age=300` and `Referrer-Policy: no-referrer`.
+
+`?size=thumb` redirects to the file's small preview instead, or to the file itself when it has no preview.
 
 Unknown IDs, deleted files, files whose owner disconnected storage, and files of a suspended organisation all return `404`.
 
@@ -880,15 +1006,16 @@ The signed-in [`PlatformAdmin`](#platformadmin). `401` without a valid admin coo
 {
   "org_count": 10, "suspended_org_count": 1, "new_orgs_30d": 4, "active_orgs_30d": 6,
   "user_count": 31, "card_count": 18, "lead_count": 420, "file_count": 57,
-  "orgs_with_storage": 5, "storage_used_bytes": 734003200, "new_feedback": 2
+  "orgs_with_storage": 5, "storage_used_bytes": 734003200, "new_feedback": 2,
+  "team_count": 7, "orgs_with_teams": 3, "orgs_with_logo": 6
 }
 ```
 
-`active_orgs_30d` counts organisations where someone signed in within 30 days. `new_feedback` counts feedback with status `new`.
+`active_orgs_30d` counts organisations where someone signed in within 30 days. `new_feedback` counts feedback with status `new`. `team_count` totals every organisation's teams; `orgs_with_teams` and `orgs_with_logo` count organisations with at least one team, or with a logo set.
 
 ### `GET /api/admin/trends`
 
-`?days=` 1–366 (default 30). Returns `{"days": 30, "points": [UsagePoint…]}`, oldest first. One point per day with a snapshot (UTC): `date`, `org_count`, `user_count`, `card_count`, `lead_count`, `file_count`, `orgs_with_storage`, `storage_used_bytes`, `new_orgs` and `feedback_count` (both received that day). Snapshots are taken at startup and hourly, so today's point is at most an hour old. Days the server was down are missing.
+`?days=` 1–366 (default 30). Returns `{"days": 30, "points": [UsagePoint…]}`, oldest first. One point per day with a snapshot (UTC): `date`, `org_count`, `user_count`, `card_count`, `lead_count`, `file_count`, `orgs_with_storage`, `storage_used_bytes`, `new_orgs` and `feedback_count` (both received that day), `team_count`, `orgs_with_teams` and `orgs_with_logo`. The last three read 0 for days before migration 011. Snapshots are taken at startup and hourly, so today's point is at most an hour old. Days the server was down are missing.
 
 ### `GET /api/admin/orgs`
 
@@ -896,7 +1023,7 @@ The signed-in [`PlatformAdmin`](#platformadmin). `401` without a valid admin coo
 | ----- | ------- |
 | `q` | Case-insensitive substring of the name or owner email (`%` and `_` match literally) |
 | `status` | `active`, `suspended`, or empty for both |
-| `sort` | `newest` (default), `oldest`, `name`, `last_active`, `users`, `cards`, `leads` or `storage` |
+| `sort` | `newest` (default), `oldest`, `name`, `last_active`, `users`, `teams`, `cards`, `leads` or `storage` |
 | `page`, `page_size` | 1-based; `page_size` defaults to 25, at most 100 |
 
 Returns `{"items": [OrgUsage…], "total": 10, "page": 1, "page_size": 25}`. An unknown `status` or `sort` is a `400`.
@@ -910,9 +1037,13 @@ Returns `{"items": [OrgUsage…], "total": 10, "page": 1, "page_size": 25}`. An 
   "user_count": 3, "admin_count": 1, "member_count": 1, "suspended_user_count": 0,
   "card_count": 3, "lead_count": 68, "file_count": 8, "storage_used_bytes": 704376,
   "storage_connected": true, "storage_verified": true, "storage_provider": "r2",
-  "default_quota_bytes": null, "last_active_at": "2026-10-06T12:55:10Z"
+  "default_quota_bytes": null, "last_active_at": "2026-10-06T12:55:10Z",
+  "team_count": 1, "logo_set": true, "logo_policy": "optional", "signature_locked": true,
+  "files_by_purpose": { "brochure": 6, "logo": 2, "banner": 1 }
 }
 ```
+
+`team_count`, `logo_set`, `logo_policy`, `signature_locked` and `files_by_purpose` are counts and yes/no settings only: team names, file names and the logo itself are never returned.
 
 `user_count` includes the owner. `storage_used_bytes` sums files uploaded through Fronko, not everything in the bucket. `storage_provider` is the type only (`r2`, `b2`, `s3`, `minio`, `other`); the bucket, endpoint and keys are never returned. `owner_email` is `null` for old accounts without one. `last_active_at` is the latest sign-in of anyone in the organisation.
 
@@ -922,7 +1053,7 @@ One [`OrgUsage`](#orgusage), plus `suspended_reason` while suspended. `404 "orga
 
 ### `GET /api/admin/orgs/{id}/trends`
 
-Like [`/api/admin/trends`](#get-apiadmintrends) for one organisation. Points have `date`, `user_count`, `card_count`, `lead_count`, `file_count` and `storage_used_bytes`.
+Like [`/api/admin/trends`](#get-apiadmintrends) for one organisation. Points have `date`, `user_count`, `card_count`, `lead_count`, `file_count`, `storage_used_bytes` and `team_count`.
 
 ### `POST /api/admin/orgs/{id}/suspend`
 

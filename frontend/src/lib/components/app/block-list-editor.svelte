@@ -158,7 +158,7 @@
 					toast.error(`${f.name}: ${problem}`);
 					continue;
 				}
-				addImage(gallery, await uploadFile(f));
+				addImage(gallery, await uploadFile(f, { purpose: 'gallery' }));
 			}
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : 'Upload failed');
@@ -399,7 +399,7 @@
 
 <FilePickerDialog
 	bind:open={() => pickerFor !== null, (v) => !v && (pickerFor = null)}
-	kind="image"
+	purpose="gallery"
 	title="Add to gallery"
 	selected={pickerFor?.images.map((i) => i.file) ?? []}
 	onselect={(file) => pickerFor && addImage(pickerFor, file)}

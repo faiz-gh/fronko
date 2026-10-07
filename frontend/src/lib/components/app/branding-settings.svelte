@@ -4,7 +4,7 @@
 	import ImagesIcon from '@lucide/svelte/icons/images';
 	import UploadIcon from '@lucide/svelte/icons/upload';
 	import XIcon from '@lucide/svelte/icons/x';
-	import { ACCEPT, checkUpload, fileUrl, uploadFile, type LibraryFile } from '$lib/api/files';
+	import { ACCEPT, BANNER_RATIOS, checkUpload, fileUrl, PURPOSES, uploadFile, type LibraryFile } from '$lib/api/files';
 	import { updateBranding, type LogoPolicy, type OrgBranding } from '$lib/api/org';
 	import { Button } from '$lib/components/ui/button';
 	import * as Field from '$lib/components/ui/field';
@@ -17,7 +17,6 @@
 	import { SIGNATURE_TEMPLATES, SIGNATURE_TEMPLATE_KEYS } from '$lib/signature/templates';
 	import { storage } from '$lib/storage.svelte';
 	import { cn } from '$lib/utils';
-	import type { CropRatio } from '$lib/image';
 	import FilePickerDialog from './file-picker-dialog.svelte';
 	import ImageCropDialog from './image-crop-dialog.svelte';
 
@@ -75,12 +74,6 @@
 	let cropLogo = $state<File | null>(null);
 	let cropBanner = $state<File | null>(null);
 
-	const BANNER_RATIOS: CropRatio[] = [
-		{ label: '4:1', aspect: 4, width: 1200, height: 300 },
-		{ label: '3:1', aspect: 3, width: 1200, height: 400 },
-		{ label: '2:1', aspect: 2, width: 1200, height: 600 }
-	];
-
 	function pick(slot: Slot, file: File | undefined) {
 		if (!file) return;
 		const problem = checkUpload(file, 'image');
@@ -98,6 +91,7 @@
 			const uploaded = await uploadFile(file, {
 				area: 'org',
 				title: slot === 'logo' ? 'Organisation logo' : 'Signature banner',
+				purpose: slot,
 				onProgress: (p) => (progress[slot] = p)
 			});
 			setSlot(slot, uploaded.id);
@@ -333,7 +327,9 @@
 
 	<FilePickerDialog
 		bind:open={pickerOpen}
-		kind="image"
+		purpose={pickerFor ?? 'logo'}
+		crop={PURPOSES[pickerFor ?? 'logo'].crop}
+		excludePersonal
 		title={pickerFor === 'banner' ? 'Choose a banner' : 'Choose a logo'}
 		selected={pickerFor ? [current(pickerFor)].filter(Boolean) : []}
 		onselect={picked}

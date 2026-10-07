@@ -26,7 +26,7 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import UploadIcon from '@lucide/svelte/icons/upload';
 	import XIcon from '@lucide/svelte/icons/x';
-	import { ACCEPT, checkUpload, formatBytes, uploadFile, type LibraryFile, type PublicFile } from '$lib/api/files';
+	import { ACCEPT, checkUpload, formatBytes, PURPOSES, uploadFile, type LibraryFile, type PublicFile } from '$lib/api/files';
 	import { getMyProfile, getProfileBySlug, updateProfile, type Profile } from '$lib/api/profile';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -346,7 +346,7 @@
 	async function uploadPhoto(file: File) {
 		photoProgress = 0;
 		try {
-			usePhoto(await uploadFile(file, { onProgress: (p) => (photoProgress = p) }));
+			usePhoto(await uploadFile(file, { purpose: 'avatar', onProgress: (p) => (photoProgress = p) }));
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : 'Upload failed');
 		} finally {
@@ -363,7 +363,7 @@
 	async function uploadCover(file: File) {
 		coverProgress = 0;
 		try {
-			useCover(await uploadFile(file, { onProgress: (p) => (coverProgress = p) }));
+			useCover(await uploadFile(file, { purpose: 'cover', onProgress: (p) => (coverProgress = p) }));
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : 'Upload failed');
 		} finally {
@@ -1231,14 +1231,16 @@
 	<DeleteCardDialog bind:target={deleteTarget} ondeleted={onDeleted} />
 	<FilePickerDialog
 		bind:open={photoPickerOpen}
-		kind="image"
+		purpose="avatar"
+		crop={PURPOSES.avatar.crop}
 		title="Choose a photo"
 		selected={card.avatar_file ? [card.avatar_file] : []}
 		onselect={usePhoto}
 	/>
 	<FilePickerDialog
 		bind:open={coverPickerOpen}
-		kind="image"
+		purpose="cover"
+		crop={PURPOSES.cover.crop}
 		title="Choose a cover image"
 		selected={card.cover_file ? [card.cover_file] : []}
 		onselect={useCover}
@@ -1262,7 +1264,7 @@
 	/>
 	<FilePickerDialog
 		bind:open={docPickerOpen}
-		kind="pdf"
+		purpose="brochure"
 		title="Add a brochure"
 		selected={card.documents.map((d) => d.file)}
 		onselect={addDocument}

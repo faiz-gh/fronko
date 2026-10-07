@@ -48,11 +48,21 @@
 						note: 'Someone signed in within 30 days'
 					},
 					{ label: 'Users', value: summary.user_count.toLocaleString(), note: 'Across every organisation' },
+					{
+						label: 'Teams',
+						value: summary.team_count.toLocaleString(),
+						note: `${summary.orgs_with_teams} of ${summary.org_count} organisations use teams`
+					},
 					{ label: 'Cards', value: summary.card_count.toLocaleString(), note: plural(summary.lead_count, 'lead') + ' captured' },
 					{
 						label: 'Storage used',
 						value: formatBytes(summary.storage_used_bytes),
 						note: `${summary.orgs_with_storage} of ${summary.org_count} connected a bucket`
+					},
+					{
+						label: 'Branding',
+						value: summary.orgs_with_logo.toLocaleString(),
+						note: `of ${summary.org_count} organisations set a logo`
 					},
 					{
 						label: 'New feedback',
@@ -87,8 +97,8 @@
 			<Button variant="outline" onclick={loadSummary}>Try again</Button>
 		</div>
 	{:else}
-		<dl class="bg-border grid grid-cols-2 gap-px overflow-hidden rounded-xl border lg:grid-cols-3 2xl:grid-cols-6">
-			{#each stats ?? Array.from({ length: 6 }, (_, i) => ({ label: String(i), value: '', note: '', href: undefined })) as stat (stat.label)}
+		<dl class="bg-border grid grid-cols-2 gap-px overflow-hidden rounded-xl border lg:grid-cols-4">
+			{#each stats ?? Array.from({ length: 8 }, (_, i) => ({ label: String(i), value: '', note: '', href: undefined })) as stat (stat.label)}
 				<div class="bg-card relative flex flex-col gap-1 px-4 py-4 sm:px-6 sm:py-5">
 					{#if stats}
 						<dt class="text-muted-foreground text-xs sm:text-sm">
@@ -122,7 +132,7 @@
 			<p class="text-destructive text-sm">{trendError}</p>
 		{:else if trend === null}
 			<div class="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-				{#each [1, 2, 3, 4, 5, 6] as i (i)}
+				{#each [1, 2, 3, 4, 5, 6, 7, 8] as i (i)}
 					<Skeleton class="h-[250px] rounded-xl" />
 				{/each}
 			</div>
@@ -134,6 +144,8 @@
 				<TrendChart label="Leads" points={series('lead_count')} format={count} />
 				<TrendChart label="Storage used" points={series('storage_used_bytes')} format={formatBytes} />
 				<TrendChart label="Organisations with storage" points={series('orgs_with_storage')} format={count} />
+				<TrendChart label="Teams" points={series('team_count')} format={count} />
+				<TrendChart label="Organisations with a logo" points={series('orgs_with_logo')} format={count} />
 			</div>
 		{/if}
 	</section>

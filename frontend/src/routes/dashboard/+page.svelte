@@ -22,6 +22,7 @@
 	import { orgUsers } from '$lib/org-users.svelte';
 	import { session } from '$lib/session.svelte';
 	import { storage } from '$lib/storage.svelte';
+	import { teams } from '$lib/teams.svelte';
 
 	const WEEK_MS = 7 * 24 * 3600 * 1000;
 	const RECENT_LIMIT = 8;
@@ -77,14 +78,16 @@
 			done: (cards.list ?? []).some((p) => p.assigned_user),
 			label: 'Assign a card to them',
 			href: '/dashboard/cards'
-		}
+		},
+		{ done: (teams.list?.length ?? 0) > 0, label: 'Group people into teams', href: '/dashboard/teams' }
 	]);
 	const setUp = $derived(cards.list !== null && orgUsers.list !== null && steps.every((s) => s.done));
 
 	const stats = $derived(
 		session.isAdmin
 			? [
-					{ label: 'Team', value: orgUsers.list ? people.length : undefined, href: '/dashboard/users' },
+					{ label: 'People', value: orgUsers.list ? people.length : undefined, href: '/dashboard/users' },
+					{ label: 'Teams', value: teams.list?.length, href: '/dashboard/teams' },
 					{ label: 'Cards', value: cards.list?.length, href: '/dashboard/cards' },
 					{ label: 'Leads, all time', value: cards.list ? totalLeads : undefined, href: '/dashboard/leads' },
 					{ label: 'Leads, last 7 days', value: leadsThisWeek ?? undefined, href: '/dashboard/leads' }
@@ -155,8 +158,8 @@
 	{:else}
 		<!-- The 1px gaps over a border-coloured background draw the dividers at any column count. -->
 		<dl
-			class="bg-border grid gap-px overflow-hidden rounded-xl border {stats.length === 4
-				? 'grid-cols-2 lg:grid-cols-4'
+			class="bg-border grid gap-px overflow-hidden rounded-xl border {stats.length === 5
+				? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5'
 				: 'grid-cols-3'}"
 		>
 			{#each stats as stat (stat.label)}

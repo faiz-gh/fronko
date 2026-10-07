@@ -28,6 +28,7 @@ type OrgUsage struct {
 	AdminCount         int64      `json:"admin_count"`
 	MemberCount        int64      `json:"member_count"`
 	SuspendedUserCount int64      `json:"suspended_user_count"`
+	TeamCount          int64      `json:"team_count"`
 	CardCount          int64      `json:"card_count"`
 	LeadCount          int64      `json:"lead_count"`
 	FileCount          int64      `json:"file_count"`
@@ -37,6 +38,12 @@ type OrgUsage struct {
 	StorageProvider    *string    `json:"storage_provider"`
 	DefaultQuotaBytes  *int64     `json:"default_quota_bytes"`
 	LastActiveAt       *time.Time `json:"last_active_at"`
+	// Branding, as yes/no settings only.
+	LogoSet         bool   `json:"logo_set"`
+	LogoPolicy      string `json:"logo_policy"`
+	SignatureLocked bool   `json:"signature_locked"`
+	// FilesByPurpose counts files per purpose (logo, brochure, …).
+	FilesByPurpose map[string]int64 `json:"files_by_purpose"`
 }
 
 // PlatformSummary totals usage across every organisation.
@@ -52,6 +59,9 @@ type PlatformSummary struct {
 	StorageUsedBytes  int64 `json:"storage_used_bytes"`
 	ActiveOrgs30d     int64 `json:"active_orgs_30d"`
 	NewFeedback       int64 `json:"new_feedback"`
+	TeamCount         int64 `json:"team_count"`
+	OrgsWithTeams     int64 `json:"orgs_with_teams"`
+	OrgsWithLogo      int64 `json:"orgs_with_logo"`
 }
 
 // UsagePoint is one day of a usage trend. Platform trends fill every field;
@@ -67,6 +77,9 @@ type UsagePoint struct {
 	StorageUsedBytes int64  `json:"storage_used_bytes"`
 	NewOrgs          int64  `json:"new_orgs,omitempty"`
 	FeedbackCount    int64  `json:"feedback_count,omitempty"`
+	TeamCount        int64  `json:"team_count"`
+	OrgsWithTeams    int64  `json:"orgs_with_teams,omitempty"`
+	OrgsWithLogo     int64  `json:"orgs_with_logo,omitempty"`
 }
 
 // Feedback categories and statuses.

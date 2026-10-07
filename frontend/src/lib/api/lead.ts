@@ -36,6 +36,8 @@ export interface LeadQuery {
 	profileId?: number;
 	/** Admins only: leads that arrived while this user held the card, or 'none' for the organisation's. */
 	userId?: number | 'none';
+	/** Admins and the team's leads: leads that arrived while someone in this team held the card. */
+	teamId?: number;
 	/** Case-insensitive match on name, email, phone or message. */
 	q?: string;
 	/** Received at or after this time. */
@@ -61,6 +63,7 @@ export function listLeads(query: LeadQuery = {}): Promise<LeadPage> {
 	const params = new URLSearchParams();
 	if (query.profileId) params.set('profile_id', String(query.profileId));
 	if (query.userId) params.set('user_id', String(query.userId));
+	if (query.teamId) params.set('team_id', String(query.teamId));
 	if (query.q?.trim()) params.set('q', query.q.trim());
 	if (query.since) params.set('since', query.since.toISOString());
 	if (query.page) params.set('page', String(query.page));

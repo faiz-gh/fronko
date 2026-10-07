@@ -10,6 +10,7 @@
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import SignatureIcon from '@lucide/svelte/icons/signature';
 	import UsersIcon from '@lucide/svelte/icons/users';
+	import UsersRoundIcon from '@lucide/svelte/icons/users-round';
 	import * as Avatar from '$lib/components/ui/avatar';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Skeleton } from '$lib/components/ui/skeleton';
@@ -22,6 +23,7 @@
 	import { cards } from '$lib/cards.svelte';
 	import { orgUsers } from '$lib/org-users.svelte';
 	import { session } from '$lib/session.svelte';
+	import { teams } from '$lib/teams.svelte';
 	import { cn } from '$lib/utils';
 
 	/** Called after a navigation so the mobile drawer can close. */
@@ -35,12 +37,12 @@
 	const onSettings = $derived(path === '/dashboard/settings');
 	const totalLeads = $derived(cards.list?.reduce((sum, p) => sum + p.lead_count, 0) ?? 0);
 
-	// Admins manage the whole organisation, so cards get their own page; members
-	// keep their (few) cards listed right here.
+	// Admins and team leads look after other people's cards, so cards get their
+	// own page; members keep their (few) cards listed right here.
 	const nav = $derived([
 		{ href: '/dashboard', label: 'Overview', icon: LayoutGridIcon, active: path === '/dashboard' },
 		{ href: '/dashboard/leads', label: 'Leads', icon: InboxIcon, active: path === '/dashboard/leads', count: totalLeads },
-		...(session.isAdmin
+		...(session.seesOthers
 			? [
 					{
 						href: '/dashboard/cards',
@@ -48,13 +50,28 @@
 						icon: IdCardIcon,
 						active: path === '/dashboard/cards' || onCard,
 						count: cards.list?.length ?? 0
-					},
+					}
+				]
+			: []),
+		...(session.isAdmin
+			? [
 					{
 						href: '/dashboard/users',
 						label: 'Users',
 						icon: UsersIcon,
 						active: path.startsWith('/dashboard/users'),
 						count: orgUsers.assignable.length
+					}
+				]
+			: []),
+		...(session.isAdmin || session.teams.length > 0
+			? [
+					{
+						href: '/dashboard/teams',
+						label: 'Teams',
+						icon: UsersRoundIcon,
+						active: path.startsWith('/dashboard/teams'),
+						count: teams.list?.length ?? 0
 					}
 				]
 			: []),
@@ -91,7 +108,7 @@
 		<span class="flex min-w-0 flex-col">
 			<span class="truncate text-sm font-medium">{session.orgName}</span>
 			<span class="text-muted-foreground truncate text-xs">
-				{session.role ? ROLE_LABEL[session.role] : ''}
+				{session.role ? ROLE_LABEL[session.role] : ''}{session.isLead && !session.isAdmin ? ' · Team lead' : ''}
 			</span>
 		</span>
 	</div>
@@ -109,7 +126,7 @@
 			{/each}
 		</div>
 
-		{#if !session.isAdmin}
+		{#if !session.seesOthers}
 			<div class="flex min-h-0 flex-1 flex-col gap-1">
 				<span class="text-muted-foreground pl-2.5 text-xs font-medium">
 					Your cards

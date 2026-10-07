@@ -2,12 +2,24 @@
 	import { toast } from 'svelte-sonner';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import UploadIcon from '@lucide/svelte/icons/upload';
-	import { ACCEPT, checkUpload, uploadFile, type FileArea, type FileKind, type LibraryFile } from '$lib/api/files';
+	import {
+		ACCEPT,
+		checkUpload,
+		defaultPurpose,
+		kindOf,
+		uploadFile,
+		type FileArea,
+		type FileKind,
+		type FilePurpose,
+		type LibraryFile
+	} from '$lib/api/files';
 	import { cn } from '$lib/utils';
 
 	let {
 		kind,
 		area,
+		teamId,
+		purpose,
 		onuploaded,
 		disabled = false,
 		compact = false,
@@ -16,8 +28,12 @@
 	}: {
 		/** Restrict uploads to one kind; otherwise images and PDFs are both accepted. */
 		kind?: FileKind;
-		/** Admins: the organisation's files (default) or the shared area. Members always upload to their own files. */
+		/** Where uploads go; see uploadFile. */
 		area?: FileArea;
+		/** For the team area. */
+		teamId?: number;
+		/** What uploads are for, where it fits the file; PDFs default to brochures. */
+		purpose?: FilePurpose | null;
 		onuploaded?: (file: LibraryFile) => void;
 		disabled?: boolean;
 		compact?: boolean;
@@ -42,6 +58,16 @@
 				: 'Images up to 5 MB, PDFs up to 20 MB'
 	);
 
+	/** Opens the file chooser. */
+	export function browse() {
+		if (!disabled) input?.click();
+	}
+
+	/** Uploads files dropped or picked elsewhere on the page. */
+	export function upload(files: FileList | File[]) {
+		if (!disabled) handle(files);
+	}
+
 	async function handle(files: FileList | File[]) {
 		const list = Array.from(files);
 		if (!multiple) list.splice(1);
@@ -56,7 +82,12 @@
 				continue;
 			}
 			try {
-				const uploaded = await uploadFile(file, { area, onProgress: (p) => (entry.progress = Math.min(p, 0.99)) });
+				const uploaded = await uploadFile(file, {
+					area,
+					teamId,
+					purpose: defaultPurpose(kindOf(file), purpose),
+					onProgress: (p) => (entry.progress = Math.min(p, 0.99))
+				});
 				entry.progress = 1;
 				onuploaded?.(uploaded);
 				// Finished rows fade from the list shortly after completing.

@@ -14,7 +14,7 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import UndoIcon from '@lucide/svelte/icons/undo-2';
 	import XIcon from '@lucide/svelte/icons/x';
-	import { fileUrl, formatBytes, listFiles, type LibraryFile } from '$lib/api/files';
+	import { fileUrl, formatBytes, listFiles, locationLabel, type LibraryFile } from '$lib/api/files';
 	import {
 		deleteOrgUser,
 		getFileGrants,
@@ -43,6 +43,10 @@
 	import FileThumb from '$lib/components/app/file-thumb.svelte';
 	import QuotaInput from '$lib/components/app/quota-input.svelte';
 	import StorageMeter from '$lib/components/app/storage-meter.svelte';
+	import TeamMembershipsInput from '$lib/components/app/team-memberships-input.svelte';
+	import { me } from '$lib/api/auth';
+	import { setUserTeams, type TeamRole } from '$lib/api/teams';
+	import { teams } from '$lib/teams.svelte';
 	import UserAvatar from '$lib/components/app/user-avatar.svelte';
 	import { normalizeCard } from '$lib/card/card';
 	import { cards } from '$lib/cards.svelte';
@@ -71,6 +75,7 @@
 				user = u;
 				quota = u.storage_quota_bytes;
 				email = u.email ?? '';
+				memberships = u.teams.map((t) => ({ team_id: t.id, role: t.role ?? 'member' }));
 			})
 			.catch((e) => (loadError = e instanceof Error ? e.message : 'Failed to load this user'));
 		listFiles({ area: 'granted', userId: id, pageSize: 100 })
@@ -104,6 +109,32 @@
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : 'Update failed');
 			return false;
+		}
+	}
+
+	// Teams: any admin can put anyone in teams, the owner and admins included.
+	let memberships = $state<{ team_id: number; role: TeamRole }[]>([]);
+	let savingTeams = $state(false);
+	const teamsKey = (list: { team_id: number; role: string }[]) =>
+		list
+			.map((m) => `${m.team_id}:${m.role}`)
+			.sort()
+			.join(',');
+	const teamsChanged = $derived(
+		!!user && teamsKey(memberships) !== teamsKey(user.teams.map((t) => ({ team_id: t.id, role: t.role ?? 'member' })))
+	);
+	async function saveTeams() {
+		if (!user) return;
+		savingTeams = true;
+		try {
+			updated(await setUserTeams(user.id, memberships));
+			teams.refresh();
+			if (user.username === session.username) session.signIn(await me());
+			toast.success('Teams saved');
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Could not save teams');
+		} finally {
+			savingTeams = false;
 		}
 	}
 
@@ -143,10 +174,7 @@
 	async function revoke(file: LibraryFile) {
 		try {
 			const { users } = await getFileGrants(file.id);
-			await setFileGrants(
-				file.id,
-				users.filter((u) => u.id !== userId).map((u) => u.id)
-			);
+			await setFileGrants(file.id, { userIds: users.filter((u) => u.id !== userId).map((u) => u.id) });
 			granted = granted?.filter((f) => f.id !== file.id) ?? null;
 			toast.success('Access removed');
 		} catch (e) {
@@ -348,6 +376,29 @@
 			</Alert.Root>
 		{/if}
 
+		<section class="flex flex-col gap-3" aria-labelledby="teams-heading">
+			<div class="flex flex-col gap-0.5">
+				<h2 id="teams-heading" class="text-sm font-semibold">
+					Teams <span class="text-muted-foreground tabular ml-1 font-normal">{user.teams.length}</span>
+				</h2>
+				<p class="text-muted-foreground text-sm">
+					They see their teams' files. As a lead they also look after those files and see their teammates' cards and
+					leads.
+				</p>
+			</div>
+			<div class="bg-card flex flex-col gap-4 rounded-xl border p-5">
+				<TeamMembershipsInput bind:value={memberships} disabled={savingTeams} />
+				{#if teams.list?.length}
+					<div>
+						<Button variant="outline" onclick={saveTeams} disabled={!teamsChanged || savingTeams}>
+							{#if savingTeams}<Spinner data-icon="inline-start" />{/if}
+							Save teams
+						</Button>
+					</div>
+				{/if}
+			</div>
+		</section>
+
 		<section class="flex flex-col gap-3" aria-labelledby="cards-heading">
 			<div class="flex items-center justify-between gap-3">
 				<h2 id="cards-heading" class="text-sm font-semibold">
@@ -432,7 +483,8 @@
 			<div class="flex flex-col gap-0.5">
 				<h2 id="files-heading" class="text-sm font-semibold">Extra files they can use</h2>
 				<p class="text-muted-foreground text-sm">
-					Everyone sees their own files and the shared area. Give access to more from
+					Everyone sees their own files, the shared area and their teams' files. Files listed here were shared with them
+					or one of their teams; removing access only affects what was shared with them directly. Give access to more from
 					<a href="/dashboard/files" class="text-foreground underline-offset-4 hover:underline">Files</a>.
 				</p>
 			</div>
@@ -444,13 +496,13 @@
 						{#each granted as file (file.id)}
 							<li class="flex items-center gap-3 px-5 py-3">
 								<a href={fileUrl(file.id)} target="_blank" rel="noopener" class="shrink-0">
-									<FileThumb id={file.id} kind={file.kind} class="size-10 rounded-md" />
+									<FileThumb id={file.id} kind={file.kind} hasThumb={file.has_thumb} class="size-10 rounded-md" />
 								</a>
 								<span class="flex min-w-0 flex-1 flex-col">
 									<span class="truncate text-sm font-medium">{file.title || file.name}</span>
 									<span class="text-muted-foreground truncate text-xs">
 										{formatBytes(file.size_bytes)} ·
-										{file.area === 'personal' ? `${file.owner?.username}’s file` : 'Organisation file'}
+										{locationLabel(file)}
 									</span>
 								</span>
 								<Button variant="ghost" size="icon-sm" onclick={() => revoke(file)} aria-label="Remove access">

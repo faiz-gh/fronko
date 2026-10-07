@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/faiz-gh/fronko/backend/internal/middleware"
 	"github.com/faiz-gh/fronko/backend/internal/models"
 	"github.com/faiz-gh/fronko/backend/internal/repository"
 )
@@ -168,12 +169,15 @@ func (h *LeadHandler) GetLeads(w http.ResponseWriter, r *http.Request) {
 
 // Protected: GET /api/me/leads?profile_id=&user_id=&q=&since=&page=&page_size=
 // Lists the leads the caller can see, newest first: every lead in the
-// organisation for admins, a member's own leads otherwise. user_id (admins
-// only) keeps the leads that arrived while that user held the card; "none"
-// keeps those that arrived while the organisation held it. Every parameter is
-// optional; page is 1-based.
+// organisation for admins, a member's own leads otherwise, plus their
+// teammates' for team leads. user_id (admins and team leads) keeps the leads
+// that arrived while that user held the card; "none" (admins only) keeps those
+// that arrived while the organisation held it. team_id (admins and team
+// leads) keeps the leads of that team's people. Every parameter is optional;
+// page is 1-based.
 func (h *LeadHandler) ListLeads(w http.ResponseWriter, r *http.Request) {
 	scope := scopeOf(r)
+	principal := middleware.PrincipalFrom(r.Context())
 	query := r.URL.Query()
 
 	page, pageSize, ok := pageParams(w, r, defaultLeadPageSize, maxLeadPageSize)
@@ -199,7 +203,7 @@ func (h *LeadHandler) ListLeads(w http.ResponseWriter, r *http.Request) {
 		filter.ProfileID = id
 	}
 	if raw := query.Get("user_id"); raw != "" {
-		if !scope.Admin {
+		if !scope.Admin && !(principal.LeadsAnyTeam() && raw != "none") {
 			writeError(w, http.StatusForbidden, "only your organisation's admins can filter by user")
 			return
 		}
@@ -213,6 +217,18 @@ func (h *LeadHandler) ListLeads(w http.ResponseWriter, r *http.Request) {
 			}
 			filter.UserID = id
 		}
+	}
+	if raw := query.Get("team_id"); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id < 1 {
+			writeError(w, http.StatusBadRequest, "invalid team_id")
+			return
+		}
+		if !scope.Admin && !principal.LeadsTeam(id) {
+			writeError(w, http.StatusForbidden, "you can only filter by teams you lead")
+			return
+		}
+		filter.TeamID = id
 	}
 	if raw := query.Get("since"); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)

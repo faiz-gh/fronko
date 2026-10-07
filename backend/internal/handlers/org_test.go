@@ -34,27 +34,65 @@ func TestOptionalQuota(t *testing.T) {
 }
 
 func TestUploadArea(t *testing.T) {
-	member := middleware.Principal{Role: models.RoleMember}
+	member := middleware.Principal{Role: models.RoleMember, Teams: []models.TeamRef{{ID: 7, Role: models.TeamRoleMember}}}
+	lead := middleware.Principal{Role: models.RoleMember, Teams: []models.TeamRef{{ID: 7, Role: models.TeamRoleLead}}}
 	admin := middleware.Principal{Role: models.RoleAdmin}
 	cases := []struct {
+		name      string
 		who       middleware.Principal
 		requested string
+		team      int64
 		want      string
 		allowed   bool
 	}{
-		{member, "", models.AreaPersonal, true},
-		{member, models.AreaPersonal, models.AreaPersonal, true},
-		{member, models.AreaShared, "", false},
-		{member, models.AreaOrg, "", false},
-		{admin, "", models.AreaOrg, true},
-		{admin, models.AreaShared, models.AreaShared, true},
-		{admin, models.AreaPersonal, "", false},
-		{admin, "bogus", "", false},
+		{"member default", member, "", 0, models.AreaPersonal, true},
+		{"member personal", member, models.AreaPersonal, 0, models.AreaPersonal, true},
+		{"member shared", member, models.AreaShared, 0, "", false},
+		{"member org", member, models.AreaOrg, 0, "", false},
+		{"member own team", member, models.AreaTeam, 7, "", false},
+		{"lead own team", lead, models.AreaTeam, 7, models.AreaTeam, true},
+		{"lead other team", lead, models.AreaTeam, 8, "", false},
+		{"lead org", lead, models.AreaOrg, 0, "", false},
+		{"lead team without id", lead, models.AreaTeam, 0, "", false},
+		{"admin default", admin, "", 0, models.AreaOrg, true},
+		{"admin shared", admin, models.AreaShared, 0, models.AreaShared, true},
+		{"admin any team", admin, models.AreaTeam, 8, models.AreaTeam, true},
+		{"admin personal", admin, models.AreaPersonal, 0, "", false},
+		{"admin bogus", admin, "bogus", 0, "", false},
 	}
 	for _, c := range cases {
-		area, msg := uploadArea(c.who, c.requested)
-		assert.Equal(t, c.allowed, msg == "", "%s uploading to %q", c.who.Role, c.requested)
-		assert.Equal(t, c.want, area, "%s uploading to %q", c.who.Role, c.requested)
+		area, msg := uploadArea(c.who, c.requested, c.team)
+		assert.Equal(t, c.allowed, msg == "", c.name)
+		assert.Equal(t, c.want, area, c.name)
+	}
+}
+
+func TestMoveAllowed(t *testing.T) {
+	member := middleware.Principal{UserID: 1, Role: models.RoleMember, Teams: []models.TeamRef{{ID: 7, Role: models.TeamRoleMember}}}
+	lead := middleware.Principal{UserID: 2, Role: models.RoleMember, Teams: []models.TeamRef{{ID: 7, Role: models.TeamRoleLead}}}
+	admin := middleware.Principal{UserID: 3, Role: models.RoleAdmin}
+	own := &models.File{UserID: 2, Area: models.AreaPersonal}
+	others := &models.File{UserID: 1, Area: models.AreaPersonal}
+	cases := []struct {
+		name    string
+		who     middleware.Principal
+		file    *models.File
+		area    string
+		team    int64
+		allowed bool
+	}{
+		{"member into team", member, others, models.AreaTeam, 7, false},
+		{"lead own file into led team", lead, own, models.AreaTeam, 7, true},
+		{"lead into other team", lead, own, models.AreaTeam, 8, false},
+		{"lead someone else's personal file", lead, others, models.AreaTeam, 7, false},
+		{"lead into shared", lead, own, models.AreaShared, 0, false},
+		{"admin into shared", admin, others, models.AreaShared, 0, true},
+		{"admin into any team", admin, others, models.AreaTeam, 8, true},
+		{"admin into team without id", admin, others, models.AreaTeam, 0, false},
+		{"nobody into personal", admin, own, models.AreaPersonal, 0, false},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.allowed, moveAllowed(c.who, c.file, c.area, c.team) == "", c.name)
 	}
 }
 

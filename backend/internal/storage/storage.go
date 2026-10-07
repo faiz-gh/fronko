@@ -27,6 +27,8 @@ import (
 type Store interface {
 	Put(ctx context.Context, key, contentType string, body []byte) error
 	Delete(ctx context.Context, key string) error
+	// Get reads an object of at most max bytes; larger objects fail with ErrTooLarge.
+	Get(ctx context.Context, key string, max int64) ([]byte, error)
 	// PresignGet returns a time-limited URL the browser can fetch directly.
 	PresignGet(ctx context.Context, key string, ttl time.Duration, contentType, disposition string) (string, error)
 	// Probe checks the credentials can read and write the bucket.
@@ -188,6 +190,15 @@ func (s *s3Store) Put(ctx context.Context, key, contentType string, body []byte)
 func (s *s3Store) Delete(ctx context.Context, key string) error {
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
 	return err
+}
+
+func (s *s3Store) Get(ctx context.Context, key string, max int64) ([]byte, error) {
+	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
+	if err != nil {
+		return nil, err
+	}
+	defer out.Body.Close()
+	return ReadAllLimited(out.Body, max)
 }
 
 func (s *s3Store) PresignGet(ctx context.Context, key string, ttl time.Duration, contentType, disposition string) (string, error) {

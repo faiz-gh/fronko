@@ -1,11 +1,16 @@
 <script lang="ts">
+	import { Command as CommandPrimitive } from 'bits-ui';
 	import BuildingIcon from '@lucide/svelte/icons/building-2';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import UsersIcon from '@lucide/svelte/icons/users';
+	import type { OrgUser } from '$lib/api/org';
+	import { teamColor } from '$lib/api/teams';
 	import { buttonVariants } from '$lib/components/ui/button';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import * as Command from '$lib/components/ui/command';
+	import * as Popover from '$lib/components/ui/popover';
 	import UserAvatar from './user-avatar.svelte';
 	import { orgUsers } from '$lib/org-users.svelte';
+	import { teams } from '$lib/teams.svelte';
 	import { cn } from '$lib/utils';
 
 	/** A user id, 'none' for the organisation itself, or null for everyone (filters only). */
@@ -35,11 +40,56 @@
 		class?: string;
 	} = $props();
 
+	let open = $state(false);
 	const selected = $derived(typeof value === 'number' ? orgUsers.byId(value) : undefined);
+
+	// People grouped by team. Someone in several teams shows under each; people
+	// in no team come last. Without teams it's one plain list.
+	const groups = $derived.by(() => {
+		const people = orgUsers.assignable;
+		const list = teams.list ?? [];
+		if (list.length === 0) return [{ key: 'all', label: '', color: '', people: people.map((u) => ({ user: u, lead: false })) }];
+		const out = list
+			.map((t) => ({
+				key: `team-${t.id}`,
+				label: t.name,
+				color: teamColor(t),
+				people: people.flatMap((u) => {
+					const m = u.teams.find((x) => x.id === t.id);
+					return m ? [{ user: u, lead: m.role === 'lead' }] : [];
+				})
+			}))
+			.filter((g) => g.people.length > 0);
+		const loose = people.filter((u) => u.teams.length === 0);
+		if (loose.length) out.push({ key: 'none', label: 'No team', color: '', people: loose.map((u) => ({ user: u, lead: false })) });
+		return out;
+	});
+
+	function pick(v: Value) {
+		open = false;
+		onchange(v);
+	}
 </script>
 
-<DropdownMenu.Root>
-	<DropdownMenu.Trigger
+{#snippet person(user: OrgUser, lead: boolean, group: string)}
+	<Command.Item
+		value="{user.username} {user.email ?? ''} {group}"
+		data-checked={value === user.id}
+		onSelect={() => pick(user.id)}
+	>
+		<UserAvatar username={user.username} class="size-5 text-[9px]" />
+		<span class="min-w-0 flex-1 truncate">{user.username}</span>
+		{#if lead}
+			<span class="text-muted-foreground text-[11px]">Lead</span>
+		{/if}
+		{#if user.suspended_at}
+			<span class="text-muted-foreground text-[11px]">Suspended</span>
+		{/if}
+	</Command.Item>
+{/snippet}
+
+<Popover.Root bind:open>
+	<Popover.Trigger
 		{disabled}
 		class={buttonVariants({ variant: 'outline', size, class: cn('max-w-64 justify-start gap-2', className) })}
 	>
@@ -54,37 +104,49 @@
 			<span class="truncate">{allLabel}</span>
 		{/if}
 		<ChevronDownIcon class="text-muted-foreground ml-auto size-3.5" />
-	</DropdownMenu.Trigger>
-	<DropdownMenu.Content align="start" class="max-h-80 w-64">
-		<DropdownMenu.RadioGroup
-			value={value === null ? (filter ? 'all' : 'none') : String(value)}
-			onValueChange={(v) => onchange(v === 'all' ? null : v === 'none' ? 'none' : Number(v))}
-		>
-			{#if filter}
-				<DropdownMenu.RadioItem value="all">{allLabel}</DropdownMenu.RadioItem>
-			{/if}
-			{#if allowNone}
-				<DropdownMenu.RadioItem value="none">
-					<span class="flex items-center gap-2">
-						<BuildingIcon class="text-muted-foreground size-4" />
-						{noneLabel}
-					</span>
-				</DropdownMenu.RadioItem>
-			{/if}
-			{#if orgUsers.assignable.length > 0}
-				<DropdownMenu.Separator />
-			{/if}
-			{#each orgUsers.assignable as user (user.id)}
-				<DropdownMenu.RadioItem value={String(user.id)}>
-					<span class="flex min-w-0 flex-1 items-center gap-2">
-						<UserAvatar username={user.username} class="size-5 text-[9px]" />
-						<span class="truncate">{user.username}</span>
-						{#if user.suspended_at}
-							<span class="text-muted-foreground ml-auto text-xs">Suspended</span>
+	</Popover.Trigger>
+	<Popover.Content align="start" class="w-72 p-0">
+		<Command.Root>
+			<Command.Input placeholder="Search people…" />
+			<Command.List class="max-h-80">
+				<Command.Empty>Nobody found.</Command.Empty>
+				{#if filter || allowNone}
+					<Command.Group>
+						{#if filter}
+							<Command.Item value="__all {allLabel}" data-checked={value === null} onSelect={() => pick(null)}>
+								<UsersIcon class="text-muted-foreground" />
+								{allLabel}
+							</Command.Item>
 						{/if}
-					</span>
-				</DropdownMenu.RadioItem>
-			{/each}
-		</DropdownMenu.RadioGroup>
-	</DropdownMenu.Content>
-</DropdownMenu.Root>
+						{#if allowNone}
+							<Command.Item
+								value="__none {noneLabel}"
+								data-checked={value === 'none' || (!filter && value === null)}
+								onSelect={() => pick('none')}
+							>
+								<BuildingIcon class="text-muted-foreground" />
+								{noneLabel}
+							</Command.Item>
+						{/if}
+					</Command.Group>
+					<Command.Separator />
+				{/if}
+				{#each groups as g (g.key)}
+					<CommandPrimitive.Group value={g.key} class="overflow-hidden p-1">
+						{#if g.label}
+							<CommandPrimitive.GroupHeading class="text-muted-foreground flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium">
+								{#if g.color}<span class="size-2 rounded-full" style="background: {g.color}"></span>{/if}
+								{g.label}
+							</CommandPrimitive.GroupHeading>
+						{/if}
+						<CommandPrimitive.GroupItems>
+							{#each g.people as p (p.user.id)}
+								{@render person(p.user, p.lead, g.label)}
+							{/each}
+						</CommandPrimitive.GroupItems>
+					</CommandPrimitive.Group>
+				{/each}
+			</Command.List>
+		</Command.Root>
+	</Popover.Content>
+</Popover.Root>
