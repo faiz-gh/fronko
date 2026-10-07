@@ -42,7 +42,9 @@
 						onclick={() => (previewMode = mode)}
 						class={cn(
 							'h-8 rounded-md px-3 text-sm font-medium transition-colors',
-							previewMode === mode ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+							previewMode === mode
+								? 'bg-background text-foreground shadow-sm'
+								: 'text-muted-foreground hover:text-foreground'
 						)}
 					>
 						{label}
@@ -63,7 +65,9 @@
 			{:else}
 				<div class="my-auto flex w-full max-w-[300px] flex-col items-center gap-4">
 					<QrCode url={tapUrl(session.orgHandle, savedSlug, 'qr')} style={card.qr} bind:svg={qrMarkup} class="w-full" />
-					<p class="text-muted-foreground max-w-full truncate font-mono text-xs">{tapUrl(session.orgHandle, savedSlug, 'qr')}</p>
+					<p class="text-muted-foreground max-w-full truncate font-mono text-xs">
+						{tapUrl(session.orgHandle, savedSlug, 'qr')}
+					</p>
 					<div class="grid w-full grid-cols-2 gap-2">
 						<Button variant="outline" onclick={() => downloadQrSvg(qrMarkup, savedSlug)} disabled={!qrMarkup}>
 							<DownloadIcon data-icon="inline-start" />
@@ -75,9 +79,7 @@
 						</Button>
 					</div>
 					{#if slug !== savedSlug}
-						<p class="text-muted-foreground text-center text-xs">
-							This code uses your saved link. Save to update it.
-						</p>
+						<p class="text-muted-foreground text-center text-xs">This code uses your saved link. Save to update it.</p>
 					{/if}
 				</div>
 			{/if}

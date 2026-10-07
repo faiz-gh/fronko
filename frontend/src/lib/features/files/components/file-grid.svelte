@@ -1,7 +1,14 @@
 <script lang="ts">
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import LinkIcon from '@lucide/svelte/icons/link';
-	import { fileDimensions, fileTitle, formatBytes, locationLabel, PURPOSES, type LibraryFile } from '$lib/features/files/api';
+	import {
+		fileDimensions,
+		fileTitle,
+		formatBytes,
+		locationLabel,
+		PURPOSES,
+		type LibraryFile
+	} from '$lib/features/files/api';
 	import { teamColor } from '$lib/features/teams/api';
 	import FileThumb from './file-thumb.svelte';
 	import { cn } from '$lib/utils';
@@ -54,7 +61,9 @@
 						class="aspect-[4/3] w-full"
 					/>
 					<span class="pointer-events-none absolute top-2 left-2 flex max-w-[calc(100%-3rem)] flex-wrap gap-1">
-						<span class="bg-background/90 text-foreground rounded-full px-2 py-0.5 text-[11px] font-medium shadow-sm backdrop-blur">
+						<span
+							class="bg-background/90 text-foreground rounded-full px-2 py-0.5 text-[11px] font-medium shadow-sm backdrop-blur"
+						>
 							{PURPOSES[file.purpose].label}
 						</span>
 						{#if file.team && showLocation}

@@ -27,7 +27,9 @@
 			<div class="bg-muted h-5 w-full overflow-hidden rounded-md">
 				<div
 					class="h-full rounded-md"
-					style="width: {Math.max(step.value > 0 ? 1 : 0, (step.value / top) * 100)}%; background: {shades[Math.min(i, shades.length - 1)]}"
+					style="width: {Math.max(step.value > 0 ? 1 : 0, (step.value / top) * 100)}%; background: {shades[
+						Math.min(i, shades.length - 1)
+					]}"
 				></div>
 			</div>
 			{#if step.hint}<p class="text-muted-foreground text-xs">{step.hint}</p>{/if}

@@ -111,7 +111,14 @@
 	}
 
 	function hasSettings(b: CardBlock): boolean {
-		return b.type === 'header' || b.type === 'heading' || b.type === 'text' || b.type === 'gallery' || b.type === 'event' || b.type in EDITED_IN;
+		return (
+			b.type === 'header' ||
+			b.type === 'heading' ||
+			b.type === 'text' ||
+			b.type === 'gallery' ||
+			b.type === 'event' ||
+			b.type in EDITED_IN
+		);
 	}
 
 	/** A short preview of the block's content, shown on its row. */
@@ -125,7 +132,12 @@
 			case 'gallery':
 				return b.images.length === 1 ? '1 image' : `${b.images.length} images`;
 			case 'event':
-				return [b.role, b.name].map((s) => s.trim()).filter(Boolean).join(' · ') || 'Empty';
+				return (
+					[b.role, b.name]
+						.map((s) => s.trim())
+						.filter(Boolean)
+						.join(' · ') || 'Empty'
+				);
 			default:
 				return BLOCK_INFO[b.type].description;
 		}
@@ -204,7 +216,9 @@
 						<span class="text-muted-foreground truncate text-xs">{summary(block)}</span>
 					</span>
 					{#if hasSettings(block)}
-						<ChevronDownIcon class={cn('text-muted-foreground size-4 shrink-0 transition-transform', open && 'rotate-180')} />
+						<ChevronDownIcon
+							class={cn('text-muted-foreground size-4 shrink-0 transition-transform', open && 'rotate-180')}
+						/>
 					{/if}
 				</button>
 				{#if block.type !== 'header'}
@@ -212,7 +226,13 @@
 						<Button variant="ghost" size="icon" disabled={i <= 1} onclick={() => move(i, -1)} aria-label="Move up">
 							<ArrowUpIcon />
 						</Button>
-						<Button variant="ghost" size="icon" disabled={i === blocks.length - 1} onclick={() => move(i, 1)} aria-label="Move down">
+						<Button
+							variant="ghost"
+							size="icon"
+							disabled={i === blocks.length - 1}
+							onclick={() => move(i, 1)}
+							aria-label="Move down"
+						>
 							<ArrowDownIcon />
 						</Button>
 					</div>
@@ -226,7 +246,13 @@
 						>
 							{#if block.hidden}<EyeOffIcon />{:else}<EyeIcon />{/if}
 						</Button>
-						<Button variant="ghost" size="icon" onclick={() => blocks.splice(i, 1)} aria-label="Remove block" title="Remove">
+						<Button
+							variant="ghost"
+							size="icon"
+							onclick={() => blocks.splice(i, 1)}
+							aria-label="Remove block"
+							title="Remove"
+						>
 							<XIcon />
 						</Button>
 					</div>
@@ -257,27 +283,58 @@
 							</Field.Description>
 						</Field.Field>
 					{:else if block.type === 'heading'}
-						<Input bind:value={block.text} maxlength={MAX_HEADING} placeholder="e.g. Selected work" aria-label="Heading text" />
+						<Input
+							bind:value={block.text}
+							maxlength={MAX_HEADING}
+							placeholder="e.g. Selected work"
+							aria-label="Heading text"
+						/>
 					{:else if block.type === 'text'}
-						<Textarea bind:value={block.text} rows={4} maxlength={MAX_TEXT} placeholder="Write something…" aria-label="Text" />
+						<Textarea
+							bind:value={block.text}
+							rows={4}
+							maxlength={MAX_TEXT}
+							placeholder="Write something…"
+							aria-label="Text"
+						/>
 					{:else if block.type === 'event'}
 						<div class="grid gap-4 sm:grid-cols-2">
 							<Field.Field>
 								<Field.Label for="event-role-{block.id}">Your role</Field.Label>
-								<Input id="event-role-{block.id}" bind:value={block.role} maxlength={MAX_EVENT_FIELD} placeholder="Speaker" />
+								<Input
+									id="event-role-{block.id}"
+									bind:value={block.role}
+									maxlength={MAX_EVENT_FIELD}
+									placeholder="Speaker"
+								/>
 								<Field.Description>Shown as a ribbon: Speaker, Sponsor, Attendee…</Field.Description>
 							</Field.Field>
 							<Field.Field>
 								<Field.Label for="event-name-{block.id}">Event</Field.Label>
-								<Input id="event-name-{block.id}" bind:value={block.name} maxlength={MAX_EVENT_FIELD} placeholder="Design Week 2026" />
+								<Input
+									id="event-name-{block.id}"
+									bind:value={block.name}
+									maxlength={MAX_EVENT_FIELD}
+									placeholder="Design Week 2026"
+								/>
 							</Field.Field>
 							<Field.Field>
 								<Field.Label for="event-dates-{block.id}">Dates</Field.Label>
-								<Input id="event-dates-{block.id}" bind:value={block.dates} maxlength={MAX_EVENT_FIELD} placeholder="12–14 Nov" />
+								<Input
+									id="event-dates-{block.id}"
+									bind:value={block.dates}
+									maxlength={MAX_EVENT_FIELD}
+									placeholder="12–14 Nov"
+								/>
 							</Field.Field>
 							<Field.Field>
 								<Field.Label for="event-venue-{block.id}">Venue</Field.Label>
-								<Input id="event-venue-{block.id}" bind:value={block.venue} maxlength={MAX_EVENT_FIELD} placeholder="ExCeL, London" />
+								<Input
+									id="event-venue-{block.id}"
+									bind:value={block.venue}
+									maxlength={MAX_EVENT_FIELD}
+									placeholder="ExCeL, London"
+								/>
 							</Field.Field>
 						</div>
 					{:else if block.type === 'gallery'}
@@ -297,7 +354,13 @@
 										class="shadow-none"
 									/>
 									<div class="flex shrink-0">
-										<Button variant="ghost" size="icon" disabled={j === 0} onclick={() => moveImage(block, j, -1)} aria-label="Move image up">
+										<Button
+											variant="ghost"
+											size="icon"
+											disabled={j === 0}
+											onclick={() => moveImage(block, j, -1)}
+											aria-label="Move image up"
+										>
 											<ArrowUpIcon />
 										</Button>
 										<Button
@@ -309,7 +372,12 @@
 										>
 											<ArrowDownIcon />
 										</Button>
-										<Button variant="ghost" size="icon" onclick={() => block.images.splice(j, 1)} aria-label="Remove image">
+										<Button
+											variant="ghost"
+											size="icon"
+											onclick={() => block.images.splice(j, 1)}
+											aria-label="Remove image"
+										>
 											<XIcon />
 										</Button>
 									</div>
@@ -325,7 +393,9 @@
 											uploadInput?.click();
 										}}
 									>
-										{#if uploading === block.id}<Spinner data-icon="inline-start" />{:else}<UploadIcon data-icon="inline-start" />{/if}
+										{#if uploading === block.id}<Spinner data-icon="inline-start" />{:else}<UploadIcon
+												data-icon="inline-start"
+											/>{/if}
 										Upload images
 									</Button>
 									<Button variant="outline" disabled={!storage.ready} onclick={() => (pickerFor = block)}>
@@ -336,7 +406,9 @@
 							{/if}
 							<p class="text-muted-foreground text-xs">
 								{#if storage.status && !storage.ready}
-									<a href="/dashboard/settings?tab=storage" class="text-foreground underline underline-offset-4">Connect storage</a>
+									<a href="/dashboard/settings?tab=storage" class="text-foreground underline underline-offset-4"
+										>Connect storage</a
+									>
 									to add images.
 								{:else}
 									Up to {MAX_GALLERY_IMAGES} images. JPEG, PNG or WebP up to 5 MB each.

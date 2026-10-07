@@ -70,7 +70,13 @@
 					</span>
 				</div>
 				<div class="flex shrink-0 max-sm:flex-col">
-					<Button variant="ghost" size="icon" disabled={i === 0} onclick={() => moveDocument(i, -1)} aria-label="Move up">
+					<Button
+						variant="ghost"
+						size="icon"
+						disabled={i === 0}
+						onclick={() => moveDocument(i, -1)}
+						aria-label="Move up"
+					>
 						<ArrowUpIcon />
 					</Button>
 					<Button
@@ -99,7 +105,9 @@
 		</button>
 		{#if storage.status && !storage.ready}
 			<p class="text-muted-foreground text-xs">
-				<a href="/dashboard/settings?tab=storage" class="text-foreground underline underline-offset-4">Connect storage</a>
+				<a href="/dashboard/settings?tab=storage" class="text-foreground underline underline-offset-4"
+					>Connect storage</a
+				>
 				to upload PDFs.
 			</p>
 		{/if}

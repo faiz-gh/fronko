@@ -52,7 +52,7 @@
 			region: 'us-east-1',
 			pathStyle: false,
 			keysHelp:
-				'IAM → create a user with an access key and a policy allowing s3:GetObject, s3:PutObject and s3:DeleteObject on arn:aws:s3:::<bucket>/* (s3:ListBucket on the bucket is optional). Use the bucket\'s region in both the endpoint and Region.'
+				"IAM → create a user with an access key and a policy allowing s3:GetObject, s3:PutObject and s3:DeleteObject on arn:aws:s3:::<bucket>/* (s3:ListBucket on the bucket is optional). Use the bucket's region in both the endpoint and Region."
 		},
 		minio: {
 			label: 'MinIO',
@@ -210,8 +210,8 @@
 		<p class="font-medium">File storage isn't enabled on this server</p>
 		<p class="text-muted-foreground max-w-2xl text-sm">
 			Whoever runs this Fronko server needs to set <code class="bg-muted rounded px-1 py-0.5 text-xs">SECRETS_KEY</code>
-			(a 32-byte key, e.g. <code class="bg-muted rounded px-1 py-0.5 text-xs">openssl rand -base64 32</code>). It's used to
-			encrypt your storage keys.
+			(a 32-byte key, e.g. <code class="bg-muted rounded px-1 py-0.5 text-xs">openssl rand -base64 32</code>). It's used
+			to encrypt your storage keys.
 		</p>
 	</div>
 {:else}
@@ -228,7 +228,9 @@
 				)}
 			>
 				{#if configured}
-					<span class="grid size-8 place-items-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+					<span
+						class="grid size-8 place-items-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+					>
 						<CircleCheckIcon class="size-4" />
 					</span>
 					<span class="flex min-w-0 flex-col">
@@ -276,7 +278,13 @@
 			<Field.Group class="grid gap-5 sm:grid-cols-2">
 				<Field.Field class="sm:col-span-2">
 					<Field.Label for="endpoint">Endpoint</Field.Label>
-					<Input id="endpoint" bind:value={endpoint} placeholder={preset.endpoint} class="font-mono text-sm" autocomplete="off" />
+					<Input
+						id="endpoint"
+						bind:value={endpoint}
+						placeholder={preset.endpoint}
+						class="font-mono text-sm"
+						autocomplete="off"
+					/>
 					<Field.Description>The S3 API URL only, without the bucket name or a path.</Field.Description>
 				</Field.Field>
 				<Field.Field>
@@ -313,7 +321,9 @@
 				<Field.Field orientation="horizontal" class="sm:col-span-2">
 					<Field.Content>
 						<Field.Label for="path-style">Path-style URLs</Field.Label>
-						<Field.Description>On for Cloudflare R2, MinIO and most self-hosted providers. Off for AWS S3 and Backblaze B2.</Field.Description>
+						<Field.Description
+							>On for Cloudflare R2, MinIO and most self-hosted providers. Off for AWS S3 and Backblaze B2.</Field.Description
+						>
 					</Field.Content>
 					<Switch id="path-style" bind:checked={pathStyle} />
 				</Field.Field>
@@ -321,8 +331,8 @@
 
 			<p class="text-muted-foreground flex items-start gap-2 text-xs">
 				<LockIcon class="mt-px size-3.5 shrink-0" />
-				Keys are encrypted before they're stored and are never shown again, not even to you. Use a key that can only
-				access this bucket.
+				Keys are encrypted before they're stored and are never shown again, not even to you. Use a key that can only access
+				this bucket.
 			</p>
 
 			{#if message}
@@ -342,7 +352,12 @@
 					Test connection
 				</Button>
 				{#if configured}
-					<Button type="button" variant="ghost" class="text-destructive ml-auto" onclick={() => (confirmDisconnect = true)}>
+					<Button
+						type="button"
+						variant="ghost"
+						class="text-destructive ml-auto"
+						onclick={() => (confirmDisconnect = true)}
+					>
 						Disconnect
 					</Button>
 				{/if}

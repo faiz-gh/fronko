@@ -94,13 +94,22 @@ interface Parts {
 	disclaimer: string;
 }
 
-function collect(card: CardData, cardUrl: string, org: OrgBranding | null, opts: RenderOptions, template: SignatureTemplateKey): Parts {
+function collect(
+	card: CardData,
+	cardUrl: string,
+	org: OrgBranding | null,
+	opts: RenderOptions,
+	template: SignatureTemplateKey
+): Parts {
 	const s = card.signature;
 	const sig = org?.signature ?? {};
 
 	const contacts: Item[] = [];
 	if (s.show_phone && card.phone_number) {
-		contacts.push({ text: formatPhone(card.phone_country_code, card.phone_number), href: `tel:${e164(card.phone_country_code, card.phone_number)}` });
+		contacts.push({
+			text: formatPhone(card.phone_country_code, card.phone_number),
+			href: `tel:${e164(card.phone_country_code, card.phone_number)}`
+		});
 	}
 	if (s.show_email && card.email.trim()) {
 		contacts.push({ text: card.email.trim(), href: `mailto:${card.email.trim()}` });
@@ -136,7 +145,9 @@ function collect(card: CardData, cardUrl: string, org: OrgBranding | null, opts:
 		contacts,
 		socials,
 		cardLink: s.show_card_link && cardUrl ? cardUrl : null,
-		banner: sig.banner_file ? { src: absolute(fileUrl(sig.banner_file)), href: bannerHref, size: opts.bannerSize ?? null } : null,
+		banner: sig.banner_file
+			? { src: absolute(fileUrl(sig.banner_file)), href: bannerHref, size: opts.bannerSize ?? null }
+			: null,
 		disclaimer: sig.disclaimer?.trim() ?? ''
 	};
 }
@@ -188,8 +199,9 @@ function corporate(p: Parts): string {
 		? table(
 				`<tr><td style="vertical-align:middle;padding-right:12px;">${photoHtml(p, 48)}</td><td style="vertical-align:middle;">${table(
 					row(`<span style="font-size:16px;font-weight:bold;color:${p.accent};">${esc(p.name)}</span>`) +
-						(p.title ? row(esc(p.title), `color:${MUTED};`) : '')
-				, BASE)}</td></tr>`,
+						(p.title ? row(esc(p.title), `color:${MUTED};`) : ''),
+					BASE
+				)}</td></tr>`,
 				BASE
 			)
 		: table(
@@ -265,7 +277,12 @@ function footer(p: Parts): string {
 		// 600 px is the usual email width; a 4:1 banner shows at 600 × 150.
 		const box = fit(p.banner.size, 600, 200);
 		const image = img(p.banner.src, '', box);
-		parts.push(row(p.banner.href ? `<a href="${esc(p.banner.href)}" style="text-decoration:none;">${image}</a>` : image, 'padding-top:12px;'));
+		parts.push(
+			row(
+				p.banner.href ? `<a href="${esc(p.banner.href)}" style="text-decoration:none;">${image}</a>` : image,
+				'padding-top:12px;'
+			)
+		);
 	}
 	if (p.disclaimer) {
 		const text = esc(p.disclaimer).replace(/\r?\n/g, '<br>');
@@ -298,7 +315,12 @@ export function signatureTemplate(card: CardData, org: OrgBranding | null): Sign
 }
 
 /** `cardUrl` is the card's public link (see publicUrl), or '' for none. */
-export function renderSignature(card: CardData, cardUrl: string, org: OrgBranding | null, opts: RenderOptions = {}): RenderedSignature {
+export function renderSignature(
+	card: CardData,
+	cardUrl: string,
+	org: OrgBranding | null,
+	opts: RenderOptions = {}
+): RenderedSignature {
 	const template = opts.template ?? signatureTemplate(card, org);
 	const p = collect(card, cardUrl, org, opts, template);
 	const html = `<div style="font-family:${FONT};">${LAYOUTS[template](p)}${footer(p)}</div>`;

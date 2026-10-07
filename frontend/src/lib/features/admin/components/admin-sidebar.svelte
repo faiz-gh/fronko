@@ -56,7 +56,12 @@
 
 	<nav class="flex min-h-0 flex-1 flex-col gap-0.5 px-3 pb-3" aria-label="Admin">
 		{#each nav as item (item.href)}
-			<a href={item.href} onclick={onnavigate} aria-current={item.active ? 'page' : undefined} class={navItem(item.active)}>
+			<a
+				href={item.href}
+				onclick={onnavigate}
+				aria-current={item.active ? 'page' : undefined}
+				class={navItem(item.active)}
+			>
 				<item.icon class="size-4" />
 				{item.label}
 				{#if item.count}

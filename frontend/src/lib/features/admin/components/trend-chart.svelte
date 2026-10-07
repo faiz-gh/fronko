@@ -73,7 +73,9 @@
 		</span>
 		<span class="text-muted-foreground text-xs">
 			{#if change !== null}
-				{change === 0 ? 'No change' : `${change > 0 ? '+' : '−'}${format(Math.abs(change))}`} since {day(points[0].date)}
+				{change === 0 ? 'No change' : `${change > 0 ? '+' : '−'}${format(Math.abs(change))}`} since {day(
+					points[0].date
+				)}
 			{:else if last}
 				First day of data: {fullDay(last.date)}
 			{:else}
@@ -100,7 +102,12 @@
 						{format(t)}
 					</text>
 				{/each}
-				<text x={x(0)} y={HEIGHT - 4} text-anchor={points.length === 1 ? 'middle' : 'start'} class="fill-muted-foreground text-[11px]">
+				<text
+					x={x(0)}
+					y={HEIGHT - 4}
+					text-anchor={points.length === 1 ? 'middle' : 'start'}
+					class="fill-muted-foreground text-[11px]"
+				>
 					{day(points[0].date)}
 				</text>
 				{#if points.length > 1}
@@ -108,10 +115,24 @@
 						{day(points[points.length - 1].date)}
 					</text>
 					<path d={area} class="fill-brand" fill-opacity="0.1" />
-					<path d={line} fill="none" class="stroke-brand" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+					<path
+						d={line}
+						fill="none"
+						class="stroke-brand"
+						stroke-width="2"
+						stroke-linejoin="round"
+						stroke-linecap="round"
+					/>
 				{/if}
 				{#if hover !== null}
-					<line x1={x(hover)} x2={x(hover)} y1={M.top} y2={M.top + innerH} class="stroke-muted-foreground/40" stroke-width="1" />
+					<line
+						x1={x(hover)}
+						x2={x(hover)}
+						y1={M.top}
+						y2={M.top + innerH}
+						class="stroke-muted-foreground/40"
+						stroke-width="1"
+					/>
 				{/if}
 				{#if active !== null}
 					<circle cx={x(active)} cy={y(points[active].value)} r="4" class="fill-brand stroke-card" stroke-width="2" />

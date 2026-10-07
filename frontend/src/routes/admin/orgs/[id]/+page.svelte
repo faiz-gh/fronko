@@ -79,7 +79,9 @@
 					{
 						label: 'Files',
 						value: org.file_count.toLocaleString(),
-						note: [formatBytes(org.storage_used_bytes) + ' in total', purposeNote(org.files_by_purpose)].filter(Boolean).join(' · ')
+						note: [formatBytes(org.storage_used_bytes) + ' in total', purposeNote(org.files_by_purpose)]
+							.filter(Boolean)
+							.join(' · ')
 					},
 					{
 						label: 'Branding',
@@ -127,7 +129,9 @@
 					{#if org.suspended_at}<Badge variant="destructive">Suspended</Badge>{/if}
 				</h1>
 				<p class="text-muted-foreground text-sm">
-					<span class="font-mono">/p/{org.handle}</span> · Owner {org.owner_email ?? '(no email)'} · created {formatDateTime(org.created_at)} · last active
+					<span class="font-mono">/p/{org.handle}</span> · Owner {org.owner_email ?? '(no email)'} · created {formatDateTime(
+						org.created_at
+					)} · last active
 					{org.last_active_at ? timeAgo(org.last_active_at) : 'never'}
 				</p>
 			</div>

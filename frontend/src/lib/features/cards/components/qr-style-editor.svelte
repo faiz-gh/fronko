@@ -11,7 +11,14 @@
 	import FilePickerDialog from '$lib/features/files/components/file-picker-dialog.svelte';
 	import FileThumb from '$lib/features/files/components/file-thumb.svelte';
 	import QrCode from './qr-code.svelte';
-	import { QR_IMAGE_SCALE, defaultQrStyle, type QrCorners, type QrDots, type QrImage, type QrStyle } from '$lib/features/cards/card';
+	import {
+		QR_IMAGE_SCALE,
+		defaultQrStyle,
+		type QrCorners,
+		type QrDots,
+		type QrImage,
+		type QrStyle
+	} from '$lib/features/cards/card';
 	import { qrContrastIssue } from '$lib/features/cards/qr';
 	import { cn } from '$lib/utils';
 
@@ -156,7 +163,9 @@
 					}}
 					class={cn(
 						'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
-						style.fg === p.fg && style.bg === p.bg ? 'border-foreground ring-foreground ring-1' : 'hover:border-foreground/30'
+						style.fg === p.fg && style.bg === p.bg
+							? 'border-foreground ring-foreground ring-1'
+							: 'hover:border-foreground/30'
 					)}
 				>
 					<span class="flex -space-x-1">{@render swatch(p.bg)}{@render swatch(p.fg)}</span>
@@ -193,7 +202,12 @@
 			{/each}
 		</div>
 		{#if issue}
-			<p class={cn('flex items-start gap-2 text-sm', issue.blocking ? 'text-destructive' : 'text-amber-700 dark:text-amber-400')}>
+			<p
+				class={cn(
+					'flex items-start gap-2 text-sm',
+					issue.blocking ? 'text-destructive' : 'text-amber-700 dark:text-amber-400'
+				)}
+			>
 				<CircleAlertIcon class="mt-0.5 size-4 shrink-0" />
 				{issue.message}
 			</p>
@@ -203,14 +217,29 @@
 	<div class="grid gap-6 2xl:grid-cols-2">
 		<Field.Field>
 			<Field.Label>Dots</Field.Label>
-			<ToggleGroup.Root type="single" variant="outline" value={style.dots} onValueChange={(v) => v && (style.dots = v as QrDots)} class="w-full" aria-label="Dots">
+			<ToggleGroup.Root
+				type="single"
+				variant="outline"
+				value={style.dots}
+				onValueChange={(v) => v && (style.dots = v as QrDots)}
+				class="w-full"
+				aria-label="Dots"
+			>
 				{#each DOTS as d (d.value)}<ToggleGroup.Item value={d.value} class="flex-1">{d.label}</ToggleGroup.Item>{/each}
 			</ToggleGroup.Root>
 		</Field.Field>
 		<Field.Field>
 			<Field.Label>Corners</Field.Label>
-			<ToggleGroup.Root type="single" variant="outline" value={style.corners} onValueChange={(v) => v && (style.corners = v as QrCorners)} class="w-full" aria-label="Corners">
-				{#each CORNERS as c (c.value)}<ToggleGroup.Item value={c.value} class="flex-1">{c.label}</ToggleGroup.Item>{/each}
+			<ToggleGroup.Root
+				type="single"
+				variant="outline"
+				value={style.corners}
+				onValueChange={(v) => v && (style.corners = v as QrCorners)}
+				class="w-full"
+				aria-label="Corners"
+			>
+				{#each CORNERS as c (c.value)}<ToggleGroup.Item value={c.value} class="flex-1">{c.label}</ToggleGroup.Item
+					>{/each}
 			</ToggleGroup.Root>
 		</Field.Field>
 	</div>
@@ -224,8 +253,8 @@
 		</div>
 	{/if}
 	<Field.Description>
-		Always scan a test print before ordering cards. Codes you've already printed keep working: the style only changes how
-		new downloads look.
+		Always scan a test print before ordering cards. Codes you've already printed keep working: the style only changes
+		how new downloads look.
 	</Field.Description>
 </Field.Group>
 

@@ -128,7 +128,8 @@
 					{:else if addingEmail}
 						Enter the address you want to use. We'll send a new code to it.
 					{:else}
-						Enter the 6-digit code we sent to <span class="text-foreground font-medium break-all">{session.email}</span>.
+						Enter the 6-digit code we sent to <span class="text-foreground font-medium break-all">{session.email}</span
+						>.
 					{/if}
 				</p>
 			</div>
@@ -168,7 +169,13 @@
 							Send code
 						</Button>
 						{#if session.email}
-							<Button type="button" variant="ghost" class="w-full" onclick={() => (editingEmail = false)} disabled={!!busy}>
+							<Button
+								type="button"
+								variant="ghost"
+								class="w-full"
+								onclick={() => (editingEmail = false)}
+								disabled={!!busy}
+							>
 								Cancel
 							</Button>
 						{/if}

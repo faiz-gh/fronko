@@ -50,10 +50,21 @@ export function contrastRatio(a: string, b: string): number {
  */
 export function qrContrastIssue(style: QrStyle): { message: string; blocking: boolean } | null {
 	const ratio = contrastRatio(style.fg, style.bg);
-	if (ratio < 3) return { message: 'These colours are too close for phones to read the code. Pick a darker or lighter pair.', blocking: true };
+	if (ratio < 3)
+		return {
+			message: 'These colours are too close for phones to read the code. Pick a darker or lighter pair.',
+			blocking: true
+		};
 	if (luminance(style.fg) > luminance(style.bg))
-		return { message: 'Light codes on dark backgrounds don’t scan on some phones. Dark on light is safest.', blocking: false };
-	if (ratio < 4.5) return { message: 'Low contrast: some phones may struggle to scan this. Test it before printing.', blocking: false };
+		return {
+			message: 'Light codes on dark backgrounds don’t scan on some phones. Dark on light is safest.',
+			blocking: false
+		};
+	if (ratio < 4.5)
+		return {
+			message: 'Low contrast: some phones may struggle to scan this. Test it before printing.',
+			blocking: false
+		};
 	return null;
 }
 
@@ -118,9 +129,17 @@ function eye(x: number, y: number, style: QrStyle['corners']): string {
 			// Ring as two circles (even-odd fill), then the pupil.
 			return circle(x + 3.5, y + 3.5, 3.5) + circle(x + 3.5, y + 3.5, 2.5) + circle(x + 3.5, y + 3.5, 1.5);
 		case 'rounded':
-			return roundedRect(x, y, 7, 7, [2, 2, 2, 2]) + roundedRect(x + 1, y + 1, 5, 5, [1.4, 1.4, 1.4, 1.4]) + roundedRect(x + 2, y + 2, 3, 3, [0.9, 0.9, 0.9, 0.9]);
+			return (
+				roundedRect(x, y, 7, 7, [2, 2, 2, 2]) +
+				roundedRect(x + 1, y + 1, 5, 5, [1.4, 1.4, 1.4, 1.4]) +
+				roundedRect(x + 2, y + 2, 3, 3, [0.9, 0.9, 0.9, 0.9])
+			);
 		default:
-			return roundedRect(x, y, 7, 7, [0, 0, 0, 0]) + roundedRect(x + 1, y + 1, 5, 5, [0, 0, 0, 0]) + roundedRect(x + 2, y + 2, 3, 3, [0, 0, 0, 0]);
+			return (
+				roundedRect(x, y, 7, 7, [0, 0, 0, 0]) +
+				roundedRect(x + 1, y + 1, 5, 5, [0, 0, 0, 0]) +
+				roundedRect(x + 2, y + 2, 3, 3, [0, 0, 0, 0])
+			);
 	}
 }
 
@@ -130,7 +149,10 @@ function eye(x: number, y: number, style: QrStyle['corners']): string {
  * image raises error correction to H (30% may be covered) and clears the
  * modules behind it, so the code still scans.
  */
-export async function qrSvg(url: string, { style = defaultQrStyle(), imageFile = null }: QrRenderOptions = {}): Promise<string> {
+export async function qrSvg(
+	url: string,
+	{ style = defaultQrStyle(), imageFile = null }: QrRenderOptions = {}
+): Promise<string> {
 	const QRCode = await loadQr();
 	const image = style.image !== 'none' && imageFile ? await imageDataUrl(imageFile) : null;
 	const styled = style.dots !== 'square' || style.corners !== 'square';
@@ -149,7 +171,8 @@ export async function qrSvg(url: string, { style = defaultQrStyle(), imageFile =
 		const from = (n - span) / 2;
 		hole = { from, to: from + span };
 	}
-	const inHole = (r: number, c: number) => !!hole && r >= hole.from - 0.5 && r < hole.to + 0.5 && c >= hole.from - 0.5 && c < hole.to + 0.5;
+	const inHole = (r: number, c: number) =>
+		!!hole && r >= hole.from - 0.5 && r < hole.to + 0.5 && c >= hole.from - 0.5 && c < hole.to + 0.5;
 	const on = (r: number, c: number) => dark(r, c) && !inEye(r, c) && !inHole(r, c);
 
 	let modules = '';
@@ -163,16 +186,27 @@ export async function qrSvg(url: string, { style = defaultQrStyle(), imageFile =
 			} else if (style.dots === 'rounded') {
 				// Round a corner only where neither neighbour on that corner is dark,
 				// so runs of modules join into smooth shapes.
-				const up = on(r - 1, c), down = on(r + 1, c), left = on(r, c - 1), right = on(r, c + 1);
+				const up = on(r - 1, c),
+					down = on(r + 1, c),
+					left = on(r, c - 1),
+					right = on(r, c + 1);
 				const k = 0.5;
-				modules += roundedRect(x, y, 1, 1, [!up && !left ? k : 0, !up && !right ? k : 0, !down && !right ? k : 0, !down && !left ? k : 0]);
+				modules += roundedRect(x, y, 1, 1, [
+					!up && !left ? k : 0,
+					!up && !right ? k : 0,
+					!down && !right ? k : 0,
+					!down && !left ? k : 0
+				]);
 			} else {
 				modules += `M${x},${y}h1v1h-1Z`;
 			}
 		}
 	}
 
-	const eyes = eye(MARGIN, MARGIN, style.corners) + eye(MARGIN + n - 7, MARGIN, style.corners) + eye(MARGIN, MARGIN + n - 7, style.corners);
+	const eyes =
+		eye(MARGIN, MARGIN, style.corners) +
+		eye(MARGIN + n - 7, MARGIN, style.corners) +
+		eye(MARGIN, MARGIN + n - 7, style.corners);
 	const size = n + MARGIN * 2;
 
 	let centre = '';

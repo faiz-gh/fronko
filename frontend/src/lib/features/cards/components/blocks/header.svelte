@@ -19,7 +19,12 @@
 	} = $props();
 
 	const name = $derived(card.name.trim() || slug);
-	const subtitle = $derived([card.title, card.company].map((s) => s.trim()).filter(Boolean).join(' · '));
+	const subtitle = $derived(
+		[card.title, card.company]
+			.map((s) => s.trim())
+			.filter(Boolean)
+			.join(' · ')
+	);
 	const avatar = $derived(avatarSrc(card));
 	const cover = $derived(coverSrc(card));
 	const location = $derived(card.location.trim());

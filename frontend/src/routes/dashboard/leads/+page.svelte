@@ -27,7 +27,9 @@
 		const id = Number(page.url.searchParams.get('team'));
 		return Number.isInteger(id) && id > 0 ? id : null;
 	});
-	const selectedTeam = $derived(team === null ? undefined : (teams.byId(team) ?? session.teams.find((t) => t.id === team)));
+	const selectedTeam = $derived(
+		team === null ? undefined : (teams.byId(team) ?? session.teams.find((t) => t.id === team))
+	);
 
 	const selected = $derived(card === null ? null : (cards.list?.find((p) => p.id === card) ?? null));
 	const selectedUser = $derived(typeof user === 'number' ? orgUsers.byId(user) : undefined);

@@ -95,7 +95,9 @@
 					{#each entries as e (e.id)}
 						{@const info = describe(e)}
 						<Table.Row>
-							<Table.Cell class="text-muted-foreground py-3 pl-5 text-xs whitespace-nowrap">{formatDateTime(e.created_at)}</Table.Cell>
+							<Table.Cell class="text-muted-foreground py-3 pl-5 text-xs whitespace-nowrap"
+								>{formatDateTime(e.created_at)}</Table.Cell
+							>
 							<Table.Cell class="py-3 text-sm">{e.admin_email}</Table.Cell>
 							<Table.Cell class="py-3 text-sm">{ACTION[e.action] ?? e.action}</Table.Cell>
 							<Table.Cell class="hidden max-w-md truncate py-3 pr-5 text-sm md:table-cell">

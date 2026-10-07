@@ -30,7 +30,9 @@
 </script>
 
 <DropdownMenu.Root>
-	<DropdownMenu.Trigger class={buttonVariants({ variant: 'outline', size, class: cn('max-w-56 justify-start gap-2', className) })}>
+	<DropdownMenu.Trigger
+		class={buttonVariants({ variant: 'outline', size, class: cn('max-w-56 justify-start gap-2', className) })}
+	>
 		{#if Icon}<Icon class="text-muted-foreground" />{/if}
 		<span class="truncate">{selected?.label ?? allLabel}</span>
 		<ChevronDownIcon class="text-muted-foreground ml-auto size-3.5" />

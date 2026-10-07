@@ -122,10 +122,7 @@
 		const base = { ...location.query, kind, q: query || undefined };
 		const id = ++requestId;
 		error = '';
-		Promise.all([
-			listFiles({ ...base, purposes: filter ? [filter] : undefined, page, pageSize }),
-			fileCounts(base)
-		])
+		Promise.all([listFiles({ ...base, purposes: filter ? [filter] : undefined, page, pageSize }), fileCounts(base)])
 			.then(([res, c]) => {
 				if (id !== requestId) return;
 				files = res.files;
@@ -219,7 +216,8 @@
 				<Select.Root type="single" value={location.key} onValueChange={(v) => (locKey = v)}>
 					<Select.Trigger class="w-48" aria-label="Location">
 						<span class="flex items-center gap-2 truncate">
-							{#if location.team}<span class="size-2.5 rounded-full" style="background: {teamColor(location.team)}"></span>{/if}
+							{#if location.team}<span class="size-2.5 rounded-full" style="background: {teamColor(location.team)}"
+								></span>{/if}
 							{location.label}
 						</span>
 					</Select.Trigger>
@@ -227,7 +225,8 @@
 						{#each locations as loc (loc.key)}
 							<Select.Item value={loc.key} label={loc.label}>
 								<span class="flex items-center gap-2">
-									{#if loc.team}<span class="size-2.5 rounded-full" style="background: {teamColor(loc.team)}"></span>{/if}
+									{#if loc.team}<span class="size-2.5 rounded-full" style="background: {teamColor(loc.team)}"
+										></span>{/if}
 									{loc.label}
 								</span>
 							</Select.Item>
@@ -284,7 +283,9 @@
 					{#if filter && filter !== purpose}
 						<Button variant="link" size="sm" onclick={() => (filter = null)}>Show everything</Button>
 					{:else if filter}
-						<Button variant="link" size="sm" onclick={() => (filter = null)}>Show other {kind === 'image' ? 'images' : 'PDFs'}</Button>
+						<Button variant="link" size="sm" onclick={() => (filter = null)}
+							>Show other {kind === 'image' ? 'images' : 'PDFs'}</Button
+						>
 					{/if}
 				</div>
 			{:else}
@@ -312,7 +313,9 @@
 										)}
 									/>
 									{#if inUse || isChosen}
-										<span class="bg-brand text-brand-foreground absolute top-1.5 right-1.5 grid size-5 place-items-center rounded-full">
+										<span
+											class="bg-brand text-brand-foreground absolute top-1.5 right-1.5 grid size-5 place-items-center rounded-full"
+										>
 											<CheckIcon class="size-3" />
 										</span>
 									{/if}
@@ -354,7 +357,9 @@
 					{/snippet}
 				</Dialog.Close>
 				{#if crop}
-					<Button variant="outline" disabled={!chosen || busy} onclick={() => chosen && finish(chosen)}>Use as is</Button>
+					<Button variant="outline" disabled={!chosen || busy} onclick={() => chosen && finish(chosen)}
+						>Use as is</Button
+					>
 					<Button disabled={!chosen || busy} onclick={cropChosen}>
 						{#if busy}<Spinner data-icon="inline-start" />{:else}<CropIcon data-icon="inline-start" />{/if}
 						Crop & use

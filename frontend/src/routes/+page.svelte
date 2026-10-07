@@ -165,7 +165,9 @@
 						href={REPO}
 						class="bg-card text-muted-foreground hover:text-foreground inline-flex items-center gap-2 rounded-full border py-1 pr-3 pl-1 text-sm shadow-xs transition-colors"
 					>
-						<span class="rounded-full bg-orange-600/10 px-2 py-0.5 text-xs font-semibold text-orange-700">Open source</span>
+						<span class="rounded-full bg-orange-600/10 px-2 py-0.5 text-xs font-semibold text-orange-700"
+							>Open source</span
+						>
 						<span>Self-host it <span class="hidden sm:inline">with Docker Compose</span></span>
 						<ArrowRightIcon class="size-3.5" />
 					</a>
@@ -174,8 +176,8 @@
 						<span class="block text-orange-600">always up to date.</span>
 					</h1>
 					<p class="text-muted-foreground max-w-xl text-lg leading-relaxed text-pretty sm:text-xl">
-						Share your details with an NFC tap, a QR code or a link. People save you in one tap and send their
-						details right back, so no contact gets lost after the event.
+						Share your details with an NFC tap, a QR code or a link. People save you in one tap and send their details
+						right back, so no contact gets lost after the event.
 					</p>
 					<div class="flex flex-wrap gap-3">
 						<Button size="lg" href={ctaHref} class="h-12 px-6 text-[15px]">
@@ -302,13 +304,15 @@
 						Cards for the whole team, run from one place.
 					</h2>
 					<p class="text-muted-foreground text-lg text-pretty">
-						Every sign-up is an organisation. Invite your team, hand out cards, and keep the leads with the
-						company when people move on.
+						Every sign-up is an organisation. Invite your team, hand out cards, and keep the leads with the company when
+						people move on.
 					</p>
 					<ul class="mt-2 flex flex-col gap-3">
 						{#each teamPoints as point (point)}
 							<li class="flex items-start gap-3">
-								<span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-orange-600/10 text-orange-600">
+								<span
+									class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-orange-600/10 text-orange-600"
+								>
 									<CheckIcon class="size-3.5" />
 								</span>
 								<span>{point}</span>
@@ -371,8 +375,8 @@
 						Own your cards. Own your contacts.
 					</h2>
 					<p class="text-primary-foreground/70 max-w-xl text-lg text-pretty">
-						Run Fronko on your own server with Docker Compose, point it at your Postgres and S3 bucket, and
-						keep every lead in-house.
+						Run Fronko on your own server with Docker Compose, point it at your Postgres and S3 bucket, and keep every
+						lead in-house.
 					</p>
 					<div class="mt-3 flex flex-wrap gap-3">
 						<Button size="lg" variant="secondary" href={ctaHref} class="h-12 px-6 text-[15px]">

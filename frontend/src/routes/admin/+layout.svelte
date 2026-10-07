@@ -49,7 +49,9 @@
 		<Spinner class="text-muted-foreground size-6" />
 	</div>
 {:else}
-	<aside class="bg-sidebar text-sidebar-foreground border-sidebar-border fixed inset-y-0 left-0 z-30 hidden w-64 border-r lg:block">
+	<aside
+		class="bg-sidebar text-sidebar-foreground border-sidebar-border fixed inset-y-0 left-0 z-30 hidden w-64 border-r lg:block"
+	>
 		<AdminSidebar />
 	</aside>
 

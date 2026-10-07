@@ -55,14 +55,21 @@
 					All {org.user_count} of its users are signed out and can't sign in. Its public cards show “unavailable” and stop
 					taking leads. Nothing is deleted. We'll email the owner{org.owner_email ? ` (${org.owner_email})` : ''} the reason.
 				{:else}
-					Everyone in it can sign in again and its public cards come back online. We'll email the owner to let them know.
+					Everyone in it can sign in again and its public cards come back online. We'll email the owner to let them
+					know.
 				{/if}
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		{#if suspending}
 			<Field.Field>
 				<Field.Label for="suspend-reason">Reason</Field.Label>
-				<Textarea id="suspend-reason" bind:value={reason} rows={3} maxlength={MAX_REASON} placeholder="e.g. Spam cards reported by visitors" />
+				<Textarea
+					id="suspend-reason"
+					bind:value={reason}
+					rows={3}
+					maxlength={MAX_REASON}
+					placeholder="e.g. Spam cards reported by visitors"
+				/>
 				<Field.Description>The owner sees this in the email and on the sign-in page.</Field.Description>
 			</Field.Field>
 		{/if}

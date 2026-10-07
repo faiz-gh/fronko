@@ -48,7 +48,10 @@
 	role="tablist"
 	aria-label={label}
 	aria-orientation="vertical"
-	class={cn('-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0 lg:pb-0', className)}
+	class={cn(
+		'-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0 lg:pb-0',
+		className
+	)}
 >
 	{#each items as item, i (item.id)}
 		{@const selected = item.id === active}

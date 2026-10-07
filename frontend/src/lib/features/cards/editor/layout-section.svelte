@@ -23,18 +23,19 @@
 
 	function chooseTemplate(key: TemplateKey) {
 		if (key === card.template && !customised) return;
-		if (customised && !confirm(`Switch to the ${TEMPLATES[key].label} layout? Your block order and hidden blocks will be reset; text, gallery and event details are kept.`)) return;
+		if (
+			customised &&
+			!confirm(
+				`Switch to the ${TEMPLATES[key].label} layout? Your block order and hidden blocks will be reset; text, gallery and event details are kept.`
+			)
+		)
+			return;
 		card.blocks = applyTemplate(card.blocks, key);
 		card.template = key;
 	}
 </script>
 
-<FormSection
-	panel
-	id="layout"
-	title="Layout"
-	description="Start from a template, then reorder, hide or add blocks."
->
+<FormSection panel id="layout" title="Layout" description="Start from a template, then reorder, hide or add blocks.">
 	<div class="flex flex-col gap-6">
 		<Field.Field>
 			<Field.Label>Template</Field.Label>

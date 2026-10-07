@@ -67,7 +67,12 @@
 	<nav class="flex min-h-0 flex-1 flex-col gap-6 px-3 pb-3" aria-label="Dashboard">
 		<div class="flex flex-col gap-0.5">
 			{#each nav as item (item.href)}
-				<a href={item.href} onclick={onnavigate} aria-current={item.active ? 'page' : undefined} class={navItem(item.active)}>
+				<a
+					href={item.href}
+					onclick={onnavigate}
+					aria-current={item.active ? 'page' : undefined}
+					class={navItem(item.active)}
+				>
 					<item.icon class="size-4" />
 					{item.label}
 					{#if item.count}
@@ -112,7 +117,9 @@
 									<CardAvatar {card} fallback={profile.slug} />
 									<span class="flex min-w-0 flex-1 flex-col">
 										<span class="truncate text-sm font-medium">{card.name || profile.slug}</span>
-										<span class="text-muted-foreground truncate font-mono text-[11px]">/p/{session.orgHandle}/{profile.slug}</span>
+										<span class="text-muted-foreground truncate font-mono text-[11px]"
+											>/p/{session.orgHandle}/{profile.slug}</span
+										>
 									</span>
 									{#if profile.lead_count > 0}
 										<span
@@ -136,7 +143,12 @@
 	</nav>
 
 	<div class="border-sidebar-border flex shrink-0 flex-col gap-2 border-t p-3">
-		<a href="/dashboard/settings" onclick={onnavigate} aria-current={onSettings ? 'page' : undefined} class={navItem(onSettings)}>
+		<a
+			href="/dashboard/settings"
+			onclick={onnavigate}
+			aria-current={onSettings ? 'page' : undefined}
+			class={navItem(onSettings)}
+		>
 			<SettingsIcon class="size-4" />
 			Settings
 		</a>

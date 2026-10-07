@@ -82,9 +82,7 @@
 		<Field.Field orientation="horizontal" class="bg-card rounded-xl border p-4">
 			<Field.Content>
 				<Field.Label for="collect">Collect leads</Field.Label>
-				<Field.Description>
-					Show a “Share your contact” button so visitors can leave their details.
-				</Field.Description>
+				<Field.Description>Show a “Share your contact” button so visitors can leave their details.</Field.Description>
 			</Field.Content>
 			<Switch id="collect" bind:checked={card.collect_leads} />
 		</Field.Field>
@@ -122,7 +120,12 @@
 					<Button variant="outline" size="icon" onclick={() => copyTapUrl(via)} aria-label="Copy {label} link">
 						<CopyIcon />
 					</Button>
-					<Button variant="outline" href={tapUrl(session.orgHandle, savedSlug, via)} target="_blank" title="Try it (uses the saved settings)">
+					<Button
+						variant="outline"
+						href={tapUrl(session.orgHandle, savedSlug, via)}
+						target="_blank"
+						title="Try it (uses the saved settings)"
+					>
 						Try it
 						<ExternalLinkIcon data-icon="inline-end" />
 					</Button>

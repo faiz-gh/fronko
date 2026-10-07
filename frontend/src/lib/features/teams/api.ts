@@ -76,7 +76,10 @@ export function createTeam(team: NewTeam): Promise<TeamDetail> {
 	return apiClient<TeamDetail>('/api/org/teams', { method: 'POST', body: JSON.stringify(team) });
 }
 
-export function updateTeam(id: number, team: { name: string; description: string; color: string }): Promise<TeamDetail> {
+export function updateTeam(
+	id: number,
+	team: { name: string; description: string; color: string }
+): Promise<TeamDetail> {
 	return apiClient<TeamDetail>(`/api/org/teams/${id}`, { method: 'PATCH', body: JSON.stringify(team) });
 }
 

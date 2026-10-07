@@ -30,7 +30,12 @@
 
 	const shown = $derived(series.filter((s) => !hidden[s.key]));
 	const dayFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
-	const fullFormat = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+	const fullFormat = new Intl.DateTimeFormat(undefined, {
+		weekday: 'short',
+		month: 'short',
+		day: 'numeric',
+		timeZone: 'UTC'
+	});
 	const day = (iso: string) => dayFormat.format(new Date(iso + 'T00:00:00Z'));
 	const fullDay = (iso: string) => fullFormat.format(new Date(iso + 'T00:00:00Z'));
 
@@ -120,7 +125,14 @@
 					</text>
 				{/each}
 				{#if hover !== null}
-					<line x1={x(hover)} x2={x(hover)} y1={M.top} y2={M.top + innerH} class="stroke-muted-foreground/40" stroke-width="1" />
+					<line
+						x1={x(hover)}
+						x2={x(hover)}
+						y1={M.top}
+						y2={M.top + innerH}
+						class="stroke-muted-foreground/40"
+						stroke-width="1"
+					/>
 				{/if}
 				{#each shown as s (s.key)}
 					{#if dates.length > 1}

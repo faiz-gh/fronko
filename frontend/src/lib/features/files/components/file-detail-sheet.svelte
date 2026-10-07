@@ -219,7 +219,9 @@
 					</Button>
 					{#if file.kind === 'image'}
 						<Button variant="outline" size="sm" onclick={startCrop} disabled={fetching || copying}>
-							{#if fetching || copying}<Spinner data-icon="inline-start" />{:else}<CropIcon data-icon="inline-start" />{/if}
+							{#if fetching || copying}<Spinner data-icon="inline-start" />{:else}<CropIcon
+									data-icon="inline-start"
+								/>{/if}
 							Crop a copy
 						</Button>
 					{/if}
@@ -288,18 +290,22 @@
 							<Select.Root type="single" value={locationKeyOf(file)} onValueChange={move} disabled={saving}>
 								<Select.Trigger class="w-full">
 									<span class="flex items-center gap-2">
-										{#if file.team}<span class="size-2 rounded-full" style="background: {teamColor(file.team)}"></span>{/if}
+										{#if file.team}<span class="size-2 rounded-full" style="background: {teamColor(file.team)}"
+											></span>{/if}
 										{locationLabel(file)}
 									</span>
 								</Select.Trigger>
 								<Select.Content>
 									{#if file.area === 'personal'}
-										<Select.Item value="personal" label={locationLabel(file)} disabled>{locationLabel(file)}</Select.Item>
+										<Select.Item value="personal" label={locationLabel(file)} disabled
+											>{locationLabel(file)}</Select.Item
+										>
 									{/if}
 									{#each moveOptions as t (t.key)}
 										<Select.Item value={t.key} label={t.label}>
 											<span class="flex items-center gap-2">
-												{#if t.team}<span class="size-2 rounded-full" style="background: {teamColor(t.team)}"></span>{/if}
+												{#if t.team}<span class="size-2 rounded-full" style="background: {teamColor(t.team)}"
+													></span>{/if}
 												{t.label}
 											</span>
 										</Select.Item>
@@ -353,7 +359,10 @@
 						<ul class="flex flex-col divide-y rounded-lg border text-sm">
 							{#if usage.org_logo}
 								<li>
-									<a href="/dashboard/settings?tab=branding" class="hover:bg-muted/60 flex justify-between gap-3 px-3 py-2">
+									<a
+										href="/dashboard/settings?tab=branding"
+										class="hover:bg-muted/60 flex justify-between gap-3 px-3 py-2"
+									>
 										<span class="font-medium">Organisation logo</span>
 										<span class="text-muted-foreground">Branding</span>
 									</a>
@@ -361,7 +370,10 @@
 							{/if}
 							{#if usage.signature_banner}
 								<li>
-									<a href="/dashboard/settings?tab=branding" class="hover:bg-muted/60 flex justify-between gap-3 px-3 py-2">
+									<a
+										href="/dashboard/settings?tab=branding"
+										class="hover:bg-muted/60 flex justify-between gap-3 px-3 py-2"
+									>
 										<span class="font-medium">Email signature banner</span>
 										<span class="text-muted-foreground">Branding</span>
 									</a>
@@ -385,7 +397,11 @@
 				</section>
 
 				{#if canEdit}
-					<Button variant="outline" class="text-destructive hover:text-destructive self-start" onclick={() => file && ondelete(file)}>
+					<Button
+						variant="outline"
+						class="text-destructive hover:text-destructive self-start"
+						onclick={() => file && ondelete(file)}
+					>
 						<Trash2Icon data-icon="inline-start" />
 						Delete file
 					</Button>

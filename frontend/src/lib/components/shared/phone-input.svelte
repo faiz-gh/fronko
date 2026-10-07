@@ -5,7 +5,15 @@
 	import { Input } from '$lib/components/ui/input';
 	import * as Popover from '$lib/components/ui/popover';
 	import { parsePhoneNumberFromString } from 'libphonenumber-js';
-	import { countries, defaultCountry, dialCode, digits, exampleNumber, formatNational, isCountry } from '$lib/core/phone';
+	import {
+		countries,
+		defaultCountry,
+		dialCode,
+		digits,
+		exampleNumber,
+		formatNational,
+		isCountry
+	} from '$lib/core/phone';
 	import { cn } from '$lib/utils';
 
 	/**
@@ -134,4 +142,3 @@
 		placeholder={formatNational(current, exampleNumber(current))}
 	/>
 </div>
-

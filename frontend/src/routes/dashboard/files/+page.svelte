@@ -233,7 +233,8 @@
 		try {
 			const res = await bulkFiles([...selected], 'update', patch);
 			if (res.done.length) toast.success(`${done}: ${plural(res.done.length, 'file')}`);
-			if (res.failed.length) toast.error(`${plural(res.failed.length, 'file')} couldn’t be changed: ${res.failed[0].error}`);
+			if (res.failed.length)
+				toast.error(`${plural(res.failed.length, 'file')} couldn’t be changed: ${res.failed[0].error}`);
 			selected = new Set();
 			refresh();
 		} catch (e) {
@@ -264,7 +265,8 @@
 			const ids = deleteTargets.map((f) => f.id);
 			const res = await bulkFiles(ids, 'delete');
 			if (res.done.length) toast.success(res.done.length === 1 ? 'File deleted' : `${res.done.length} files deleted`);
-			if (res.failed.length) toast.error(`${plural(res.failed.length, 'file')} couldn’t be deleted: ${res.failed[0].error}`);
+			if (res.failed.length)
+				toast.error(`${plural(res.failed.length, 'file')} couldn’t be deleted: ${res.failed[0].error}`);
 			if (detail && res.done.includes(detail.id)) detail = null;
 			deleteTargets = null;
 			selected = new Set();
@@ -288,14 +290,20 @@
 
 	// Empty-state copy for the current filters.
 	const emptyText = $derived.by(() => {
-		if (query) return { title: 'No matches', body: `Nothing called “${query}” here. Try another word or clear the search.` };
+		if (query)
+			return { title: 'No matches', body: `Nothing called “${query}” here. Try another word or clear the search.` };
 		if (purpose)
 			return {
 				title: `No ${PURPOSES[purpose].plural.toLowerCase()} here yet`,
 				body: canUpload ? `${PURPOSES[purpose].hint}. Drop one here to add it.` : PURPOSES[purpose].hint + '.'
 			};
-		if (location.key === 'granted') return { title: 'Nothing shared with you yet', body: 'Files your organisation gives you or your teams show up here.' };
-		if (canUpload) return { title: 'No files yet', body: 'Drop logos, photos, banners or PDF brochures here, or use Upload.' };
+		if (location.key === 'granted')
+			return {
+				title: 'Nothing shared with you yet',
+				body: 'Files your organisation gives you or your teams show up here.'
+			};
+		if (canUpload)
+			return { title: 'No files yet', body: 'Drop logos, photos, banners or PDF brochures here, or use Upload.' };
 		return { title: 'No files here yet', body: location.description };
 	});
 </script>
@@ -323,12 +331,18 @@
 />
 
 {#if dragDepth > 0}
-	<div class="bg-background/80 pointer-events-none fixed inset-0 z-40 grid place-items-center p-6 backdrop-blur-sm lg:pl-68">
-		<div class="border-brand bg-brand-soft flex w-full max-w-lg flex-col items-center gap-3 rounded-2xl border-2 border-dashed px-8 py-14 text-center">
+	<div
+		class="bg-background/80 pointer-events-none fixed inset-0 z-40 grid place-items-center p-6 backdrop-blur-sm lg:pl-68"
+	>
+		<div
+			class="border-brand bg-brand-soft flex w-full max-w-lg flex-col items-center gap-3 rounded-2xl border-2 border-dashed px-8 py-14 text-center"
+		>
 			<CloudUploadIcon class="text-brand size-10" />
 			<p class="text-lg font-semibold">Drop to upload to {location.label}</p>
 			<p class="text-muted-foreground text-sm">
-				{purpose ? `They’ll be filed as ${PURPOSES[purpose].plural.toLowerCase()} where that fits.` : 'Images up to 5 MB, PDFs up to 20 MB.'}
+				{purpose
+					? `They’ll be filed as ${PURPOSES[purpose].plural.toLowerCase()} where that fits.`
+					: 'Images up to 5 MB, PDFs up to 20 MB.'}
 			</p>
 		</div>
 	</div>
@@ -369,8 +383,8 @@
 					{#if !storage.status.enabled}
 						Ask whoever runs this server to set SECRETS_KEY.
 					{:else if session.isOwner}
-						Files are stored in your own S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3 or MinIO).
-						Everyone in your organisation uploads to it.
+						Files are stored in your own S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3 or MinIO). Everyone
+						in your organisation uploads to it.
 					{:else}
 						Ask the owner to connect a bucket in Settings. Until then, nobody can upload files.
 					{/if}
@@ -388,7 +402,9 @@
 					{#each locations as loc (loc.key)}
 						{@const active = loc.key === location.key}
 						{#if loc.team && !locations[locations.indexOf(loc) - 1]?.team}
-							<li class="text-muted-foreground mt-3 mb-1 px-3 text-[11px] font-semibold tracking-wider uppercase">Teams</li>
+							<li class="text-muted-foreground mt-3 mb-1 px-3 text-[11px] font-semibold tracking-wider uppercase">
+								Teams
+							</li>
 						{/if}
 						<li>
 							<button
@@ -398,7 +414,9 @@
 								class={cn(
 									'flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm transition-colors',
 									'focus-visible:ring-ring/50 outline-none focus-visible:ring-3',
-									active ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+									active
+										? 'bg-muted text-foreground font-medium'
+										: 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
 								)}
 							>
 								{#if loc.team}
@@ -430,7 +448,8 @@
 						<Select.Root type="single" value={location.key} onValueChange={(v) => (locKey = v)}>
 							<Select.Trigger class="w-full" aria-label="Location">
 								<span class="flex items-center gap-2">
-									{#if location.team}<span class="size-2.5 rounded-full" style="background: {teamColor(location.team)}"></span>{/if}
+									{#if location.team}<span class="size-2.5 rounded-full" style="background: {teamColor(location.team)}"
+										></span>{/if}
 									{location.label}
 								</span>
 							</Select.Trigger>
@@ -438,7 +457,8 @@
 								{#each locations as loc (loc.key)}
 									<Select.Item value={loc.key} label={loc.label}>
 										<span class="flex items-center gap-2">
-											{#if loc.team}<span class="size-2.5 rounded-full" style="background: {teamColor(loc.team)}"></span>{/if}
+											{#if loc.team}<span class="size-2.5 rounded-full" style="background: {teamColor(loc.team)}"
+												></span>{/if}
 											{loc.label}
 										</span>
 									</Select.Item>
@@ -451,14 +471,20 @@
 						<p class="text-muted-foreground text-sm">{location.description}</p>
 					</div>
 					{#if !session.isAdmin && location.key === 'personal' && storage.status}
-						<StorageMeter used={storage.status.used_bytes} quota={storage.status.quota_bytes} class="max-w-sm lg:hidden" />
+						<StorageMeter
+							used={storage.status.used_bytes}
+							quota={storage.status.quota_bytes}
+							class="max-w-sm lg:hidden"
+						/>
 					{/if}
 				</div>
 
 				<!-- Toolbar -->
 				<div class="flex flex-wrap items-center gap-2">
 					<div class="relative min-w-48 flex-1">
-						<SearchIcon class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+						<SearchIcon
+							class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
+						/>
 						<Input bind:value={search} placeholder="Search by name" class="pr-9 pl-9" aria-label="Search files" />
 						{#if search}
 							<button
@@ -502,7 +528,9 @@
 								onclick={() => setView(o.v)}
 								class={cn(
 									'grid size-8 place-items-center rounded-md transition-colors',
-									view === o.v ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+									view === o.v
+										? 'bg-background text-foreground shadow-sm'
+										: 'text-muted-foreground hover:text-foreground'
 								)}
 							>
 								<o.Icon class="size-4" />
@@ -544,14 +572,20 @@
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger
 								disabled={bulkBusy || bulkPurposes.length === 0}
-								class={buttonVariants({ variant: 'ghost', size: 'sm', class: 'hover:bg-background/15 hover:text-background' })}
+								class={buttonVariants({
+									variant: 'ghost',
+									size: 'sm',
+									class: 'hover:bg-background/15 hover:text-background'
+								})}
 							>
 								<TagIcon data-icon="inline-start" />
 								Purpose
 							</DropdownMenu.Trigger>
 							<DropdownMenu.Content align="end" class="w-48">
 								{#each bulkPurposes as p (p)}
-									<DropdownMenu.Item onSelect={() => bulkUpdate({ purpose: p }, `Marked as ${PURPOSES[p].label.toLowerCase()}`)}>
+									<DropdownMenu.Item
+										onSelect={() => bulkUpdate({ purpose: p }, `Marked as ${PURPOSES[p].label.toLowerCase()}`)}
+									>
 										<PurposeIcon purpose={p} class="size-4" />
 										{PURPOSES[p].label}
 									</DropdownMenu.Item>
@@ -562,7 +596,11 @@
 							<DropdownMenu.Root>
 								<DropdownMenu.Trigger
 									disabled={bulkBusy}
-									class={buttonVariants({ variant: 'ghost', size: 'sm', class: 'hover:bg-background/15 hover:text-background' })}
+									class={buttonVariants({
+										variant: 'ghost',
+										size: 'sm',
+										class: 'hover:bg-background/15 hover:text-background'
+									})}
 								>
 									<FolderInputIcon data-icon="inline-start" />
 									Move
@@ -573,7 +611,9 @@
 											<DropdownMenu.Separator />
 											<DropdownMenu.Label>Teams</DropdownMenu.Label>
 										{/if}
-										<DropdownMenu.Item onSelect={() => bulkUpdate({ area: t.area, team_id: t.teamId }, `Moved to ${t.label}`)}>
+										<DropdownMenu.Item
+											onSelect={() => bulkUpdate({ area: t.area, team_id: t.teamId }, `Moved to ${t.label}`)}
+										>
 											{#if t.team}
 												<span class="size-2.5 rounded-full" style="background: {teamColor(t.team)}"></span>
 											{:else}
@@ -642,7 +682,14 @@
 								ontoggle={toggle}
 							/>
 						{:else}
-							<FileTable {files} {selected} {selectable} onopen={(f) => (detail = f)} ontoggle={toggle} ontoggleall={toggleAll} />
+							<FileTable
+								{files}
+								{selected}
+								{selectable}
+								onopen={(f) => (detail = f)}
+								ontoggle={toggle}
+								ontoggleall={toggleAll}
+							/>
 						{/if}
 					</div>
 					{#if total > 12}

@@ -171,7 +171,9 @@
 			? 'background-image: radial-gradient(80% 60% at 50% 0%, color-mix(in oklch, var(--card-accent) 14%, transparent), transparent 70%)'
 			: undefined}
 	>
-		<main class={cn('flex w-full flex-1 flex-col lg:flex-none', card ? 'max-w-sm sm:max-w-md lg:max-w-lg' : 'max-w-sm')}>
+		<main
+			class={cn('flex w-full flex-1 flex-col lg:flex-none', card ? 'max-w-sm sm:max-w-md lg:max-w-lg' : 'max-w-sm')}
+		>
 			{#if unavailable}
 				<Empty.Root class="flex-1">
 					<Empty.Header>
@@ -276,14 +278,7 @@
 					</Field.Field>
 					<Field.Field>
 						<Field.Label for="lead-email">Email</Field.Label>
-						<Input
-							id="lead-email"
-							type="email"
-							autocomplete="email"
-							bind:value={leadEmail}
-							required
-							maxlength={254}
-						/>
+						<Input id="lead-email" type="email" autocomplete="email" bind:value={leadEmail} required maxlength={254} />
 					</Field.Field>
 					<Field.Field data-invalid={leadPhoneInvalid || undefined}>
 						<Field.Label for="lead-phone">
@@ -302,7 +297,9 @@
 						{/if}
 					</Field.Field>
 					<Field.Field data-invalid={!!submitError || undefined}>
-						<Field.Label for="lead-notes">Message <span class="text-muted-foreground font-normal">(optional)</span></Field.Label>
+						<Field.Label for="lead-notes"
+							>Message <span class="text-muted-foreground font-normal">(optional)</span></Field.Label
+						>
 						<Textarea
 							id="lead-notes"
 							bind:value={leadNotes}

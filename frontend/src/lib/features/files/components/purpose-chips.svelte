@@ -21,7 +21,11 @@
 	} = $props();
 </script>
 
-<div class={cn('-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1', className)} role="tablist" aria-label="What the files are for">
+<div
+	class={cn('-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1', className)}
+	role="tablist"
+	aria-label="What the files are for"
+>
 	{#each [null, ...purposes] as p (p ?? 'all')}
 		{@const n = p === null ? total : counts?.[p]}
 		{@const active = value === p}

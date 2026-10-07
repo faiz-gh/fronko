@@ -47,18 +47,15 @@
 			/>
 			{#if phoneInvalid}
 				<Field.Error>
-					{card.phone_country_code ? 'Enter a valid number for this country.' : 'Pick the country code for this number.'}
+					{card.phone_country_code
+						? 'Enter a valid number for this country.'
+						: 'Pick the country code for this number.'}
 				</Field.Error>
 			{/if}
 		</Field.Field>
 		<Field.Field class="sm:col-span-2" data-invalid={websiteInvalid || undefined}>
 			<Field.Label for="website">Website</Field.Label>
-			<Input
-				id="website"
-				bind:value={card.website}
-				placeholder="acme.com"
-				aria-invalid={websiteInvalid || undefined}
-			/>
+			<Input id="website" bind:value={card.website} placeholder="acme.com" aria-invalid={websiteInvalid || undefined} />
 			{#if websiteInvalid}
 				<Field.Error>Enter a valid web address.</Field.Error>
 			{/if}

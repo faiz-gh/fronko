@@ -10,7 +10,11 @@ export interface SignatureTemplate {
 /** Keep in step with signatureTemplates in backend/internal/handlers/branding.go. */
 export const SIGNATURE_TEMPLATES: Record<SignatureTemplateKey, SignatureTemplate> = {
 	classic: { label: 'Classic', description: 'Photo beside your details, with an accent divider.', photo: true },
-	corporate: { label: 'Corporate', description: 'Logo first, then your name and contact details in a row.', photo: true },
+	corporate: {
+		label: 'Corporate',
+		description: 'Logo first, then your name and contact details in a row.',
+		photo: true
+	},
 	compact: { label: 'Compact', description: 'Two short lines of text. Good for replies.', photo: false },
 	bold: { label: 'Bold', description: 'Accent bar, large name and a “View my card” button.', photo: true },
 	minimal: { label: 'Minimal', description: 'Name, title and links in plain type.', photo: false }
@@ -57,7 +61,8 @@ export function defaultSignature(): SignatureSettings {
 export function normalizeSignature(raw: unknown): SignatureSettings {
 	const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
 	const base = defaultSignature();
-	const flag = (k: Exclude<keyof SignatureSettings, 'template'>) => (typeof d[k] === 'boolean' ? (d[k] as boolean) : base[k]);
+	const flag = (k: Exclude<keyof SignatureSettings, 'template'>) =>
+		typeof d[k] === 'boolean' ? (d[k] as boolean) : base[k];
 	return {
 		template: isSignatureTemplate(d.template) ? d.template : base.template,
 		show_photo: flag('show_photo'),

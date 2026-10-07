@@ -17,4 +17,8 @@
 </svelte:head>
 
 {@render children()}
-<Toaster position="top-center" richColors theme={page.url.pathname.startsWith('/dashboard') && theme.dark ? 'dark' : 'light'} />
+<Toaster
+	position="top-center"
+	richColors
+	theme={page.url.pathname.startsWith('/dashboard') && theme.dark ? 'dark' : 'light'}
+/>

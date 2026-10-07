@@ -59,7 +59,12 @@ export function railItems(card: CardData, link: string, errors: Record<SectionId
 		},
 		{ id: 'contact', label: 'Contact', icon: PhoneIcon, summary: contacts ? `${contacts} of 5 filled` : 'Nothing yet' },
 		{ id: 'links', label: 'Links', icon: LinkIcon, summary: links ? plural(links, 'link') : 'None yet' },
-		{ id: 'brochures', label: 'Brochures', icon: FileTextIcon, summary: `${card.documents.length} of ${MAX_DOCUMENTS}` },
+		{
+			id: 'brochures',
+			label: 'Brochures',
+			icon: FileTextIcon,
+			summary: `${card.documents.length} of ${MAX_DOCUMENTS}`
+		},
 		{
 			id: 'layout',
 			label: 'Layout',

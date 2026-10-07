@@ -88,7 +88,10 @@
 					{:else if slugInvalid}
 						<Field.Error>3–48 characters: lowercase letters, numbers and hyphens.</Field.Error>
 					{:else}
-						<Field.Description>Only needs to be unique in {session.orgName || 'your organisation'}. This is the address you'll share and write to NFC cards.</Field.Description>
+						<Field.Description
+							>Only needs to be unique in {session.orgName || 'your organisation'}. This is the address you'll share and
+							write to NFC cards.</Field.Description
+						>
 					{/if}
 				</Field.Field>
 				<Field.Field>

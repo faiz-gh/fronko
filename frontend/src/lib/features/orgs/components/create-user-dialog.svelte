@@ -39,7 +39,9 @@
 	});
 
 	const usernameError = $derived(
-		username.length > 0 && !/^[a-zA-Z0-9_.-]{3,32}$/.test(username) ? '3–32 characters: letters, numbers, ".", "_" or "-".' : ''
+		username.length > 0 && !/^[a-zA-Z0-9_.-]{3,32}$/.test(username)
+			? '3–32 characters: letters, numbers, ".", "_" or "-".'
+			: ''
 	);
 	const emailError = $derived(
 		email.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? 'Enter a valid email address.' : ''
@@ -181,7 +183,9 @@
 						{#if passwordError}
 							<Field.Error>{passwordError}</Field.Error>
 						{:else}
-							<Field.Description>We'll email it to them. They replace it after confirming their email.</Field.Description>
+							<Field.Description
+								>We'll email it to them. They replace it after confirming their email.</Field.Description
+							>
 						{/if}
 					</Field.Field>
 					<Field.Field>
@@ -193,7 +197,9 @@
 						<Field.Field>
 							<Field.Label>Teams</Field.Label>
 							<TeamMembershipsInput bind:value={memberships} />
-							<Field.Description>They'll see their teams' files. Leads also see their teammates' cards and leads.</Field.Description>
+							<Field.Description
+								>They'll see their teams' files. Leads also see their teammates' cards and leads.</Field.Description
+							>
 						</Field.Field>
 					{/if}
 					{#if session.isOwner}
@@ -201,7 +207,9 @@
 							<Switch id="new-user-admin" bind:checked={admin} />
 							<Field.Content>
 								<Field.Label for="new-user-admin">Admin</Field.Label>
-								<Field.Description>Admins manage users, every card, lead and file. Only you manage storage.</Field.Description>
+								<Field.Description
+									>Admins manage users, every card, lead and file. Only you manage storage.</Field.Description
+								>
 							</Field.Content>
 						</Field.Field>
 					{/if}

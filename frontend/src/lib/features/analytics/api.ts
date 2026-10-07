@@ -172,7 +172,8 @@ export async function getAnalyticsMembers(q: AnalyticsQuery = {}): Promise<Membe
 }
 
 export async function getAnalyticsActivity(q: AnalyticsQuery = {}, limit = 15): Promise<ActivityItem[]> {
-	return (await apiClient<{ items: ActivityItem[] }>(`/api/me/analytics/activity?${qs(q, { limit: String(limit) })}`)).items;
+	return (await apiClient<{ items: ActivityItem[] }>(`/api/me/analytics/activity?${qs(q, { limit: String(limit) })}`))
+		.items;
 }
 
 /** The last `days` days, ending now. */

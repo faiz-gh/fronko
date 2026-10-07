@@ -47,7 +47,11 @@
 			decoding="async"
 			class={cn(
 				'absolute inset-0 size-full',
-				kind === 'pdf' ? 'bg-white object-cover object-top' : fit === 'contain' ? 'object-contain p-[8%]' : 'object-cover'
+				kind === 'pdf'
+					? 'bg-white object-cover object-top'
+					: fit === 'contain'
+						? 'object-contain p-[8%]'
+						: 'object-cover'
 			)}
 			onerror={() => (failed = true)}
 		/>

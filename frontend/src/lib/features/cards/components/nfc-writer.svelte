@@ -82,8 +82,8 @@
 		<LightbulbIcon class="text-muted-foreground mt-0.5 size-4 shrink-0" />
 		<p class="text-muted-foreground leading-snug">
 			<span class="text-foreground font-medium">Metal card?</span> The chip only reads through a small window, usually near
-			the logo or one edge. Slide the card slowly over the back of your phone near the camera, and hold it still for a
-			second or two once it's found.
+			the logo or one edge. Slide the card slowly over the back of your phone near the camera, and hold it still for a second
+			or two once it's found.
 		</p>
 	</div>
 {/snippet}
@@ -132,14 +132,25 @@
 		</Button>
 		<div class="flex flex-col gap-2 text-sm">
 			<p class="font-medium">
-				{support === 'desktop' ? 'Write it with the free NFC Tools app on your phone' : 'Write it with the free NFC Tools app'}
+				{support === 'desktop'
+					? 'Write it with the free NFC Tools app on your phone'
+					: 'Write it with the free NFC Tools app'}
 			</p>
 			<ol class="text-muted-foreground list-decimal space-y-1 pl-5 leading-snug">
 				{#if support === 'desktop'}
 					<li>Send yourself this link, or scan the QR code below to copy it on your phone.</li>
 				{/if}
-				<li>Install <span class="text-foreground">NFC Tools</span> from the {support === 'ios' ? 'App Store' : support === 'android' ? 'Play Store' : 'App Store or Play Store'}.</li>
-				<li>Open <span class="text-foreground">Write</span> → <span class="text-foreground">Add a record</span> → <span class="text-foreground">URL / URI</span>, paste the link and tap OK.</li>
+				<li>
+					Install <span class="text-foreground">NFC Tools</span> from the {support === 'ios'
+						? 'App Store'
+						: support === 'android'
+							? 'Play Store'
+							: 'App Store or Play Store'}.
+				</li>
+				<li>
+					Open <span class="text-foreground">Write</span> → <span class="text-foreground">Add a record</span> →
+					<span class="text-foreground">URL / URI</span>, paste the link and tap OK.
+				</li>
 				<li>
 					Tap <span class="text-foreground">Write</span> and hold the card to {support === 'ios'
 						? 'the top edge of your iPhone'

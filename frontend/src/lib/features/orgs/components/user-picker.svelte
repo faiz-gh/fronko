@@ -48,7 +48,8 @@
 	const groups = $derived.by(() => {
 		const people = orgUsers.assignable;
 		const list = teams.list ?? [];
-		if (list.length === 0) return [{ key: 'all', label: '', color: '', people: people.map((u) => ({ user: u, lead: false })) }];
+		if (list.length === 0)
+			return [{ key: 'all', label: '', color: '', people: people.map((u) => ({ user: u, lead: false })) }];
 		const out = list
 			.map((t) => ({
 				key: `team-${t.id}`,
@@ -61,7 +62,8 @@
 			}))
 			.filter((g) => g.people.length > 0);
 		const loose = people.filter((u) => u.teams.length === 0);
-		if (loose.length) out.push({ key: 'none', label: 'No team', color: '', people: loose.map((u) => ({ user: u, lead: false })) });
+		if (loose.length)
+			out.push({ key: 'none', label: 'No team', color: '', people: loose.map((u) => ({ user: u, lead: false })) });
 		return out;
 	});
 
@@ -134,7 +136,9 @@
 				{#each groups as g (g.key)}
 					<CommandPrimitive.Group value={g.key} class="overflow-hidden p-1">
 						{#if g.label}
-							<CommandPrimitive.GroupHeading class="text-muted-foreground flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium">
+							<CommandPrimitive.GroupHeading
+								class="text-muted-foreground flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium"
+							>
 								{#if g.color}<span class="size-2 rounded-full" style="background: {g.color}"></span>{/if}
 								{g.label}
 							</CommandPrimitive.GroupHeading>

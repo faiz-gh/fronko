@@ -115,7 +115,12 @@
 		loading = true;
 		error = '';
 		const period = lastDays(Number(range));
-		const q = { ...period, teamId: teamId ?? undefined, userId: userId ?? undefined, profileId: profileId ?? undefined };
+		const q = {
+			...period,
+			teamId: teamId ?? undefined,
+			userId: userId ?? undefined,
+			profileId: profileId ?? undefined
+		};
 		try {
 			const [s, ts, c, cs, ts2, ms, ps] = await Promise.all([
 				getAnalyticsSummary(q),
@@ -217,7 +222,11 @@
 		cur
 			? [
 					{ label: 'Visits', value: cur.sessions },
-					{ label: 'Engaged', value: cur.engaged_sessions, hint: 'Clicked, opened, saved, shared or scrolled half way' },
+					{
+						label: 'Engaged',
+						value: cur.engaged_sessions,
+						hint: 'Clicked, opened, saved, shared or scrolled half way'
+					},
 					{ label: 'Saved the contact or opened the form', value: cur.action_sessions },
 					{ label: 'Sent their details (leads)', value: cur.leads }
 				]
@@ -232,14 +241,26 @@
 	const leadSourceParts = $derived([
 		...SOURCES.map((s) => ({ key: s.key, label: s.label, color: s.color, value: summary?.lead_sources[s.key] ?? 0 })),
 		...(summary?.lead_sources.unknown
-			? [{ key: 'unknown', label: 'Before tracking', color: 'var(--muted-foreground)', value: summary.lead_sources.unknown }]
+			? [
+					{
+						key: 'unknown',
+						label: 'Before tracking',
+						color: 'var(--muted-foreground)',
+						value: summary.lead_sources.unknown
+					}
+				]
 			: [])
 	]);
 	const depthLabels = ['Less than 25%', '25%', '50%', '75%', 'The whole card'];
 	const timeLabels = ['Under 10s', '10–30s', '30s–1m', '1–3m', 'Over 3m'];
 
 	// Content
-	const QUICK_LABELS: Record<string, string> = { email: 'Email', call: 'Call', website: 'Website', booking: 'Book a meeting' };
+	const QUICK_LABELS: Record<string, string> = {
+		email: 'Email',
+		call: 'Call',
+		website: 'Website',
+		booking: 'Book a meeting'
+	};
 	const isUrl = (t: string) => t.includes('://');
 	const links = $derived(content.filter((c) => c.type === 'click' && isUrl(c.target)));
 	const quick = $derived(content.filter((c) => c.type === 'click' && !isUrl(c.target)));
@@ -278,7 +299,9 @@
 			)}
 			title="vs previous period"
 		>
-			{#if d > 0}<ArrowUpRightIcon class="size-3" />{:else}<ArrowDownRightIcon class="size-3" />{/if}{Math.abs(Math.round(d))}%
+			{#if d > 0}<ArrowUpRightIcon class="size-3" />{:else}<ArrowDownRightIcon class="size-3" />{/if}{Math.abs(
+				Math.round(d)
+			)}%
 		</span>
 	{/if}
 {/snippet}
@@ -298,8 +321,11 @@
 					<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Analytics</h1>
 					<p class="text-muted-foreground text-sm">
 						How people find and use
-						{session.isAdmin ? `${session.orgName}'s cards` : session.isLead ? 'your and your teams’ cards' : 'your cards'}:
-						taps, scans, clicks, saves and leads.
+						{session.isAdmin
+							? `${session.orgName}'s cards`
+							: session.isLead
+								? 'your and your teams’ cards'
+								: 'your cards'}: taps, scans, clicks, saves and leads.
 					</p>
 				</div>
 				<ToggleGroup.Root
@@ -345,7 +371,8 @@
 					<Button
 						variant="ghost"
 						size="sm"
-						onclick={() => goto(`/dashboard/analytics${tab !== 'engagement' ? `?tab=${tab}` : ''}`, { replace: true, reset: false })}
+						onclick={() =>
+							goto(`/dashboard/analytics${tab !== 'engagement' ? `?tab=${tab}` : ''}`, { replace: true, reset: false })}
 					>
 						Clear filters
 					</Button>
@@ -383,7 +410,9 @@
 						<section class="bg-card flex flex-col gap-4 rounded-xl border p-5" aria-labelledby="sources-heading">
 							<div class="flex flex-col gap-1">
 								<h2 id="sources-heading" class="font-semibold">Views by source</h2>
-								<p class="text-muted-foreground text-sm">NFC taps and QR scans come from the tag and code; links are everything else.</p>
+								<p class="text-muted-foreground text-sm">
+									NFC taps and QR scans come from the tag and code; links are everything else.
+								</p>
 							</div>
 							<SeriesChart {dates} series={sourceSeries} label="Views by source" />
 						</section>
@@ -432,9 +461,18 @@
 							</div>
 							<Heatmap data={summary.heatmap} />
 							<dl class="mt-2 grid grid-cols-3 gap-3 text-sm">
-								<div><dt class="text-muted-foreground text-xs">Came back same day</dt><dd class="font-medium tabular">{formatCount(cur!.repeat_visitors)}</dd></div>
-								<div><dt class="text-muted-foreground text-xs">Shares</dt><dd class="font-medium tabular">{formatCount(cur!.shares)}</dd></div>
-								<div><dt class="text-muted-foreground text-xs">Forms opened</dt><dd class="font-medium tabular">{formatCount(cur!.form_opens)}</dd></div>
+								<div>
+									<dt class="text-muted-foreground text-xs">Came back same day</dt>
+									<dd class="font-medium tabular">{formatCount(cur!.repeat_visitors)}</dd>
+								</div>
+								<div>
+									<dt class="text-muted-foreground text-xs">Shares</dt>
+									<dd class="font-medium tabular">{formatCount(cur!.shares)}</dd>
+								</div>
+								<div>
+									<dt class="text-muted-foreground text-xs">Forms opened</dt>
+									<dd class="font-medium tabular">{formatCount(cur!.form_opens)}</dd>
+								</div>
 							</dl>
 						</section>
 					</div>
@@ -455,9 +493,17 @@
 						<BarList
 							label="Clicks per link"
 							empty="No link clicks in this period"
-							items={links.map((c) => ({ key: c.target, label: c.label || c.target, value: c.count, sub: `${c.unique} unique` }))}
+							items={links.map((c) => ({
+								key: c.target,
+								label: c.label || c.target,
+								value: c.count,
+								sub: `${c.unique} unique`
+							}))}
 						>
-							{#snippet icon(item)}<BrandIcon url={item.key} class="text-muted-foreground size-3.5 shrink-0 self-center" />{/snippet}
+							{#snippet icon(item)}<BrandIcon
+									url={item.key}
+									class="text-muted-foreground size-3.5 shrink-0 self-center"
+								/>{/snippet}
 						</BarList>
 					</section>
 					<section class="bg-card flex flex-col gap-4 rounded-xl border p-5">
@@ -470,7 +516,12 @@
 							label="Taps per quick action"
 							color="var(--viz-2)"
 							empty="No one used Email, Call, Website or Book a meeting yet"
-							items={quick.map((c) => ({ key: c.target, label: QUICK_LABELS[c.target] ?? c.label, value: c.count, sub: `${c.unique} unique` }))}
+							items={quick.map((c) => ({
+								key: c.target,
+								label: QUICK_LABELS[c.target] ?? c.label,
+								value: c.count,
+								sub: `${c.unique} unique`
+							}))}
 						/>
 						<p class="text-muted-foreground text-xs">
 							Contacts saved: <span class="text-foreground font-medium">{formatCount(cur!.saves)}</span> · Shares:
@@ -516,7 +567,12 @@
 							label="Opens per image"
 							color="var(--viz-3)"
 							empty="No image opens in this period"
-							items={images.map((c) => ({ key: c.target, label: c.label || 'Image', value: c.count, sub: `${c.unique} unique` }))}
+							items={images.map((c) => ({
+								key: c.target,
+								label: c.label || 'Image',
+								value: c.count,
+								sub: `${c.unique} unique`
+							}))}
 						/>
 					</section>
 				</Tabs.Content>
@@ -525,7 +581,8 @@
 					{#if inactive.length > 0}
 						<div class="bg-card flex flex-col gap-2 rounded-xl border border-dashed p-5">
 							<p class="font-medium">
-								{inactive.length === 1 ? '1 card hasn’t' : `${inactive.length} cards haven’t`} been viewed in {INACTIVE_DAYS} days
+								{inactive.length === 1 ? '1 card hasn’t' : `${inactive.length} cards haven’t`} been viewed in {INACTIVE_DAYS}
+								days
 							</p>
 							<p class="text-muted-foreground text-sm">
 								{inactive
@@ -541,13 +598,33 @@
 								<Table.Row>
 									<Table.Head>Card</Table.Head>
 									{#if session.seesOthers}<Table.Head>Held by</Table.Head>{/if}
-									<Table.Head class="text-right">{@render sortHead('Views', cardSort === 'views', () => (cardSort = 'views'))}</Table.Head>
-									<Table.Head class="text-right">{@render sortHead('Unique', cardSort === 'unique_visitors', () => (cardSort = 'unique_visitors'))}</Table.Head>
+									<Table.Head class="text-right"
+										>{@render sortHead('Views', cardSort === 'views', () => (cardSort = 'views'))}</Table.Head
+									>
+									<Table.Head class="text-right"
+										>{@render sortHead(
+											'Unique',
+											cardSort === 'unique_visitors',
+											() => (cardSort = 'unique_visitors')
+										)}</Table.Head
+									>
 									<Table.Head class="text-right">NFC · QR · Link</Table.Head>
-									<Table.Head class="text-right">{@render sortHead('Saves', cardSort === 'saves', () => (cardSort = 'saves'))}</Table.Head>
-									<Table.Head class="text-right">{@render sortHead('Brochures', cardSort === 'doc_opens', () => (cardSort = 'doc_opens'))}</Table.Head>
-									<Table.Head class="text-right">{@render sortHead('Forms', cardSort === 'form_opens', () => (cardSort = 'form_opens'))}</Table.Head>
-									<Table.Head class="text-right">{@render sortHead('Leads', cardSort === 'leads', () => (cardSort = 'leads'))}</Table.Head>
+									<Table.Head class="text-right"
+										>{@render sortHead('Saves', cardSort === 'saves', () => (cardSort = 'saves'))}</Table.Head
+									>
+									<Table.Head class="text-right"
+										>{@render sortHead(
+											'Brochures',
+											cardSort === 'doc_opens',
+											() => (cardSort = 'doc_opens')
+										)}</Table.Head
+									>
+									<Table.Head class="text-right"
+										>{@render sortHead('Forms', cardSort === 'form_opens', () => (cardSort = 'form_opens'))}</Table.Head
+									>
+									<Table.Head class="text-right"
+										>{@render sortHead('Leads', cardSort === 'leads', () => (cardSort = 'leads'))}</Table.Head
+									>
 									<Table.Head class="text-right">Conversion</Table.Head>
 									<Table.Head class="text-right">Last viewed</Table.Head>
 								</Table.Row>
@@ -556,28 +633,42 @@
 								{#each sortedCards as c (c.profile_id)}
 									<Table.Row>
 										<Table.Cell>
-											<a href="/dashboard/analytics?card={c.profile_id}{range !== '30' ? `&range=${range}` : ''}" class="font-medium hover:underline">
+											<a
+												href="/dashboard/analytics?card={c.profile_id}{range !== '30' ? `&range=${range}` : ''}"
+												class="font-medium hover:underline"
+											>
 												{c.name || c.slug}
 											</a>
 											<div class="text-muted-foreground font-mono text-[11px]">/p/{session.orgHandle}/{c.slug}</div>
 										</Table.Cell>
 										{#if session.seesOthers}
-											<Table.Cell class="text-muted-foreground">{c.assigned_user?.username ?? 'Organisation'}</Table.Cell>
+											<Table.Cell class="text-muted-foreground"
+												>{c.assigned_user?.username ?? 'Organisation'}</Table.Cell
+											>
 										{/if}
 										<Table.Cell class="text-right font-medium tabular">{c.views}</Table.Cell>
 										<Table.Cell class="text-right tabular">{c.unique_visitors}</Table.Cell>
-										<Table.Cell class="text-muted-foreground text-right tabular">{c.nfc_views} · {c.qr_views} · {c.link_views}</Table.Cell>
+										<Table.Cell class="text-muted-foreground text-right tabular"
+											>{c.nfc_views} · {c.qr_views} · {c.link_views}</Table.Cell
+										>
 										<Table.Cell class="text-right tabular">{c.saves}</Table.Cell>
 										<Table.Cell class="text-right tabular">{c.doc_opens}</Table.Cell>
 										<Table.Cell class="text-right tabular">{c.form_opens}</Table.Cell>
 										<Table.Cell class="text-right tabular">{c.leads}</Table.Cell>
 										<Table.Cell class="text-right tabular">{pct(rate(c.leads + c.saves, c.views))}</Table.Cell>
-										<Table.Cell class="text-muted-foreground text-right text-xs" title={c.last_viewed_at ? formatDateTime(c.last_viewed_at) : undefined}>
+										<Table.Cell
+											class="text-muted-foreground text-right text-xs"
+											title={c.last_viewed_at ? formatDateTime(c.last_viewed_at) : undefined}
+										>
 											{c.last_viewed_at ? timeAgo(c.last_viewed_at) : 'Never'}
 										</Table.Cell>
 									</Table.Row>
 								{:else}
-									<Table.Row><Table.Cell colspan={11} class="text-muted-foreground py-10 text-center">No cards match these filters</Table.Cell></Table.Row>
+									<Table.Row
+										><Table.Cell colspan={11} class="text-muted-foreground py-10 text-center"
+											>No cards match these filters</Table.Cell
+										></Table.Row
+									>
 								{/each}
 							</Table.Body>
 						</Table.Root>
@@ -591,7 +682,9 @@
 							<div class="bg-card flex flex-col items-center gap-2 rounded-xl border px-6 py-12 text-center">
 								<p class="font-medium">No teams to compare</p>
 								<p class="text-muted-foreground max-w-sm text-sm">
-									{session.isAdmin ? 'Group people into teams to compare how each one is doing.' : 'You don’t lead any teams.'}
+									{session.isAdmin
+										? 'Group people into teams to compare how each one is doing.'
+										: 'You don’t lead any teams.'}
 								</p>
 								{#if session.isAdmin}<Button variant="outline" href="/dashboard/teams">Go to Teams</Button>{/if}
 							</div>
@@ -599,7 +692,9 @@
 							<section class="bg-card overflow-hidden rounded-xl border" aria-labelledby="teams-heading">
 								<div class="flex flex-col gap-1 border-b px-5 py-4">
 									<h2 id="teams-heading" class="font-semibold">Teams compared</h2>
-									<p class="text-muted-foreground text-sm">Activity on cards held by each team's people, with the change from the previous period.</p>
+									<p class="text-muted-foreground text-sm">
+										Activity on cards held by each team's people, with the change from the previous period.
+									</p>
 								</div>
 								<Table.Root>
 									<Table.Header>
@@ -619,7 +714,11 @@
 										{#each teamStats as t (t.id)}
 											<Table.Row>
 												<Table.Cell>
-													<button type="button" class="flex items-center gap-2 font-medium hover:underline" onclick={() => setParam('team', t.id)}>
+													<button
+														type="button"
+														class="flex items-center gap-2 font-medium hover:underline"
+														onclick={() => setParam('team', t.id)}
+													>
 														<span class="size-2.5 rounded-full" style="background: {teamColor(t)}"></span>{t.name}
 													</button>
 												</Table.Cell>
@@ -628,16 +727,25 @@
 												<Table.Cell>
 													<div class="flex items-center gap-2">
 														<div class="bg-muted h-1.5 flex-1 rounded-full">
-															<div class="h-full rounded-full" style="width: {(t.views / maxTeamViews) * 100}%; background: var(--viz-1)"></div>
+															<div
+																class="h-full rounded-full"
+																style="width: {(t.views / maxTeamViews) * 100}%; background: var(--viz-1)"
+															></div>
 														</div>
 														<span class="w-10 text-right font-medium tabular">{t.views}</span>
 														<span class="w-10">{@render delta(t.views, t.prev_views)}</span>
 													</div>
 												</Table.Cell>
-												<Table.Cell class="text-right tabular">{t.members ? (t.views / t.members).toFixed(1) : '–'}</Table.Cell>
+												<Table.Cell class="text-right tabular"
+													>{t.members ? (t.views / t.members).toFixed(1) : '–'}</Table.Cell
+												>
 												<Table.Cell class="text-right tabular">{pct(rate(t.engaged_sessions, t.sessions))}</Table.Cell>
-												<Table.Cell class="text-right tabular">{t.saves} {@render delta(t.saves, t.prev_saves)}</Table.Cell>
-												<Table.Cell class="text-right tabular">{t.leads} {@render delta(t.leads, t.prev_leads)}</Table.Cell>
+												<Table.Cell class="text-right tabular"
+													>{t.saves} {@render delta(t.saves, t.prev_saves)}</Table.Cell
+												>
+												<Table.Cell class="text-right tabular"
+													>{t.leads} {@render delta(t.leads, t.prev_leads)}</Table.Cell
+												>
 												<Table.Cell class="text-right tabular">{pct(rate(t.leads, t.sessions))}</Table.Cell>
 											</Table.Row>
 										{/each}
@@ -651,11 +759,19 @@
 								<div class="flex flex-col gap-1">
 									<h2 id="board-heading" class="font-semibold">Leaderboard</h2>
 									<p class="text-muted-foreground text-sm">
-										{teamId ? `People in ${teamOptions.find((t) => t.id === teamId)?.name ?? 'this team'}` : 'Everyone you can see'}, ranked by
-										their cards.
+										{teamId
+											? `People in ${teamOptions.find((t) => t.id === teamId)?.name ?? 'this team'}`
+											: 'Everyone you can see'}, ranked by their cards.
 									</p>
 								</div>
-								<ToggleGroup.Root type="single" variant="outline" size="sm" value={memberSort} onValueChange={(v) => v && (memberSort = v as MemberSort)} aria-label="Rank by">
+								<ToggleGroup.Root
+									type="single"
+									variant="outline"
+									size="sm"
+									value={memberSort}
+									onValueChange={(v) => v && (memberSort = v as MemberSort)}
+									aria-label="Rank by"
+								>
 									<ToggleGroup.Item value="views" class="px-3">Views</ToggleGroup.Item>
 									<ToggleGroup.Item value="saves" class="px-3">Saves</ToggleGroup.Item>
 									<ToggleGroup.Item value="leads" class="px-3">Leads</ToggleGroup.Item>
@@ -666,16 +782,30 @@
 									<li class="flex items-center gap-3 px-5 py-3">
 										<span class="text-muted-foreground w-5 text-right text-sm tabular">{i + 1}</span>
 										<UserAvatar username={m.username} class="size-8 text-xs" />
-										<button type="button" class="flex min-w-0 flex-1 flex-col text-left" onclick={() => setParam('user', m.user_id)}>
+										<button
+											type="button"
+											class="flex min-w-0 flex-1 flex-col text-left"
+											onclick={() => setParam('user', m.user_id)}
+										>
 											<span class="truncate text-sm font-medium hover:underline">{m.username}</span>
 											<span class="text-muted-foreground text-xs">
-												{m.cards} {m.cards === 1 ? 'card' : 'cards'} · {m.doc_opens} brochure opens · {m.form_opens} forms opened
+												{m.cards}
+												{m.cards === 1 ? 'card' : 'cards'} · {m.doc_opens} brochure opens · {m.form_opens} forms opened
 											</span>
 										</button>
 										<dl class="grid grid-cols-3 gap-4 text-right text-sm sm:gap-8">
-											<div><dt class="text-muted-foreground text-xs">Views</dt><dd class={cn('tabular', memberSort === 'views' && 'font-semibold')}>{m.views}</dd></div>
-											<div><dt class="text-muted-foreground text-xs">Saves</dt><dd class={cn('tabular', memberSort === 'saves' && 'font-semibold')}>{m.saves}</dd></div>
-											<div><dt class="text-muted-foreground text-xs">Leads</dt><dd class={cn('tabular', memberSort === 'leads' && 'font-semibold')}>{m.leads}</dd></div>
+											<div>
+												<dt class="text-muted-foreground text-xs">Views</dt>
+												<dd class={cn('tabular', memberSort === 'views' && 'font-semibold')}>{m.views}</dd>
+											</div>
+											<div>
+												<dt class="text-muted-foreground text-xs">Saves</dt>
+												<dd class={cn('tabular', memberSort === 'saves' && 'font-semibold')}>{m.saves}</dd>
+											</div>
+											<div>
+												<dt class="text-muted-foreground text-xs">Leads</dt>
+												<dd class={cn('tabular', memberSort === 'leads' && 'font-semibold')}>{m.leads}</dd>
+											</div>
 										</dl>
 									</li>
 								{:else}
@@ -690,7 +820,8 @@
 	</Tabs.Root>
 
 	<p class="text-muted-foreground text-xs">
-		Visitors aren't identified: there are no cookies, and unique visitors are counted per day. Visits by people signed in to
+		Visitors aren't identified: there are no cookies, and unique visitors are counted per day. Visits by people signed
+		in to
 		{session.orgName || 'your organisation'} aren't counted.
 	</p>
 </div>

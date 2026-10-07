@@ -177,7 +177,10 @@ export type TapAction = 'profile' | 'save_contact' | 'lead_form';
 
 export const TAP_ACTIONS: Record<TapAction, { label: string; description: string }> = {
 	profile: { label: 'Show profile', description: 'Open your card as usual.' },
-	save_contact: { label: 'Save contact', description: 'Open the phone’s “Add contact” sheet, with your card behind it.' },
+	save_contact: {
+		label: 'Save contact',
+		description: 'Open the phone’s “Add contact” sheet, with your card behind it.'
+	},
 	lead_form: { label: 'Open contact form', description: 'Ask visitors for their details straight away.' }
 };
 
@@ -272,12 +275,14 @@ export function normalizeCard(raw: unknown): CardData {
 		: [];
 
 	const documents: CardDocument[] = Array.isArray(d.documents)
-		? d.documents.flatMap((doc): CardDocument[] => {
-				if (!doc || typeof doc !== 'object') return [];
-				const o = doc as Record<string, unknown>;
-				const file = str(o.file);
-				return file ? [{ id: str(o.id) || newId(), file, title: str(o.title) }] : [];
-			}).slice(0, MAX_DOCUMENTS)
+		? d.documents
+				.flatMap((doc): CardDocument[] => {
+					if (!doc || typeof doc !== 'object') return [];
+					const o = doc as Record<string, unknown>;
+					const file = str(o.file);
+					return file ? [{ id: str(o.id) || newId(), file, title: str(o.title) }] : [];
+				})
+				.slice(0, MAX_DOCUMENTS)
 		: [];
 
 	const phone = str(d.phone_number)
@@ -490,9 +495,20 @@ const CALENDAR_PROVIDERS: Brand[] = [
 	{
 		name: 'Zoho Bookings',
 		icon: siZoho,
-		hosts: ['bookings.zoho.com', 'bookings.zoho.eu', 'bookings.zoho.in', 'zohobookings.com', 'zohobookings.eu', 'zohobookings.in']
+		hosts: [
+			'bookings.zoho.com',
+			'bookings.zoho.eu',
+			'bookings.zoho.in',
+			'zohobookings.com',
+			'zohobookings.eu',
+			'zohobookings.in'
+		]
 	},
-	{ name: 'Microsoft Bookings', icon: null, hosts: ['outlook.office.com', 'outlook.office365.com', 'outlook.live.com'] },
+	{
+		name: 'Microsoft Bookings',
+		icon: null,
+		hosts: ['outlook.office.com', 'outlook.office365.com', 'outlook.live.com']
+	},
 	{ name: 'SavvyCal', icon: null, hosts: ['savvycal.com'] },
 	{ name: 'TidyCal', icon: null, hosts: ['tidycal.com'] },
 	{ name: 'zcal', icon: null, hosts: ['zcal.co'] }

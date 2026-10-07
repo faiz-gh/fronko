@@ -1,6 +1,13 @@
 <script lang="ts">
 	import LinkIcon from '@lucide/svelte/icons/link';
-	import { fileDimensions, fileTitle, formatBytes, locationLabel, PURPOSES, type LibraryFile } from '$lib/features/files/api';
+	import {
+		fileDimensions,
+		fileTitle,
+		formatBytes,
+		locationLabel,
+		PURPOSES,
+		type LibraryFile
+	} from '$lib/features/files/api';
 	import { teamColor } from '$lib/features/teams/api';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Table from '$lib/components/ui/table';
@@ -89,7 +96,9 @@
 									{fileTitle(file)}
 								</button>
 								<span class="text-muted-foreground truncate text-xs">
-									{file.kind === 'pdf' ? 'PDF' : file.content_type.replace('image/', '').toUpperCase()}{dims ? ` · ${dims}` : ''}
+									{file.kind === 'pdf' ? 'PDF' : file.content_type.replace('image/', '').toUpperCase()}{dims
+										? ` · ${dims}`
+										: ''}
 									<span class="md:hidden"> · {PURPOSES[file.purpose].label}</span>
 								</span>
 							</span>
@@ -109,7 +118,9 @@
 							{locationLabel(file)}
 						</span>
 					</Table.Cell>
-					<Table.Cell class="text-muted-foreground tabular hidden xl:table-cell">{formatBytes(file.size_bytes)}</Table.Cell>
+					<Table.Cell class="text-muted-foreground tabular hidden xl:table-cell"
+						>{formatBytes(file.size_bytes)}</Table.Cell
+					>
 					<Table.Cell class="hidden sm:table-cell">
 						{#if file.use_count > 0}
 							<span class="inline-flex items-center gap-1">
@@ -121,7 +132,8 @@
 						{/if}
 					</Table.Cell>
 					<Table.Cell class="text-muted-foreground hidden lg:table-cell">
-						<span class="block truncate">{timeAgo(file.created_at)}{file.owner ? ` · ${file.owner.username}` : ''}</span>
+						<span class="block truncate">{timeAgo(file.created_at)}{file.owner ? ` · ${file.owner.username}` : ''}</span
+						>
 					</Table.Cell>
 				</Table.Row>
 			{/each}

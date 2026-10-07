@@ -33,7 +33,9 @@
 		</div>
 	</div>
 
-	<div class="bg-primary text-primary-foreground relative hidden overflow-hidden lg:flex lg:flex-col lg:justify-between lg:p-12">
+	<div
+		class="bg-primary text-primary-foreground relative hidden overflow-hidden lg:flex lg:flex-col lg:justify-between lg:p-12"
+	>
 		<div
 			class="absolute inset-0 opacity-60"
 			style="background-image: radial-gradient(oklch(1 0 0 / 0.12) 1px, transparent 1px); background-size: 18px 18px; mask-image: radial-gradient(70% 60% at 60% 45%, black, transparent)"

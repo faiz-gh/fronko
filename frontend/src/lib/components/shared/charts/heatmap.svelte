@@ -31,7 +31,8 @@
 <div class={cn('flex flex-col gap-2', className)}>
 	<p class="text-muted-foreground min-h-4 text-xs">
 		{#if hover}
-			{dayNames[hover.d]} {hourLabel(hover.h)}: <span class="text-foreground font-medium">{data[hover.d]?.[hover.h] ?? 0}</span> views
+			{dayNames[hover.d]}
+			{hourLabel(hover.h)}: <span class="text-foreground font-medium">{data[hover.d]?.[hover.h] ?? 0}</span> views
 		{:else if total > 0}
 			Busiest: {dayNames[peak.d]} around {hourLabel(peak.h)} ({peak.v} views)
 		{:else}
@@ -39,8 +40,14 @@
 		{/if}
 	</p>
 	<div class="overflow-x-auto">
-		<table class="w-full min-w-[480px] table-fixed border-separate" style="border-spacing: 2px" aria-label="Views by weekday and hour">
-			<colgroup><col class="w-10" />{#each Array.from({ length: 24 }, (_, h) => h) as h (h)}<col />{/each}</colgroup>
+		<table
+			class="w-full min-w-[480px] table-fixed border-separate"
+			style="border-spacing: 2px"
+			aria-label="Views by weekday and hour"
+		>
+			<colgroup
+				><col class="w-10" />{#each Array.from({ length: 24 }, (_, h) => h) as h (h)}<col />{/each}</colgroup
+			>
 			<tbody>
 				{#each order as d (d)}
 					<tr>
@@ -51,15 +58,17 @@
 								style="background: {shade(v)}"
 								title="{dayNames[d]} {hourLabel(h)}: {v} views"
 								onpointerenter={() => (hover = { d, h })}
-								onpointerleave={() => (hover = null)}
-							><span class="sr-only">{v}</span></td>
+								onpointerleave={() => (hover = null)}><span class="sr-only">{v}</span></td
+							>
 						{/each}
 					</tr>
 				{/each}
 				<tr>
 					<td></td>
 					{#each Array.from({ length: 24 }, (_, h) => h) as h (h)}
-						<td class="text-muted-foreground overflow-visible pt-1 text-left text-[10px] whitespace-nowrap">{h % 6 === 0 ? hourLabel(h) : ''}</td>
+						<td class="text-muted-foreground overflow-visible pt-1 text-left text-[10px] whitespace-nowrap"
+							>{h % 6 === 0 ? hourLabel(h) : ''}</td
+						>
 					{/each}
 				</tr>
 			</tbody>
@@ -67,7 +76,10 @@
 	</div>
 	<div class="text-muted-foreground flex items-center justify-end gap-1 text-[11px]" aria-hidden="true">
 		Fewer
-		{#each [0, 1, 2, 3, 4] as s (s)}<span class="inline-block size-3 rounded-[3px]" style="background: var(--viz-seq-{s})"></span>{/each}
+		{#each [0, 1, 2, 3, 4] as s (s)}<span
+				class="inline-block size-3 rounded-[3px]"
+				style="background: var(--viz-seq-{s})"
+			></span>{/each}
 		More
 	</div>
 </div>

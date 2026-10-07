@@ -5,10 +5,10 @@
 	// The Branding tab in Settings.
 </script>
 
-	<FormSection
-		id="branding"
-		title="Branding"
-		description="Your logo on cards and email signatures, and what every signature includes."
-	>
-		<BrandingSettings />
-	</FormSection>
+<FormSection
+	id="branding"
+	title="Branding"
+	description="Your logo on cards and email signatures, and what every signature includes."
+>
+	<BrandingSettings />
+</FormSection>

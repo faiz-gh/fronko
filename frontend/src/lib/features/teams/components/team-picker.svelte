@@ -27,7 +27,9 @@
 </script>
 
 <DropdownMenu.Root>
-	<DropdownMenu.Trigger class={buttonVariants({ variant: 'outline', size, class: cn('max-w-56 justify-start gap-2', className) })}>
+	<DropdownMenu.Trigger
+		class={buttonVariants({ variant: 'outline', size, class: cn('max-w-56 justify-start gap-2', className) })}
+	>
 		{#if selected}
 			<span class="size-2.5 shrink-0 rounded-full" style="background: {teamColor(selected)}"></span>
 			<span class="truncate">{selected.name}</span>

@@ -89,8 +89,7 @@
 	// Kept current by the cards store (the single-card endpoint doesn't count leads).
 	const leadCount = $derived(cards.list?.find((p) => p.id === profileId)?.lead_count ?? 0);
 
-	const reduceMotion =
-		typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+	const reduceMotion = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 	// Reload when the sidebar switches to another card (same route, new id).
 	$effect(() => {
@@ -177,7 +176,9 @@
 	}
 
 	const errorsBySection = $derived(errors ? sectionErrors(errors) : null);
-	const rail = $derived(card && errorsBySection ? railItems(card, `/p/${session.orgHandle}/${slug}`, errorsBySection) : []);
+	const rail = $derived(
+		card && errorsBySection ? railItems(card, `/p/${session.orgHandle}/${slug}`, errorsBySection) : []
+	);
 	const firstInvalid = $derived(SECTIONS.find((id) => errorsBySection?.[id]) ?? null);
 
 	async function copyLink() {
@@ -306,7 +307,10 @@
 						Copy link
 					</Button>
 					<DropdownMenu.Root>
-						<DropdownMenu.Trigger class={buttonVariants({ variant: 'outline', size: 'icon' })} aria-label="More actions">
+						<DropdownMenu.Trigger
+							class={buttonVariants({ variant: 'outline', size: 'icon' })}
+							aria-label="More actions"
+						>
 							<EllipsisIcon />
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end" class="w-52">
@@ -356,7 +360,9 @@
 					title="Last 30 days"
 				>
 					{#if recentStats}
-						<span class="tabular">{recentStats.views} views · {recentStats.saves} saves · {recentStats.leads} leads</span>
+						<span class="tabular"
+							>{recentStats.views} views · {recentStats.saves} saves · {recentStats.leads} leads</span
+						>
 					{:else}
 						Analytics
 					{/if}

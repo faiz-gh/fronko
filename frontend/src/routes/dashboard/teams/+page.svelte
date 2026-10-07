@@ -83,7 +83,9 @@
 		<ul class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr))]">
 			{#each teams.list as team (team.id)}
 				{@const role = myRole(team.id)}
-				<li class="bg-card group relative flex flex-col overflow-hidden rounded-xl border transition-shadow hover:shadow-md">
+				<li
+					class="bg-card group relative flex flex-col overflow-hidden rounded-xl border transition-shadow hover:shadow-md"
+				>
 					<span class="h-1.5" style="background: {teamColor(team)}"></span>
 					<div class="flex flex-1 flex-col gap-3 p-5">
 						<div class="flex items-start justify-between gap-3">

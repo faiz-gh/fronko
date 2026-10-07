@@ -53,7 +53,7 @@ export function nfcErrorMessage(err: unknown, timedOut = false): string {
 	switch (name) {
 		case 'AbortError':
 			return timedOut
-				? "No card was found. Move it slowly around the back of your phone and try again."
+				? 'No card was found. Move it slowly around the back of your phone and try again.'
 				: 'Writing was cancelled.';
 		case 'NotAllowedError':
 			return 'Chrome isn’t allowed to use NFC, or this card is locked. Allow NFC for this site in Chrome’s settings, then try again.';

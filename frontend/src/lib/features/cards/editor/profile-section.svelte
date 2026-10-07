@@ -167,7 +167,9 @@
 			</div>
 			{#if storage.status && !storage.ready}
 				<Field.Description>
-					<a href="/dashboard/settings?tab=storage" class="text-foreground underline underline-offset-4">Connect storage</a>
+					<a href="/dashboard/settings?tab=storage" class="text-foreground underline underline-offset-4"
+						>Connect storage</a
+					>
 					to upload a photo, or paste an image URL below.
 				</Field.Description>
 			{/if}

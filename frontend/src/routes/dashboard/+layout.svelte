@@ -64,7 +64,9 @@
 	</div>
 {:else if ready}
 	<!-- Desktop: fixed sidebar; the page scrolls beside it. -->
-	<aside class="bg-sidebar text-sidebar-foreground border-sidebar-border fixed inset-y-0 left-0 z-30 hidden w-68 border-r lg:block">
+	<aside
+		class="bg-sidebar text-sidebar-foreground border-sidebar-border fixed inset-y-0 left-0 z-30 hidden w-68 border-r lg:block"
+	>
 		<AppSidebar />
 	</aside>
 

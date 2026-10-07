@@ -206,7 +206,9 @@ export function listFiles(query: FileQuery = {}): Promise<FilePage> {
 export function fileCounts(
 	query: FileQuery = {}
 ): Promise<{ counts: Partial<Record<FilePurpose, number>>; total: number }> {
-	return apiClient(`/api/me/files/counts${queryString({ ...query, purposes: undefined, page: undefined, pageSize: undefined, sort: undefined })}`);
+	return apiClient(
+		`/api/me/files/counts${queryString({ ...query, purposes: undefined, page: undefined, pageSize: undefined, sort: undefined })}`
+	);
 }
 
 export interface FilePatch {
@@ -365,7 +367,10 @@ export async function fetchFileContent(f: Pick<LibraryFile, 'id' | 'name' | 'con
 	if (!res.ok) {
 		if (res.status === 401) session.expire();
 		const body = await res.json().catch(() => null);
-		throw new ApiError((body && typeof body.error === 'string' && body.error) || 'Could not open that file', res.status);
+		throw new ApiError(
+			(body && typeof body.error === 'string' && body.error) || 'Could not open that file',
+			res.status
+		);
 	}
 	return new File([await res.blob()], f.name, { type: f.content_type });
 }

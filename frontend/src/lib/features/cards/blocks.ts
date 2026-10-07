@@ -35,7 +35,15 @@ export const MAX_EVENT_FIELD = 80;
 export const MAX_CAPTION = 120;
 
 /** Blocks that show fields edited elsewhere; a card has at most one of each. */
-export const SINGLETON_BLOCKS: BlockType[] = ['header', 'bio', 'quick_actions', 'booking', 'actions', 'links', 'documents'];
+export const SINGLETON_BLOCKS: BlockType[] = [
+	'header',
+	'bio',
+	'quick_actions',
+	'booking',
+	'actions',
+	'links',
+	'documents'
+];
 
 export const BLOCK_INFO: Record<BlockType, { label: string; description: string }> = {
 	header: { label: 'Header', description: 'Photo, name, title and location' },
@@ -60,7 +68,10 @@ export const HEADER_STYLES: Record<HeaderStyle, string> = {
 
 export type TemplateKey = 'classic' | 'event' | 'portfolio' | 'minimal';
 
-export const TEMPLATES: Record<TemplateKey, { label: string; description: string; header: HeaderStyle; blocks: BlockType[] }> = {
+export const TEMPLATES: Record<
+	TemplateKey,
+	{ label: string; description: string; header: HeaderStyle; blocks: BlockType[] }
+> = {
 	classic: {
 		label: 'Classic',
 		description: 'A business card with everything in one place.',
@@ -122,7 +133,9 @@ export function templateBlocks(key: TemplateKey): CardBlock[] {
  * what was typed into them, so switching back and forth loses nothing.
  */
 export function applyTemplate(current: CardBlock[], key: TemplateKey): CardBlock[] {
-	const pool = current.filter((b) => b.type === 'heading' || b.type === 'text' || b.type === 'gallery' || b.type === 'event');
+	const pool = current.filter(
+		(b) => b.type === 'heading' || b.type === 'text' || b.type === 'gallery' || b.type === 'event'
+	);
 	return templateBlocks(key).map((b) => {
 		const i = pool.findIndex((p) => p.type === b.type);
 		if (i === -1) return b;
@@ -155,7 +168,11 @@ function normalizeBlock(raw: unknown): CardBlock | null {
 	const base = { id: str(o.id) || newId(), ...(o.hidden === true ? { hidden: true } : {}) };
 	switch (type) {
 		case 'header':
-			return { ...base, type, style: typeof o.style === 'string' && o.style in HEADER_STYLES ? (o.style as HeaderStyle) : 'banner' };
+			return {
+				...base,
+				type,
+				style: typeof o.style === 'string' && o.style in HEADER_STYLES ? (o.style as HeaderStyle) : 'banner'
+			};
 		case 'heading':
 			return { ...base, type, text: str(o.text, MAX_HEADING) };
 		case 'text':

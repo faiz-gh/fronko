@@ -202,7 +202,12 @@
 		{/if}
 		<div class="relative order-last min-w-0 basis-full sm:order-none sm:max-w-sm sm:flex-1 sm:basis-auto">
 			<SearchIcon class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-			<Input bind:value={query} placeholder="Search name, email, phone or message" class="pr-9 pl-9" aria-label="Search leads" />
+			<Input
+				bind:value={query}
+				placeholder="Search name, email, phone or message"
+				class="pr-9 pl-9"
+				aria-label="Search leads"
+			/>
 			{#if query}
 				<button
 					type="button"
@@ -292,7 +297,10 @@
 									</Avatar.Root>
 									<div class="flex min-w-0 flex-col">
 										<span class="truncate font-medium">{lead.name}</span>
-										<a href="mailto:{lead.email}" class="text-muted-foreground hover:text-foreground truncate text-xs hover:underline">
+										<a
+											href="mailto:{lead.email}"
+											class="text-muted-foreground hover:text-foreground truncate text-xs hover:underline"
+										>
 											{lead.email}
 										</a>
 										{#if lead.phone_number}
@@ -310,7 +318,9 @@
 											</span>
 										{/if}
 										{#if lead.notes}
-											<span class="text-foreground/80 mt-1 line-clamp-2 text-xs whitespace-normal lg:hidden">{lead.notes}</span>
+											<span class="text-foreground/80 mt-1 line-clamp-2 text-xs whitespace-normal lg:hidden"
+												>{lead.notes}</span
+											>
 										{/if}
 									</div>
 								</div>
@@ -327,7 +337,9 @@
 											<span class="mt-1.5 size-2 shrink-0 rounded-full" style="background: {info.color}"></span>
 											<span class="flex min-w-0 flex-col">
 												<span class="truncate text-sm">{info.name}</span>
-												<span class="text-muted-foreground truncate font-mono text-[11px]">/p/{session.orgHandle}/{info.slug}</span>
+												<span class="text-muted-foreground truncate font-mono text-[11px]"
+													>/p/{session.orgHandle}/{info.slug}</span
+												>
 											</span>
 										</button>
 									{/if}
@@ -367,7 +379,10 @@
 						</Table.Row>
 					{:else}
 						<Table.Row class="hover:bg-transparent">
-							<Table.Cell colspan={3 + (showCardColumn ? 1 : 0) + (showUsers ? 1 : 0)} class="text-muted-foreground h-32 text-center">
+							<Table.Cell
+								colspan={3 + (showCardColumn ? 1 : 0) + (showUsers ? 1 : 0)}
+								class="text-muted-foreground h-32 text-center"
+							>
 								No leads match{search ? ` “${search}”` : ' this filter'}.
 							</Table.Cell>
 						</Table.Row>

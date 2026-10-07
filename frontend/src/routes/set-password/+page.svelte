@@ -135,7 +135,13 @@
 					type="submit"
 					size="lg"
 					class="w-full"
-					disabled={busy || !currentPassword || !newPassword || !confirmPassword || tooShort || mismatch || sameAsTemporary}
+					disabled={busy ||
+						!currentPassword ||
+						!newPassword ||
+						!confirmPassword ||
+						tooShort ||
+						mismatch ||
+						sameAsTemporary}
 				>
 					{#if busy}<Spinner data-icon="inline-start" />{/if}
 					Set password and continue

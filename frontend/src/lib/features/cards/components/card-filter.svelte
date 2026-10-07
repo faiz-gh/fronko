@@ -17,9 +17,7 @@
 		onchange: (value: number | null) => void;
 	} = $props();
 
-	const options = $derived(
-		(cards.list ?? []).map((p) => ({ profile: p, card: normalizeCard(p.data) }))
-	);
+	const options = $derived((cards.list ?? []).map((p) => ({ profile: p, card: normalizeCard(p.data) })));
 	const selected = $derived(options.find((o) => o.profile.id === value) ?? null);
 </script>
 
@@ -56,7 +54,9 @@
 						<CardAvatar {card} fallback={profile.slug} class="size-5 text-[9px]" />
 						<span class="flex min-w-0 flex-col">
 							<span class="truncate">{card.name || profile.slug}</span>
-							<span class="text-muted-foreground truncate font-mono text-[11px]">/p/{session.orgHandle}/{profile.slug}</span>
+							<span class="text-muted-foreground truncate font-mono text-[11px]"
+								>/p/{session.orgHandle}/{profile.slug}</span
+							>
 						</span>
 						<span class="text-muted-foreground tabular ml-auto text-xs">{profile.lead_count}</span>
 					</span>

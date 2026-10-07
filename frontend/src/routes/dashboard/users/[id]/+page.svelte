@@ -242,7 +242,10 @@
 </svelte:head>
 
 <div class="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-6 sm:px-8 lg:px-10 lg:py-10">
-	<a href="/dashboard/users" class="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1.5 text-sm">
+	<a
+		href="/dashboard/users"
+		class="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1.5 text-sm"
+	>
 		<ArrowLeftIcon class="size-4" />
 		Users
 	</a>
@@ -286,7 +289,10 @@
 						{plural(user.lead_count, 'lead')}
 					</Button>
 					<DropdownMenu.Root>
-						<DropdownMenu.Trigger class={buttonVariants({ variant: 'outline', size: 'icon' })} aria-label="More actions">
+						<DropdownMenu.Trigger
+							class={buttonVariants({ variant: 'outline', size: 'icon' })}
+							aria-label="More actions"
+						>
 							<EllipsisIcon />
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="end" class="w-56">
@@ -344,9 +350,7 @@
 			<Alert.Root variant="destructive">
 				<BanIcon />
 				<Alert.Title>Suspended {user.suspended_at ? timeAgo(user.suspended_at) : ''}</Alert.Title>
-				<Alert.Description>
-					They can't sign in. Their cards stay live and keep collecting leads.
-				</Alert.Description>
+				<Alert.Description>They can't sign in. Their cards stay live and keep collecting leads.</Alert.Description>
 			</Alert.Root>
 		{:else if status === 'unverified'}
 			<section class="bg-card flex flex-col gap-4 rounded-xl border p-5">
@@ -406,7 +410,10 @@
 				</h2>
 				{#if canManage}
 					<DropdownMenu.Root>
-						<DropdownMenu.Trigger class={buttonVariants({ variant: 'outline', size: 'sm' })} disabled={otherCards.length === 0}>
+						<DropdownMenu.Trigger
+							class={buttonVariants({ variant: 'outline', size: 'sm' })}
+							disabled={otherCards.length === 0}
+						>
 							<PlusIcon data-icon="inline-start" />
 							Assign a card
 						</DropdownMenu.Trigger>
@@ -438,7 +445,9 @@
 								<CardAvatar {card} fallback={profile.slug} />
 								<a href="/dashboard/{profile.id}" class="flex min-w-0 flex-1 flex-col hover:underline">
 									<span class="truncate text-sm font-medium">{card.name || profile.slug}</span>
-									<span class="text-muted-foreground truncate font-mono text-[11px]">/p/{session.orgHandle}/{profile.slug}</span>
+									<span class="text-muted-foreground truncate font-mono text-[11px]"
+										>/p/{session.orgHandle}/{profile.slug}</span
+									>
 								</a>
 								{#if canManage}
 									<Button variant="ghost" size="sm" onclick={() => assign(profile.id, null)}>Unassign</Button>
@@ -484,7 +493,8 @@
 				<h2 id="files-heading" class="text-sm font-semibold">Extra files they can use</h2>
 				<p class="text-muted-foreground text-sm">
 					Everyone sees their own files, the shared area and their teams' files. Files listed here were shared with them
-					or one of their teams; removing access only affects what was shared with them directly. Give access to more from
+					or one of their teams; removing access only affects what was shared with them directly. Give access to more
+					from
 					<a href="/dashboard/files" class="text-foreground underline-offset-4 hover:underline">Files</a>.
 				</p>
 			</div>
@@ -557,7 +567,14 @@
 				<Field.Field>
 					<Field.Label for="temp-password">Temporary password</Field.Label>
 					<div class="flex gap-2">
-						<Input id="temp-password" class="font-mono" autocomplete="off" bind:value={tempPassword} minlength={8} required />
+						<Input
+							id="temp-password"
+							class="font-mono"
+							autocomplete="off"
+							bind:value={tempPassword}
+							minlength={8}
+							required
+						/>
 						<Button
 							type="button"
 							variant="outline"
@@ -586,10 +603,9 @@
 		<AlertDialog.Header>
 			<AlertDialog.Title>Delete {user?.username}?</AlertDialog.Title>
 			<AlertDialog.Description>
-				Their account is removed, but their work stays: their {plural(user?.card_count ?? 0, 'card')} go back to the
-				organisation, and their {formatBytes(user?.used_bytes ?? 0)} of files move into the organisation's files, so
-				cards using them keep working. Leads they collected stay on the cards. To keep the account but block sign-in,
-				suspend it instead.
+				Their account is removed, but their work stays: their {plural(user?.card_count ?? 0, 'card')} go back to the organisation,
+				and their {formatBytes(user?.used_bytes ?? 0)} of files move into the organisation's files, so cards using them keep
+				working. Leads they collected stay on the cards. To keep the account but block sign-in, suspend it instead.
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>

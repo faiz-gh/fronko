@@ -26,7 +26,10 @@
 						src={fileUrl(img.file)}
 						alt={img.caption}
 						loading="lazy"
-						class={cn('w-full object-cover transition-transform hover:scale-[1.03]', shown.length === 1 ? 'aspect-video' : 'aspect-square')}
+						class={cn(
+							'w-full object-cover transition-transform hover:scale-[1.03]',
+							shown.length === 1 ? 'aspect-video' : 'aspect-square'
+						)}
 					/>
 				</a>
 				{#if img.caption.trim()}

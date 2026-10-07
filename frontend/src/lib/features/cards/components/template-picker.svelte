@@ -26,7 +26,10 @@
 
 <!-- A tiny wireframe of each template: enough to tell them apart at a glance. -->
 {#snippet wireframe(key: TemplateKey)}
-	<span class="flex h-24 flex-col overflow-hidden rounded-lg bg-white ring-1 ring-black/5 dark:bg-neutral-900" aria-hidden="true">
+	<span
+		class="flex h-24 flex-col overflow-hidden rounded-lg bg-white ring-1 ring-black/5 dark:bg-neutral-900"
+		aria-hidden="true"
+	>
 		{#if key === 'event'}
 			<span class="flex flex-col items-center gap-1 py-2" style="background: {accent}">
 				<span class="h-0.5 w-3 rounded-full bg-black/30"></span>
@@ -51,12 +54,15 @@
 		{:else}
 			<span class="h-5 shrink-0" style="background: {accent}"></span>
 			<span class="-mt-2.5 flex flex-col items-center gap-1">
-				<span class="relative size-5 rounded-full bg-neutral-300 ring-2 ring-white dark:ring-neutral-900">{@render emblem()}</span>
+				<span class="relative size-5 rounded-full bg-neutral-300 ring-2 ring-white dark:ring-neutral-900"
+					>{@render emblem()}</span
+				>
 				<span class="h-1.5 w-10 rounded-full bg-neutral-800 dark:bg-white/70"></span>
 			</span>
 			{#if key === 'portfolio'}
 				<span class="mx-2 mt-1.5 grid grid-cols-3 gap-0.5">
-					{#each [1, 2, 3, 4, 5, 6] as i (i)}<span class="aspect-square rounded-[2px] bg-neutral-200 dark:bg-white/15"></span>{/each}
+					{#each [1, 2, 3, 4, 5, 6] as i (i)}<span class="aspect-square rounded-[2px] bg-neutral-200 dark:bg-white/15"
+						></span>{/each}
 				</span>
 			{:else}
 				<span class="mt-1.5 flex justify-center gap-1">

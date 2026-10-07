@@ -4,7 +4,15 @@
 	import ImagesIcon from '@lucide/svelte/icons/images';
 	import UploadIcon from '@lucide/svelte/icons/upload';
 	import XIcon from '@lucide/svelte/icons/x';
-	import { ACCEPT, BANNER_RATIOS, checkUpload, fileUrl, PURPOSES, uploadFile, type LibraryFile } from '$lib/features/files/api';
+	import {
+		ACCEPT,
+		BANNER_RATIOS,
+		checkUpload,
+		fileUrl,
+		PURPOSES,
+		uploadFile,
+		type LibraryFile
+	} from '$lib/features/files/api';
 	import { updateBranding, type LogoPolicy, type OrgBranding } from '$lib/features/orgs/api';
 	import { Button } from '$lib/components/ui/button';
 	import * as Field from '$lib/components/ui/field';
@@ -201,7 +209,11 @@
 {:else}
 	<form onsubmit={save} class="flex flex-col gap-8">
 		<Field.Group class="gap-6">
-			{@render imageSlot('logo', 'Logo', 'Square; you can crop it after choosing. A transparent PNG works best. Shown as an emblem on profile photos and in email signatures.')}
+			{@render imageSlot(
+				'logo',
+				'Logo',
+				'Square; you can crop it after choosing. A transparent PNG works best. Shown as an emblem on profile photos and in email signatures.'
+			)}
 
 			<Field.Field>
 				<Field.Label id="logo-policy-label">Logo on cards and signatures</Field.Label>
@@ -214,7 +226,9 @@
 							onclick={() => draft && (draft.logo_policy = p.value)}
 							class={cn(
 								'flex flex-col gap-0.5 rounded-xl border p-3 text-left transition-colors',
-								draft.logo_policy === p.value ? 'border-foreground ring-foreground ring-1' : 'hover:border-foreground/30'
+								draft.logo_policy === p.value
+									? 'border-foreground ring-foreground ring-1'
+									: 'hover:border-foreground/30'
 							)}
 						>
 							<span class="text-sm font-medium">{p.label}</span>
@@ -232,7 +246,7 @@
 			<Field.Field>
 				<Field.Label id="sig-template-label">Email signature template</Field.Label>
 				<div class="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-labelledby="sig-template-label">
-					{#each [{ key: '', label: 'Employees choose', description: 'Anyone can pick any template.' }, ...SIGNATURE_TEMPLATE_KEYS.map((k) => ({ key: k, ...SIGNATURE_TEMPLATES[k] }))] as t (t.key)}
+					{#each [{ key: '', label: 'Employees choose', description: 'Anyone can pick any template.' }, ...SIGNATURE_TEMPLATE_KEYS.map( (k) => ({ key: k, ...SIGNATURE_TEMPLATES[k] }) )] as t (t.key)}
 						{@const active = (draft.signature.locked_template ?? '') === t.key}
 						<button
 							type="button"
@@ -272,7 +286,12 @@
 						aria-invalid={colorInvalid || undefined}
 					/>
 					{#if draft.signature.brand_color}
-						<Button variant="ghost" size="icon" aria-label="Clear brand colour" onclick={() => draft && (draft.signature.brand_color = '')}>
+						<Button
+							variant="ghost"
+							size="icon"
+							aria-label="Clear brand colour"
+							onclick={() => draft && (draft.signature.brand_color = '')}
+						>
 							<XIcon />
 						</Button>
 					{/if}
@@ -280,7 +299,9 @@
 				{#if colorInvalid}
 					<Field.Error>Use a hex colour like #1a2b3c.</Field.Error>
 				{:else}
-					<Field.Description>Replaces each card’s accent colour in signatures. Leave empty to keep them.</Field.Description>
+					<Field.Description
+						>Replaces each card’s accent colour in signatures. Leave empty to keep them.</Field.Description
+					>
 				{/if}
 			</Field.Field>
 
@@ -298,7 +319,11 @@
 				</Field.Description>
 			</Field.Field>
 
-			{@render imageSlot('banner', 'Banner', 'An image under every signature, such as an event or a promotion. Crop it to 4:1 (600 × 150, the usual size), 3:1 or 2:1; it shows 600 px wide.')}
+			{@render imageSlot(
+				'banner',
+				'Banner',
+				'An image under every signature, such as an event or a promotion. Crop it to 4:1 (600 × 150, the usual size), 3:1 or 2:1; it shows 600 px wide.'
+			)}
 
 			<Field.Field data-invalid={bannerUrlInvalid || undefined}>
 				<Field.Label for="banner-url">Banner link</Field.Label>

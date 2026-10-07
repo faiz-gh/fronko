@@ -47,7 +47,13 @@ export function fileLocations(who: Who): FileLocation[] {
 	}));
 	if (who.isAdmin) {
 		return [
-			{ key: 'all', label: 'All files', description: `Everything in ${who.orgName}’s storage.`, query: {}, upload: { area: 'org' } },
+			{
+				key: 'all',
+				label: 'All files',
+				description: `Everything in ${who.orgName}’s storage.`,
+				query: {},
+				upload: { area: 'org' }
+			},
 			{
 				key: 'org',
 				label: 'Organisation',
