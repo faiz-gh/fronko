@@ -25,7 +25,7 @@
 	const location = $derived(card.location.trim());
 </script>
 
-{#snippet photo(size: string, emblemSize: string)}
+{#snippet photo(size: string)}
 	{@const ring = cover && style === 'banner' ? 'ring-(--card-accent)' : 'ring-card'}
 	<span class="relative inline-flex shrink-0">
 		<Avatar.Root class={cn(size, 'ring-4', ring, cover && style === 'banner' && 'bg-card')}>
@@ -36,7 +36,7 @@
 				{initials(card.name, slug)}
 			</Avatar.Fallback>
 		</Avatar.Root>
-		{@render emblem(emblemSize, ring)}
+		{@render emblem(ring)}
 	</span>
 {/snippet}
 
@@ -44,10 +44,19 @@
 	The organisation's logo as an emblem on the photo's lower right. It wears the
 	same ring as the photo, so the two rings merge into a bump on the border.
 	Logos come in any colour, so they sit on white.
+
+	Placement, as fractions of the photo's size A (photo radius R = A/2): the
+	emblem is 38% of A (radius r = 0.19A) and sits on the 45° line from the
+	photo's centre, with 30% of its diameter inside the photo and 70% outside.
+	Its centre is R + r - 0.6r = 0.576A from the photo's centre, so its top-left
+	corner is at 0.5A + 0.576A·cos45° - r ≈ 71.7% on both axes.
 -->
-{#snippet emblem(size: string, ring: string)}
+{#snippet emblem(ring: string)}
 	{#if logo}
-		<span class={cn('absolute right-0 bottom-0 overflow-hidden rounded-full bg-white ring-4', size, ring)}>
+		<span
+			class={cn('absolute size-[38%] overflow-hidden rounded-full bg-white ring-4', ring)}
+			style="left: 71.7%; top: 71.7%"
+		>
 			<img src={logo.src} alt={logo.name} class="size-full object-cover" />
 		</span>
 	{/if}
@@ -76,7 +85,7 @@
 				{/if}
 				<Avatar.Fallback class="bg-white/15 font-semibold text-white">{initials(card.name, slug)}</Avatar.Fallback>
 			</Avatar.Root>
-			{@render emblem('size-10 @lg:size-11', 'ring-white/90')}
+			{@render emblem('ring-white/90')}
 		</span>
 		<div class="flex flex-col gap-1.5">
 			<h1 class="text-3xl leading-tight font-bold tracking-tight text-balance @lg:text-4xl">{name}</h1>
@@ -93,7 +102,7 @@
 	{/if}
 {:else if style === 'compact'}
 	<div class="flex items-center gap-4 px-6 pt-6">
-		{@render photo('size-16 text-lg', 'size-6')}
+		{@render photo('size-16 text-lg')}
 		<div class="flex min-w-0 flex-col gap-0.5">
 			<h1 class="text-xl font-semibold tracking-tight text-balance">{name}</h1>
 			{#if subtitle}
@@ -115,7 +124,7 @@
 		></div>
 	{/if}
 	<div class="-mt-12 flex flex-col items-center gap-3 px-6 text-center @lg:-mt-14">
-		{@render photo('size-24 text-2xl @lg:size-28', 'size-9 @lg:size-10')}
+		{@render photo('size-24 text-2xl @lg:size-28')}
 		<div class="flex flex-col items-center gap-1">
 			<h1 class="text-2xl font-semibold tracking-tight text-balance @lg:text-3xl">{name}</h1>
 			{#if subtitle}

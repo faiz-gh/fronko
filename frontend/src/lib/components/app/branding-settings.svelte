@@ -149,14 +149,21 @@
 	<Field.Field>
 		<Field.Label>{label}</Field.Label>
 		{#if id}
-			<div class="grid max-w-md grid-cols-2 overflow-hidden rounded-xl border">
-				<div class="grid h-24 place-items-center bg-white p-3">
-					<img src={fileUrl(id)} alt="{label} on light" class="max-h-full max-w-full object-contain" />
+			<!-- Shown at the image's own shape: square tiles for the logo, the banner's ratio for the banner. -->
+			{#if slot === 'logo'}
+				<div class="flex gap-3">
+					<div class="size-28 overflow-hidden rounded-xl border bg-white">
+						<img src={fileUrl(id)} alt="{label} on light" class="size-full object-contain" />
+					</div>
+					<div class="size-28 overflow-hidden rounded-xl border bg-neutral-900">
+						<img src={fileUrl(id)} alt="{label} on dark" class="size-full object-contain" />
+					</div>
 				</div>
-				<div class="grid h-24 place-items-center bg-neutral-900 p-3">
-					<img src={fileUrl(id)} alt="{label} on dark" class="max-h-full max-w-full object-contain" />
+			{:else}
+				<div class="max-w-md overflow-hidden rounded-xl border">
+					<img src={fileUrl(id)} alt={label} class="block h-auto w-full" />
 				</div>
-			</div>
+			{/if}
 		{/if}
 		<div class="flex flex-wrap items-center gap-2">
 			<Button
