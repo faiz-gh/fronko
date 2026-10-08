@@ -97,8 +97,8 @@ export const SCOPE_HELP: Record<Category, Record<Scope, string>> = {
 		user: 'Gets the leads on the cards you hold.'
 	},
 	calendar: {
-		org: 'The booking page on cards whose holder hasn’t connected their own.',
-		user: 'Your own booking page, shown on the cards you hold.'
+		org: 'A booking page any card in the organisation can show. Each card picks its page under Booking.',
+		user: 'Your own booking page, for the cards you hold. Connect as many as you like; each card picks one.'
 	},
 	directory: { org: 'Manages your organisation’s people.', user: '' },
 	sso: { org: 'How people in your organisation sign in.', user: '' }
@@ -130,4 +130,11 @@ export function matchesSearch(entry: Pick<CatalogEntry, 'name' | 'description' |
 	const q = query.trim().toLowerCase();
 	if (!q) return true;
 	return [entry.name, entry.description, ...(entry.keywords ?? [])].some((s) => s.toLowerCase().includes(q));
+}
+
+/** Help under a connection's Name field. */
+export function nameHelp(category: Category): string {
+	return category === 'calendar'
+		? 'Shown when picking a booking page for a card, e.g. “30-min intro” or “Product demo”.'
+		: 'Only shown here, to tell connections apart.';
 }

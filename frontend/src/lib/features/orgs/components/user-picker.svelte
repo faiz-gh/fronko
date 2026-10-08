@@ -19,7 +19,7 @@
 	let {
 		value,
 		onchange,
-		allLabel = 'All users',
+		allLabel = 'All people',
 		noneLabel = 'Unassigned',
 		filter = true,
 		allowNone = true,

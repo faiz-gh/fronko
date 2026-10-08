@@ -18,7 +18,7 @@
 	import { formatDateTime, timeAgo } from '$lib/core/format';
 	import { deleteConnection, getConnection, oauthStartUrl, testConnection, updateConnection } from '../api';
 	import { fieldProblems, initialValues, isEmptyChange, settingsChange, type FormValues } from '../fields';
-	import { SCOPE_LABEL, STATUS_LABEL, type Tone } from '../registry';
+	import { nameHelp, SCOPE_LABEL, STATUS_LABEL, type Tone } from '../registry';
 	import type { CatalogEntry, Connection, TestResult } from '../types';
 	import ActivityLog from './activity-log.svelte';
 	import ConnectionForm from './connection-form.svelte';
@@ -256,7 +256,7 @@
 					<Field.Field>
 						<Field.Label for="conn-{connection.id}-name">Name</Field.Label>
 						<Input id="conn-{connection.id}-name" bind:value={name} maxlength={80} autocomplete="off" />
-						<Field.Description>Only shown here, to tell connections apart.</Field.Description>
+						<Field.Description>{nameHelp(entry.category)}</Field.Description>
 					</Field.Field>
 
 					<ConnectionForm
@@ -340,6 +340,13 @@
 				Its settings, saved secrets and activity are deleted.{isLeadSync
 					? ' Leads that already arrived stay in Fronko.'
 					: ''}
+				{#if connection.used_by_cards}
+					<strong class="text-foreground font-medium">
+						{connection.used_by_cards === 1
+							? "1 card shows this booking page. It won't have a booking button until someone picks another."
+							: `${connection.used_by_cards} cards show this booking page. They won't have a booking button until someone picks another.`}
+					</strong>
+				{/if}
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>

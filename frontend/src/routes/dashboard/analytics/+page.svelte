@@ -31,6 +31,7 @@
 	} from '$lib/features/analytics/api';
 	import { teamColor } from '$lib/features/teams/api';
 	import { Button } from '$lib/components/ui/button';
+	import LoadError from '$lib/components/shared/load-error.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
 	import * as Tabs from '$lib/components/ui/tabs';
@@ -391,11 +392,7 @@
 		</header>
 
 		{#if error}
-			<div class="bg-card flex flex-col items-start gap-3 rounded-xl border p-6">
-				<p class="font-medium">Couldn't load analytics</p>
-				<p class="text-muted-foreground text-sm">{error}</p>
-				<Button variant="outline" onclick={() => load(loadedKey)}>Try again</Button>
-			</div>
+			<LoadError what="analytics" message={error} onretry={() => load(loadedKey)} />
 		{:else if !summary}
 			<div class="grid grid-cols-2 gap-4 lg:grid-cols-6">
 				{#each Array.from({ length: 6 }, (_, i) => i) as i (i)}<Skeleton class="h-32 rounded-xl" />{/each}
@@ -426,7 +423,9 @@
 								<p class="text-muted-foreground text-sm">
 									{cur!.sessions > 0
 										? `${pct(rate(cur!.leads, cur!.sessions))} of visits ended in a lead.`
-										: 'No visits in this period yet.'}
+										: cur!.leads > 0
+											? 'No tracked visits in this period; leads can still arrive from earlier visits or shared links.'
+											: 'No visits in this period yet.'}
 								</p>
 							</div>
 							<Funnel steps={funnel} />

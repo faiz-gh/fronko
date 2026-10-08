@@ -151,22 +151,47 @@ func (s *Service) Record(ctx context.Context, connectionID int64, e Event) {
 	}
 }
 
-// Bookings are the booking pages of an organisation's cards.
+// Bookings are the booking pages connected in an organisation, personal
+// and organisation-wide, in the order they were added.
 type Bookings struct {
-	org    *Booking
-	byUser map[int64]*Booking
+	pages []*Booking
 }
 
-// For returns the booking page for a card held by holderID (0: the
-// organisation): their own, or else the organisation's default. It may be nil.
-func (b *Bookings) For(holderID int64) *Booking {
-	if b == nil {
+// For returns the page connectionID for a card held by holderID (0: the
+// organisation), or nil when the card can't show it: it's gone, paused,
+// broken, or someone else's page.
+func (b *Bookings) For(holderID, connectionID int64) *Booking {
+	if b == nil || connectionID == 0 {
 		return nil
 	}
-	if bk, ok := b.byUser[holderID]; ok && holderID != 0 {
-		return bk
+	for _, bk := range b.pages {
+		if bk.ConnectionID == connectionID && (bk.OwnerID == 0 || bk.OwnerID == holderID) {
+			return bk
+		}
 	}
-	return b.org
+	return nil
+}
+
+// Options are the pages a card held by holderID can choose from: the
+// holder's own, then the organisation's.
+func (b *Bookings) Options(holderID int64) []*Booking {
+	out := []*Booking{}
+	if b == nil {
+		return out
+	}
+	if holderID != 0 {
+		for _, bk := range b.pages {
+			if bk.OwnerID == holderID {
+				out = append(out, bk)
+			}
+		}
+	}
+	for _, bk := range b.pages {
+		if bk.OwnerID == 0 {
+			out = append(out, bk)
+		}
+	}
+	return out
 }
 
 // Bookings loads the booking pages connected in an organisation.
@@ -175,7 +200,7 @@ func (s *Service) Bookings(ctx context.Context, orgID int64) (*Bookings, error) 
 	if err != nil {
 		return nil, err
 	}
-	out := &Bookings{byUser: map[int64]*Booking{}}
+	out := &Bookings{}
 	for _, c := range conns {
 		prov, ok := s.registry.Get(c.Provider)
 		if !ok {
@@ -189,12 +214,8 @@ func (s *Service) Bookings(ctx context.Context, orgID int64) (*Bookings, error) 
 		if bk == nil {
 			continue
 		}
-		bk.Scope = c.Scope()
-		if c.UserID == 0 {
-			out.org = bk
-		} else {
-			out.byUser[c.UserID] = bk
-		}
+		bk.ConnectionID, bk.Label, bk.Scope, bk.OwnerID = c.ID, c.Name, c.Scope(), c.UserID
+		out.pages = append(out.pages, bk)
 	}
 	return out, nil
 }

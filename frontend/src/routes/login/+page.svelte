@@ -183,7 +183,8 @@
 						disabled={ssoLoading}
 					/>
 					<Field.Description>
-						We'll send you to your company's sign-in page. Your organisation's admin can tell you its name in Fronko.
+						We'll send you to your company's sign-in page. If your email isn't recognised, enter your organisation's
+						Fronko handle (the part after /p/ in your card links).
 					</Field.Description>
 				</Field.Field>
 				<Button type="submit" size="lg" class="w-full" disabled={ssoLoading || !ssoIdentifier.trim()}>
@@ -244,9 +245,11 @@
 							maxlength={80}
 							bind:value={organization}
 							disabled={loading}
-							placeholder={username || 'Acme Inc.'}
+							placeholder="Acme Inc."
 						/>
-						<Field.Description>You can add your team's accounts once you're in.</Field.Description>
+						<Field.Description>
+							Leave it blank to use your username. You can add your team's accounts once you're in.
+						</Field.Description>
 					</Field.Field>
 				{/if}
 				<Field.Field data-invalid={!!passwordError || undefined}>

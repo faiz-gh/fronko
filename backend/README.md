@@ -314,7 +314,7 @@ Raw IP addresses are never stored. Because each salt is deleted after a day, a h
 `internal/integrations` connects organisations and people to outside services. Each provider is described by a manifest and registered in `providers/all.go`; the core handles connections, sealed secrets, OAuth, lead dispatch, retries and the activity log.
 
 - **Lead sync.** `leads` publishes `leads.Created` inside the transaction that stores the lead. The integrations module subscribes and, in that same transaction, queues one `integrations.push_lead` job per active lead sync connection (the organisation's, plus the card holder's own). Workers deliver them with retries; three final failures in a row mark the connection `error`.
-- **Calendar booking.** The public profile's `booking` comes from the card holder's calendar connection, or the organisation's default (`BookingFinder`, wired in `server.go`).
+- **Calendar booking.** People connect any number of booking pages (personal or organisation). A card chooses one in its data (`booking_connection_id`). `cards` resolves it through `BookingFinder` (wired in `server.go`), which shows it only if it's enabled, active and belongs to the card's holder or the organisation, and otherwise shows none. Single-card responses also list `booking_options`; saving a page that isn't among them is refused unless the card already had it. Connections report `used_by_cards`.
 - **SAML SSO** (`integrations/sso`) serves `/auth/sso/{handle}`, `/auth/sso/discover`, `/auth/saml/{id}/metadata` and `/auth/saml/{id}/acs`, the email domains API, and the policy `account` uses to block passwords.
 - **SCIM** (`integrations/directory`) serves `/scim/v2/*`, authenticated with the directory connection's bearer token.
 

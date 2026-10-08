@@ -17,7 +17,7 @@ Guides for people who run Fronko, set up its integrations, or work on its code. 
 | [Overview](integrations/overview.md) | Categories, connections, what each one needs from the server, lead delivery and the activity log |
 | [Webhook, Zapier, Make and n8n](integrations/webhook-zapier.md) | The lead payload, signature checking, retries, and setting up each automation tool |
 | [HubSpot](integrations/hubspot.md) | Registering your own HubSpot app and how leads map to contacts |
-| [Calendar booking](integrations/calendar.md) | Booking pages on cards: personal pages, the organisation default, prefilled details |
+| [Calendar booking](integrations/calendar.md) | Booking pages on cards: connect several, pick one per card, prefilled details |
 | [Okta SAML](integrations/okta-saml.md) | Single sign-on with Okta |
 | [Microsoft Entra ID SAML](integrations/entra-saml.md) | Single sign-on with Microsoft Entra ID (Azure AD) |
 | [Other SAML providers](integrations/saml.md) | Single sign-on with any SAML 2.0 identity provider |

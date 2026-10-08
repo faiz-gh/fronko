@@ -13,8 +13,13 @@ export interface Profile {
 	updated_at: string;
 	/** For members, only the leads that arrived while they held the card. */
 	lead_count: number;
-	/** The "Book a meeting" page: the holder's from Integrations, or the organisation's default. */
+	/** The "Book a meeting" page the card chose, if it can still show it. */
 	booking: Booking | null;
+	/**
+	 * The booking pages this card can choose from: its holder's own, then the
+	 * organisation's. Only on single-card responses.
+	 */
+	booking_options?: Booking[];
 }
 
 export interface PublicProfile {
@@ -32,6 +37,9 @@ export interface PublicProfile {
 
 /** A booking page connected in Integrations (Calendar Booking). */
 export interface Booking {
+	/** The Integrations connection, and its name ("30-min intro"). */
+	connection_id: number;
+	label: string;
 	/** The integration's id ("calendly") and display name. */
 	provider: string;
 	name: string;
@@ -41,7 +49,7 @@ export interface Booking {
 	 * values are "name", "first_name", "last_name" or "email".
 	 */
 	prefill?: Record<string, string>;
-	/** "user": the holder's own page; "org": the organisation's default. */
+	/** "user": a person's own page; "org": the organisation's. */
 	scope: 'user' | 'org';
 }
 

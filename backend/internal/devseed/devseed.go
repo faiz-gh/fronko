@@ -160,16 +160,17 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 
-	// A verified email domain (for single sign-on by email) and a default
-	// booking page for the organisation's cards. The Calendly link is made
-	// up, so the button opens Calendly's "not found" page.
+	// A verified email domain (for single sign-on by email) and an
+	// organisation booking page, which Maya's card shows. The Calendly link
+	// is made up, so the button opens Calendly's "not found" page.
 	if _, err := pool.Exec(ctx, `INSERT INTO org_domains (org_id, domain, verification_token, verified_at, created_by)
 		VALUES ($1, 'lumenlabs.example', 'seeded', now(), $2)`, owner.OrgID, owner.ID); err != nil {
 		return fmt.Errorf("domain: %w", err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO integration_connections (org_id, provider, category, name, status, config, created_by)
-		VALUES ($1, 'calendly', 'calendar', 'Calendly', 'active', '{"url": "https://calendly.com/lumenlabs-demo/intro"}', $2)`,
-		owner.OrgID, owner.ID); err != nil {
+	var bookingID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO integration_connections (org_id, provider, category, name, status, config, created_by)
+		VALUES ($1, 'calendly', 'calendar', 'Intro call', 'active', '{"url": "https://calendly.com/lumenlabs-demo/intro"}', $2)
+		RETURNING connection_id`, owner.OrgID, owner.ID).Scan(&bookingID); err != nil {
 		return fmt.Errorf("booking page: %w", err)
 	}
 
@@ -191,6 +192,7 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 		"bio":   "I connect climate-tech startups with the people who can scale them. Always happy to grab a coffee after a panel.",
 		"email": "maya@lumenlabs.example", "phone": "+1 415 555 0142", "website": "lumenlabs.example",
 		"location": "San Francisco, CA", "theme": "light", "accent": "emerald", "collect_leads": true,
+		"booking_connection_id": bookingID,
 		"links": []map[string]string{
 			{"id": "a", "url": "https://linkedin.com/in/mayachen", "label": ""},
 			{"id": "b", "url": "https://x.com/mayachen", "label": ""},

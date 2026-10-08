@@ -32,6 +32,8 @@
 	import { teamColor, type TeamRef } from '$lib/features/teams/api';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
+	import LoadError from '$lib/components/shared/load-error.svelte';
+	import PageHeader from '$lib/components/shared/page-header.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Empty from '$lib/components/ui/empty';
 	import { Input } from '$lib/components/ui/input';
@@ -349,20 +351,19 @@
 {/if}
 
 <div class="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-4 py-6 sm:px-8 lg:px-10 lg:py-10">
-	<header class="flex flex-wrap items-end justify-between gap-4">
-		<div class="flex flex-col gap-1">
-			<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Files</h1>
-			<p class="text-muted-foreground text-sm">
-				Logos, banners, photos and brochures in {session.orgName}'s storage. Upload once, use anywhere.
-			</p>
-		</div>
-		{#if canUpload}
-			<Button onclick={() => dropzone?.browse()}>
-				<CloudUploadIcon data-icon="inline-start" />
-				Upload
-			</Button>
-		{/if}
-	</header>
+	<PageHeader
+		title="Files"
+		description="Logos, banners, photos and brochures in {session.orgName}'s storage. Upload once, use anywhere."
+	>
+		{#snippet actions()}
+			{#if canUpload}
+				<Button onclick={() => dropzone?.browse()}>
+					<CloudUploadIcon data-icon="inline-start" />
+					Upload
+				</Button>
+			{/if}
+		{/snippet}
+	</PageHeader>
 
 	{#if !storage.status}
 		<Skeleton class="h-40 rounded-xl" />
@@ -639,11 +640,7 @@
 				{/if}
 
 				{#if error && !files}
-					<div class="bg-card flex flex-col items-start gap-3 rounded-xl border p-6">
-						<p class="font-medium">Couldn't load your files</p>
-						<p class="text-muted-foreground text-sm">{error}</p>
-						<Button variant="outline" onclick={() => reload++}>Try again</Button>
-					</div>
+					<LoadError what="your files" message={error} onretry={() => reload++} />
 				{:else if files === null}
 					<div class="grid grid-cols-2 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(190px,1fr))]">
 						{#each [1, 2, 3, 4, 5, 6] as i (i)}

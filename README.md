@@ -54,7 +54,7 @@ Fronko is an open-source alternative to hosted platforms such as Popl and Mobilo
 
 ### For card owners
 
-- **Live-preview card editor.** A section rail lists every part of the card with a one-line summary, so you see the whole card at a glance and edit one section at a time. Edit profile details, contact information (with a country-code phone picker), social links with brand icons, a cropped photo and cover banner, PDF brochures, an accent colour and a light or dark theme.
+- **Live-preview card editor.** A section rail, grouped into Content, Design and Share, lists every part of the card with a one-line summary, so you see the whole card at a glance and edit one section at a time. Edit profile details, contact information (with a country-code phone picker), social links with brand icons, a cropped photo and cover banner, PDF brochures, an accent colour and a light or dark theme.
 - **Templates and blocks.** Start from a template (Classic, Event tag, Portfolio, Minimal), then reorder, hide or add blocks: headings, text, an image gallery, an event panel with a role ribbon, and dividers. Three header styles: banner, name badge or compact.
 - **Multiple cards.** Each card has its own link, an NFC link and a QR code you can download as SVG or PNG. Links include the organisation's handle (`/p/acme/jane`), so a card name only has to be unique inside your organisation.
 - **Write NFC cards from the dashboard.** On Android, Chrome writes the card's link straight onto the NFC chip. On iPhone and desktop, copy the link for the free NFC Tools app, or scan a QR code to open the writer on an Android phone.
@@ -66,7 +66,7 @@ Fronko is an open-source alternative to hosted platforms such as Popl and Mobilo
 
 ### For organisations
 
-- **Organisation accounts.** Every sign-up creates an organisation. The owner, and any admins they promote, create accounts for the team. Each new user is emailed their username and a temporary password, then confirms their email and chooses their own password on first sign-in.
+- **Organisation accounts.** Every sign-up creates an organisation. The owner, and any admins they promote, create accounts for the team. Each new person is emailed their username and a temporary password, then confirms their email and chooses their own password on first sign-in.
 - **Role-based access.** Admins assign cards to people. Each person can edit everything on their cards except the link (and only admins can change the organisation's link handle), and sees only their own cards and the leads those cards collected while assigned to them. Admins see everything and can filter cards and leads by person or team.
 - **Teams.** Group people into teams such as Sales or Finance; one person can be in several. Each team has its own files that everyone in it can use. Team leads look after those files and can see and edit their teammates' cards and leads; creating, deleting and reassigning cards stays with admins.
 - **Team analytics.** Admins compare every team, and team leads their own: people, active cards, views (and per person), engaged visits, saves, leads and visit-to-lead conversion, each with the change from the previous period. A leaderboard ranks people by views, saves or leads, and cards nobody has viewed in 30 days are flagged.
@@ -80,7 +80,7 @@ Fronko is an open-source alternative to hosted platforms such as Popl and Mobilo
 ### Integrations
 
 - **Lead sync.** Every lead goes to your CRM or automation tool as soon as it arrives: a signed webhook to any URL, Zapier, Make, n8n, or HubSpot (contacts upserted by email, with a note saying which card it came from). The organisation can sync every lead, and each person can add their own for the cards they hold. Failed deliveries are retried for about four hours, and every attempt is in an activity log.
-- **Booking pages on cards.** Connect Calendly, Chili Piper, Microsoft Bookings, HubSpot Meetings, Google Calendar or any other booking link once, and every card you hold gets a "Book a meeting" button. The organisation can set a default for everyone else. Calendly and HubSpot open with the visitor's name and email filled in.
+- **Booking pages on cards.** Connect as many booking pages as you like (Calendly, Chili Piper, Microsoft Bookings, HubSpot Meetings, Google Calendar or any other booking link), then pick which one each card's "Book a meeting" button opens. The organisation can add pages any card can use. Calendly and HubSpot open with the visitor's name and email filled in.
 - **Single sign-on (SAML).** Okta, Microsoft Entra ID or any SAML 2.0 identity provider. People sign in with their work email (on a verified domain) or the organisation's handle, accounts are created on first sign-in, and SSO can be required for everyone but the owner.
 - **Team member import (SCIM).** Microsoft Entra ID adds, updates, suspends and removes people automatically, and keeps teams in step with its groups.
 - **Bring your own apps.** Each organisation registers its own OAuth apps, so nothing is shared between organisations and the server needs no per-provider configuration. More providers (Salesforce, Zoho, Dynamics 365, Pipedrive, Okta SCIM and others) are listed as coming soon.
@@ -260,9 +260,9 @@ Fronko works with any NFC hardware that can store a URL. Blank NTAG215 or NTAG21
 
 Card links look like `https://cards.example.com/p/acme/jane`: the organisation's handle (set under **Settings → Organisation → Card links**), then the card's slug, which only has to be unique inside the organisation. Both end up on QR codes and NFC chips, so treat them as permanent once cards go out.
 
-The chip holds the card's **NFC link**, `…/p/acme/jane?via=nfc`. The `?via=nfc` marks the visit as an NFC tap for analytics and runs the NFC tap action chosen under **Sharing**; that action can change later without rewriting the chip. Tags are never locked, so they can be rewritten.
+The chip holds the card's **NFC link**, `…/p/acme/jane?via=nfc`. The `?via=nfc` marks the visit as an NFC tap for analytics and runs the NFC tap action chosen under **Link & tap**; that action can change later without rewriting the chip. Tags are never locked, so they can be rewritten.
 
-- **Android (Chrome):** open **Write to NFC card** (card editor → Sharing, the card's ⋯ menu, or `/dashboard/{id}/nfc`), tap the button and hold the card to the back of the phone. This uses Web NFC, which needs HTTPS.
+- **Android (Chrome):** open **Write to NFC card** (card editor → NFC & signature, the card's ⋯ menu, or `/dashboard/{id}/nfc`), tap the button and hold the card to the back of the phone. This uses Web NFC, which needs HTTPS.
 - **iPhone, other Android browsers:** the same dialog offers **Copy NFC link** and the steps for the free NFC Tools app (**Write → Add a record → URL/URI**, paste, **Write**, hold the card to the phone).
 - **Desktop:** the dialog also shows a QR code that opens the writer page on a phone.
 

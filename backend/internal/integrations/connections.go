@@ -134,10 +134,6 @@ func (e *onlyOneError) Error() string        { return e.msg }
 func (e *onlyOneError) Is(target error) bool { return target == ErrOnlyOne }
 
 var onlyOneMessages = map[Category]map[Scope]string{
-	CategoryCalendar: {
-		ScopeUser: "you already have a booking page connected; remove it before adding another",
-		ScopeOrg:  "your organisation already has a default booking page; remove it before adding another",
-	},
 	CategoryDirectory: {ScopeOrg: "your organisation already imports people from a directory; remove that connection first"},
 	CategorySSO:       {ScopeOrg: "your organisation already has single sign-on set up; remove that connection first"},
 }
@@ -203,6 +199,9 @@ type View struct {
 	// Token describes the token the provider calls Fronko with, for
 	// scim_token providers; nil until one is generated.
 	Token *TokenInfo `json:"token"`
+	// UsedByCards counts the cards showing a booking page; nil for other
+	// categories.
+	UsedByCards *int `json:"used_by_cards,omitempty"`
 }
 
 func (s *Service) view(ctx context.Context, c *Connection) (*View, error) {
@@ -232,6 +231,13 @@ func (s *Service) view(ctx context.Context, c *Connection) (*View, error) {
 			return nil, err
 		}
 		out.Endpoints = d.Endpoints(c, env)
+	}
+	if c.Category == CategoryCalendar {
+		n, err := s.store.countCardsUsingBooking(ctx, c.OrgID, c.ID)
+		if err != nil {
+			return nil, err
+		}
+		out.UsedByCards = &n
 	}
 	return out, nil
 }

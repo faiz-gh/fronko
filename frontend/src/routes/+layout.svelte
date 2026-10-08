@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { Toaster } from '$lib/components/ui/sonner';
+	import ConfirmDialog from '$lib/components/shared/confirm-dialog.svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import { page } from '$app/state';
 	import { session } from '$lib/core/session.svelte';
@@ -17,6 +18,7 @@
 </svelte:head>
 
 {@render children()}
+<ConfirmDialog />
 <Toaster
 	position="top-center"
 	richColors

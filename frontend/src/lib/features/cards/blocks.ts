@@ -144,6 +144,20 @@ export function applyTemplate(current: CardBlock[], key: TemplateKey): CardBlock
 	});
 }
 
+/**
+ * The blocks with a visible block of the given type: an existing one is shown
+ * again, or a new one goes in after the first of `after` that's there (or at
+ * the end).
+ */
+export function ensureBlock(blocks: CardBlock[], type: BlockType, after: BlockType[] = []): CardBlock[] {
+	if (blocks.some((b) => b.type === type)) {
+		return blocks.map((b) => (b.type === type && b.hidden ? { ...b, hidden: false } : b));
+	}
+	const anchor = after.map((t) => blocks.findIndex((b) => b.type === t)).find((i) => i !== -1);
+	const at = anchor === undefined ? blocks.length : anchor + 1;
+	return [...blocks.slice(0, at), newBlock(type), ...blocks.slice(at)];
+}
+
 /** True when the blocks are exactly a template's preset (nothing to lose by switching). */
 export function isPreset(blocks: CardBlock[], key: TemplateKey): boolean {
 	const t = TEMPLATES[key];

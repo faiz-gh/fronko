@@ -6,7 +6,9 @@
 
 	let { steps, class: className }: { steps: Step[]; class?: string } = $props();
 
-	const top = $derived(Math.max(1, steps[0]?.value ?? 0));
+	// Bars scale to the biggest stage. That's normally the first, but a lead
+	// can come from a visit that wasn't tracked, so a later stage can be bigger.
+	const top = $derived(Math.max(1, ...steps.map((s) => s.value)));
 	const pct = (a: number, b: number) => `${Math.round((a / b) * 100)}%`;
 	// An ordinal one-hue ramp: later stages are darker.
 	const shades = ['var(--viz-seq-2)', 'var(--viz-seq-3)', 'var(--viz-seq-4)', 'var(--viz-seq-4)'];
@@ -17,7 +19,7 @@
 		<li class="flex flex-col gap-1.5">
 			<div class="flex items-baseline gap-2 text-sm">
 				<span class="flex-1">{step.label}</span>
-				{#if i > 0 && steps[i - 1].value > 0}
+				{#if i > 0 && steps[i - 1].value > 0 && step.value <= steps[i - 1].value}
 					<span class="text-muted-foreground inline-flex items-center text-xs tabular">
 						<ChevronRightIcon class="size-3" aria-hidden="true" />{pct(step.value, steps[i - 1].value)} of previous
 					</span>

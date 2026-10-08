@@ -10,7 +10,7 @@
 	import { cn } from '$lib/utils';
 	import { createConnection } from '../api';
 	import { fieldProblems, initialValues, settingsChange, type FormValues } from '../fields';
-	import { SCOPE_HELP } from '../registry';
+	import { nameHelp, SCOPE_HELP } from '../registry';
 	import type { CatalogEntry, Connection, Scope } from '../types';
 	import ConnectionForm from './connection-form.svelte';
 
@@ -97,8 +97,14 @@
 
 	<Field.Field>
 		<Field.Label for="new-name">Name <span class="text-muted-foreground font-normal">(optional)</span></Field.Label>
-		<Input id="new-name" bind:value={name} placeholder={entry.name} maxlength={80} autocomplete="off" />
-		<Field.Description>Only shown here, to tell connections apart.</Field.Description>
+		<Input
+			id="new-name"
+			bind:value={name}
+			placeholder={entry.category === 'calendar' ? '30-min intro' : entry.name}
+			maxlength={80}
+			autocomplete="off"
+		/>
+		<Field.Description>{nameHelp(entry.category)}</Field.Description>
 	</Field.Field>
 
 	<ConnectionForm fields={entry.fields} bind:values {problems} idPrefix="new" disabled={saving} />

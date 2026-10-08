@@ -7,6 +7,8 @@
 	import { teamColor } from '$lib/features/teams/api';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import LoadError from '$lib/components/shared/load-error.svelte';
+	import PageHeader from '$lib/components/shared/page-header.svelte';
 	import * as Empty from '$lib/components/ui/empty';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import TeamDialog from '$lib/features/teams/components/team-dialog.svelte';
@@ -28,32 +30,27 @@
 </svelte:head>
 
 <div class="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-4 py-6 sm:px-8 lg:px-10 lg:py-10">
-	<header class="flex flex-wrap items-end justify-between gap-4">
-		<div class="flex flex-col gap-1">
-			<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Teams</h1>
-			<p class="text-muted-foreground max-w-2xl text-sm">
-				{#if session.isAdmin}
-					Group people like Sales or Finance. Each team has its own files, and its leads look after them and see their
-					teammates’ cards and leads.
-				{:else}
-					The teams you're in at {session.orgName}.
-				{/if}
-			</p>
-		</div>
-		{#if session.isAdmin}
-			<Button onclick={() => (createOpen = true)}>
-				<PlusIcon data-icon="inline-start" />
-				New team
-			</Button>
-		{/if}
-	</header>
+	<PageHeader title="Teams">
+		{#snippet description()}
+			{#if session.isAdmin}
+				Group people like Sales or Finance. Each team has its own files, and its leads look after them and see their
+				teammates’ cards and leads.
+			{:else}
+				The teams you're in at {session.orgName}.
+			{/if}
+		{/snippet}
+		{#snippet actions()}
+			{#if session.isAdmin}
+				<Button onclick={() => (createOpen = true)}>
+					<PlusIcon data-icon="inline-start" />
+					New team
+				</Button>
+			{/if}
+		{/snippet}
+	</PageHeader>
 
 	{#if teams.error && !teams.list}
-		<div class="bg-card flex flex-col items-start gap-3 rounded-xl border p-6">
-			<p class="font-medium">Couldn't load teams</p>
-			<p class="text-muted-foreground text-sm">{teams.error}</p>
-			<Button variant="outline" onclick={() => teams.refresh()}>Try again</Button>
-		</div>
+		<LoadError what="teams" message={teams.error} onretry={() => teams.refresh()} />
 	{:else if teams.list === null}
 		<div class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr))]">
 			{#each [1, 2, 3] as i (i)}
@@ -74,7 +71,7 @@
 				<Empty.Content>
 					<Button onclick={() => (createOpen = true)}>
 						<PlusIcon data-icon="inline-start" />
-						Create your first team
+						New team
 					</Button>
 				</Empty.Content>
 			{/if}

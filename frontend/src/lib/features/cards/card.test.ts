@@ -18,6 +18,12 @@ import {
 } from './card';
 
 describe('normalizeCard', () => {
+	it('keeps a whole-number booking page id and drops anything else', () => {
+		expect(normalizeCard({}).booking_connection_id).toBeNull();
+		expect(normalizeCard({ booking_connection_id: 12 }).booking_connection_id).toBe(12);
+		expect(normalizeCard({ booking_connection_id: '12' as never }).booking_connection_id).toBeNull();
+		expect(normalizeCard({ booking_connection_id: 1.5 }).booking_connection_id).toBeNull();
+	});
 	it('fills every field for empty or junk data', () => {
 		const fresh = emptyCard();
 		for (const raw of [undefined, null, 'x', 42, {}]) {

@@ -93,7 +93,12 @@
 	}
 </script>
 
-<FormSection panel id="profile" title="Profile" description="Who you are. Shown at the top of your card.">
+<FormSection
+	panel
+	id="profile"
+	title="About you"
+	description="Your name, photo and a short bio. Shown at the top of your card."
+>
 	<Field.Group class="grid gap-5 sm:grid-cols-2">
 		<Field.Field class="sm:col-span-2">
 			<Field.Label for="name">Full name</Field.Label>

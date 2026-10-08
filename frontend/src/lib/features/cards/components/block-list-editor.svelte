@@ -78,10 +78,10 @@
 
 	/** Where the content of a field block is edited. */
 	const EDITED_IN: Partial<Record<BlockType, [string, string]>> = {
-		bio: ['#profile', 'Edit your bio under Profile.'],
-		quick_actions: ['#contact', 'Uses your email, phone and website from Contact.'],
-		booking: ['#contact', 'Uses the booking link from Contact.'],
-		actions: ['#sharing', 'Save contact, Share your contact (if collecting leads) and Share.'],
+		bio: ['#profile', 'Edit your bio under About you.'],
+		quick_actions: ['#contact', 'Uses your email, phone and website from Contact details.'],
+		booking: ['#booking', 'Shows the booking page chosen under Booking.'],
+		actions: ['#sharing', 'Save contact, Share your contact (if collecting leads, under Link & tap) and Share.'],
 		links: ['#links', 'Edit your links under Links.'],
 		documents: ['#brochures', 'Edit your brochures under Brochures.']
 	};

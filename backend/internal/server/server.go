@@ -232,18 +232,12 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 	})
 	scim := directory.NewHandler(integrationSvc, directory.NewStore(pool), userStore, orgStore, teamStore,
 		authService, codes, ssoPolicy, cfg.PublicAPIURL)
-	bookings := func(ctx context.Context, orgID int64) (func(int64) *cards.Booking, error) {
+	bookings := func(ctx context.Context, orgID int64) (cards.BookingPages, error) {
 		set, err := integrationSvc.Bookings(ctx, orgID)
 		if err != nil {
 			return nil, err
 		}
-		return func(holderID int64) *cards.Booking {
-			b := set.For(holderID)
-			if b == nil {
-				return nil
-			}
-			return &cards.Booking{Provider: b.Provider, Name: b.Name, URL: b.URL, Prefill: b.Prefill, Scope: string(b.Scope)}
-		}, nil
+		return cardBookings{set}, nil
 	}
 	admin := platformadmin.NewAdminHandler(adminStore, feedbackStore, authService, mailer, cfg.FeedbackNotifyEmail, cfg.CookieSecure)
 
@@ -308,4 +302,29 @@ func deriveKey(secret, purpose string) []byte {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte("fronko:" + purpose))
 	return mac.Sum(nil)
+}
+
+// cardBookings shows an organisation's booking pages to the cards module.
+type cardBookings struct{ set *integrations.Bookings }
+
+func cardBooking(b *integrations.Booking) cards.Booking {
+	return cards.Booking{ConnectionID: b.ConnectionID, Label: b.Label, Provider: b.Provider, Name: b.Name,
+		URL: b.URL, Prefill: b.Prefill, Scope: string(b.Scope)}
+}
+
+func (c cardBookings) For(holderID, connectionID int64) *cards.Booking {
+	b := c.set.For(holderID, connectionID)
+	if b == nil {
+		return nil
+	}
+	out := cardBooking(b)
+	return &out
+}
+
+func (c cardBookings) Options(holderID int64) []cards.Booking {
+	out := []cards.Booking{}
+	for _, b := range c.set.Options(holderID) {
+		out = append(out, cardBooking(b))
+	}
+	return out
 }

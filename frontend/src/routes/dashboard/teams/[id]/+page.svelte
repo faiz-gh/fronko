@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import LoadError from '$lib/components/shared/load-error.svelte';
+	import { ApiError } from '$lib/core/api';
 	import { toast } from 'svelte-sonner';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import FolderIcon from '@lucide/svelte/icons/folder';
@@ -42,6 +44,8 @@
 	const id = $derived(Number(page.params.id));
 	let team = $state<TeamDetail | null>(null);
 	let error = $state('');
+	let notFound = $state(false);
+	let attempt = $state(0);
 	let saving = $state(false);
 	let editOpen = $state(false);
 	let addOpen = $state(false);
@@ -50,14 +54,19 @@
 
 	$effect(() => {
 		const teamId = id;
+		void attempt;
 		team = null;
 		error = '';
+		notFound = false;
 		teams
 			.loadDetail(teamId, true)
 			.then((t) => {
 				if (teamId === id) team = t;
 			})
-			.catch((e) => (error = e instanceof Error ? e.message : 'Failed to load the team'));
+			.catch((e) => {
+				error = e instanceof Error ? e.message : 'Failed to load the team';
+				notFound = e instanceof ApiError && (e.status === 404 || e.status === 403);
+			});
 	});
 
 	const leadsIt = $derived(session.ledTeams.some((t) => t.id === id));
@@ -143,13 +152,18 @@
 		Teams
 	</a>
 
-	{#if error}
+	{#if error && !notFound}
+		<LoadError what="this team" message={error} onretry={() => attempt++} />
+	{:else if error}
 		<Empty.Root class="bg-card rounded-xl border border-dashed py-16">
 			<Empty.Header>
 				<Empty.Media variant="icon"><UsersRoundIcon /></Empty.Media>
 				<Empty.Title>Team not found</Empty.Title>
 				<Empty.Description>It may have been deleted, or you're not in it.</Empty.Description>
 			</Empty.Header>
+			<Empty.Content>
+				<Button variant="outline" href="/dashboard/teams">See all teams</Button>
+			</Empty.Content>
 		</Empty.Root>
 	{:else if !team}
 		<Skeleton class="h-24 rounded-xl" />
