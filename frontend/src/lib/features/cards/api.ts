@@ -57,6 +57,8 @@ export interface PublicOrg {
 	name: string;
 	logo_file: string | null;
 	logo_policy: 'required' | 'optional';
+	/** The organisation's privacy notice, linked from the contact form. */
+	privacy_url?: string | null;
 }
 
 /** The card behind /p/{org}/{slug}. */

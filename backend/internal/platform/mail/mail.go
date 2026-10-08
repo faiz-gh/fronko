@@ -121,11 +121,23 @@ func (s *SMTPSender) Send(ctx context.Context, to string, m Message) error {
 }
 
 // LogSender prints messages instead of sending them. It's the fallback when
-// no SMTP server is configured, so codes are still reachable in development.
-type LogSender struct{}
+// no SMTP server is configured. Only in development (ShowBody) does it print
+// the recipient and body, so codes are reachable there; elsewhere bodies
+// carry codes and temporary passwords, and must never reach the logs.
+type LogSender struct {
+	ShowBody bool
+}
 
-func (LogSender) Send(_ context.Context, to string, m Message) error {
-	log.Printf("mail (SMTP not configured) to=%s subject=%q\n%s", to, m.Subject, m.Text)
+func (s LogSender) Send(_ context.Context, to string, m Message) error {
+	if s.ShowBody {
+		log.Printf("mail (SMTP not configured) to=%s subject=%q\n%s", to, m.Subject, m.Text)
+		return nil
+	}
+	domain := to
+	if i := strings.LastIndexByte(to, '@'); i >= 0 {
+		domain = to[i+1:]
+	}
+	log.Printf("mail NOT sent (SMTP not configured) to=*@%s subject=%q", domain, m.Subject)
 	return nil
 }
 

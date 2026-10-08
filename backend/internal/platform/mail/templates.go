@@ -128,6 +128,43 @@ func ChangeEmailMessage(code string, ttl time.Duration) Message {
 	})
 }
 
+// DeleteAccountCodeMessage carries the code that confirms deleting an
+// account that signs in only with single sign-on.
+func DeleteAccountCodeMessage(code string, ttl time.Duration) Message {
+	return codeMessage(code+" is your code to delete your Fronko account", codeEmail{
+		Intro: "Someone asked to permanently delete your Fronko account. Enter this code to confirm. " +
+			"This can't be undone.",
+		Code:    code,
+		Minutes: int(ttl.Minutes()),
+		Footer:  "If this wasn't you, ignore this email; your account stays as it is.",
+	})
+}
+
+// AccountDeletedNotice confirms that an account was deleted. orgName is set
+// when the whole organisation was deleted with it.
+func AccountDeletedNotice(username, orgName string) Message {
+	intro := "Your Fronko account " + username + " has been permanently deleted, as you asked. " +
+		"You've been signed out everywhere."
+	if orgName != "" {
+		intro = "Your Fronko account " + username + " and the organisation " + orgName +
+			" have been permanently deleted, as you asked: its people, cards, leads, analytics and files. " +
+			"Its card links and NFC tags no longer work."
+	}
+	return codeMessage("Your Fronko account has been deleted", codeEmail{
+		Intro:  intro,
+		Footer: "We won't email this address again. If you didn't ask for this, contact whoever runs this Fronko server straight away.",
+	})
+}
+
+// OwnershipTransferredNotice tells the new owner that an organisation is now theirs.
+func OwnershipTransferredNotice(orgName, fromUsername string) Message {
+	return codeMessage("You're now the owner of "+orgName+" on Fronko", codeEmail{
+		Intro: fromUsername + " made you the owner of " + orgName + " on Fronko. You can now manage its " +
+			"settings, storage and everyone in it. Sign in again to pick up your new role.",
+		Footer: "If you weren't expecting this, contact " + fromUsername + ".",
+	})
+}
+
 // EmailChangedNotice tells the previous address that the account moved to newEmail.
 func EmailChangedNotice(newEmail string) Message {
 	return codeMessage("Your Fronko email was changed", codeEmail{

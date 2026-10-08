@@ -32,6 +32,9 @@ type OrgBranding struct {
 	LogoFile   *string      `json:"logo_file"`
 	LogoPolicy string       `json:"logo_policy"`
 	Signature  OrgSignature `json:"signature"`
+	// PrivacyURL is the organisation's privacy notice (set in its privacy
+	// settings, module orgs); cards' contact forms link to it.
+	PrivacyURL *string `json:"-"`
 }
 
 // PublicOrg is the branding a public card needs.
@@ -39,6 +42,7 @@ type PublicOrg struct {
 	Name       string  `json:"name"`
 	LogoFile   *string `json:"logo_file"`
 	LogoPolicy string  `json:"logo_policy"`
+	PrivacyURL *string `json:"privacy_url"`
 }
 
 // signatureTemplates are the email signature templates the frontend renders;

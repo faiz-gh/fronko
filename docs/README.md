@@ -9,6 +9,7 @@ Guides for people who run Fronko, set up its integrations, or work on its code. 
 | [Root README](../README.md) | What Fronko does, the quick start with Docker Compose, and configuration |
 | [Backend README](../backend/README.md) | Every environment variable, the database, sessions, security measures and testing |
 | [Resetting the database](operations/resetting-the-database.md) | Moving an existing deployment onto the squashed baseline migration |
+| [GDPR audit](compliance/gdpr-audit.md) | What personal data Fronko holds, why, for how long and who it goes to; what was fixed and what the operator still has to do |
 
 ## Integrations
 

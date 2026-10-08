@@ -269,16 +269,42 @@ func (h *LeadHandler) DeleteLead(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid lead ID")
 		return
 	}
-	if err := h.store.DeleteLead(r.Context(), id, auth.PrincipalFrom(r.Context()).OrgID); err != nil {
-		if errors.Is(err, database.ErrNotFound) {
-			httpx.WriteError(w, http.StatusNotFound, "lead not found")
-			return
-		}
+	n, err := h.store.DeleteLeads(r.Context(), []int64{id}, auth.PrincipalFrom(r.Context()).OrgID)
+	if err != nil {
 		log.Printf("delete lead: %v", err)
 		httpx.WriteError(w, http.StatusInternalServerError, "failed to delete lead")
 		return
 	}
+	if n == 0 {
+		httpx.WriteError(w, http.StatusNotFound, "lead not found")
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// maxBulkDelete bounds one bulk delete.
+const maxBulkDelete = 500
+
+// Admin: POST /api/me/leads/delete {"ids": [...]}. Deletes several leads at
+// once, e.g. everything a person sent when they ask to be forgotten.
+func (h *LeadHandler) DeleteLeads(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs []int64 `json:"ids"`
+	}
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	if len(req.IDs) == 0 || len(req.IDs) > maxBulkDelete {
+		httpx.WriteError(w, http.StatusBadRequest, "choose 1-500 leads")
+		return
+	}
+	n, err := h.store.DeleteLeads(r.Context(), req.IDs, auth.PrincipalFrom(r.Context()).OrgID)
+	if err != nil {
+		log.Printf("delete leads: %v", err)
+		httpx.WriteError(w, http.StatusInternalServerError, "failed to delete leads")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]int64{"deleted": n})
 }
 
 func profileIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {

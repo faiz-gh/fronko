@@ -38,6 +38,7 @@ type AuthHandler struct {
 	codes       *users.Codes
 	authService *auth.Service
 	sso         SSOPolicy
+	storage     OrgStorage
 	// cookieSecure sets the Secure flag on the session cookie.
 	cookieSecure bool
 	// dummyHash is compared against when a username doesn't exist, so login
@@ -45,7 +46,7 @@ type AuthHandler struct {
 	dummyHash string
 }
 
-func NewAuthHandler(userStore *users.Store, orgStore *orgs.Store, teamStore *teams.Store, codes *users.Codes, authService *auth.Service, sso SSOPolicy, cookieSecure bool) *AuthHandler {
+func NewAuthHandler(userStore *users.Store, orgStore *orgs.Store, teamStore *teams.Store, codes *users.Codes, authService *auth.Service, sso SSOPolicy, storage OrgStorage, cookieSecure bool) *AuthHandler {
 	if sso == nil {
 		sso = noSSO{}
 	}
@@ -60,6 +61,7 @@ func NewAuthHandler(userStore *users.Store, orgStore *orgs.Store, teamStore *tea
 		codes:        codes,
 		authService:  authService,
 		sso:          sso,
+		storage:      storage,
 		cookieSecure: cookieSecure,
 		dummyHash:    dummy,
 	}
@@ -181,6 +183,14 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if !h.authService.CheckPasswordHash(req.Password, user.PasswordHash) {
 		httpx.WriteError(w, http.StatusUnauthorized, "invalid username or password")
 		return
+	}
+	if auth.NeedsRehash(user.PasswordHash) {
+		// Older hashes used a lower work factor; upgrade while the password is at hand.
+		if hash, err := h.authService.HashPassword(req.Password); err == nil {
+			if err := h.users.RehashPassword(r.Context(), user.ID, user.PasswordHash, hash); err != nil {
+				log.Printf("rehash password: %v", err)
+			}
+		}
 	}
 	// Only said after the password checks out, so it doesn't reveal accounts.
 	switch path, blocked, err := h.sso.PasswordBlocked(r.Context(), user); {

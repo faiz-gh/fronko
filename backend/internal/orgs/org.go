@@ -14,7 +14,12 @@ type Organization struct {
 	// Handle is the organisation's part of every card link, /p/{handle}/{slug}.
 	Handle string `json:"handle"`
 	// DefaultQuotaBytes is the storage limit given to new users; nil is unlimited.
-	DefaultQuotaBytes *int64    `json:"default_quota_bytes"`
+	DefaultQuotaBytes *int64 `json:"default_quota_bytes"`
+	// PrivacyURL is the organisation's privacy notice, linked from its
+	// cards' contact forms.
+	PrivacyURL *string `json:"privacy_url"`
+	// LeadRetentionDays deletes leads older than this; nil keeps them.
+	LeadRetentionDays *int      `json:"lead_retention_days"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 	// SuspendedAt is set while a platform admin has suspended the organisation.

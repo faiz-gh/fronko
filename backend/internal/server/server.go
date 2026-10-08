@@ -152,7 +152,7 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 		log.Println("JOB_WORKERS is 0: this instance queues background jobs but doesn't run them")
 	}
 
-	var mailer mail.Sender = mail.LogSender{}
+	var mailer mail.Sender = mail.LogSender{ShowBody: cfg.Env == config.EnvDevelopment}
 	if cfg.SMTPHost != "" {
 		smtpSender, err := mail.NewSMTPSender(mail.SMTPConfig{
 			Host:     cfg.SMTPHost,
@@ -166,7 +166,11 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 		}
 		mailer = smtpSender
 	} else {
-		log.Println("SMTP_HOST not set: emails (verification and reset codes) are logged, not sent")
+		if cfg.Env == config.EnvDevelopment {
+			log.Println("SMTP_HOST not set: emails (verification and reset codes) are logged, not sent")
+		} else {
+			log.Println("WARNING: SMTP_HOST not set: emails (verification and reset codes) are NOT sent; nobody can verify an address or reset a password")
+		}
 	}
 
 	// File storage needs SECRETS_KEY to encrypt organisations' bucket keys;
@@ -242,7 +246,7 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 	admin := platformadmin.NewAdminHandler(adminStore, feedbackStore, authService, mailer, cfg.FeedbackNotifyEmail, cfg.CookieSecure)
 
 	modules := []app.Module{
-		account.NewAuthHandler(userStore, orgStore, teamStore, codes, authService, ssoPolicy, cfg.CookieSecure),
+		account.NewAuthHandler(userStore, orgStore, teamStore, codes, authService, ssoPolicy, storageSvc, cfg.CookieSecure),
 		orgs.NewOrgHandler(orgStore, userStore, codes, authService),
 		teams.NewTeamHandler(teamStore, userStore),
 		branding.NewHandler(brandingStore, fileStore),
@@ -292,7 +296,8 @@ func Build(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (*App, e
 	}
 
 	sameOrigin := func(h http.Handler) http.Handler { return web.SameOrigin(cfg.CORSAllowedOrigins, h) }
-	a.Handler = web.CORS(cfg.CORSAllowedOrigins, routes.Handler(admin.Guard(), sameOrigin))
+	a.Handler = web.SecurityHeaders(cfg.CookieSecure,
+		web.CORS(cfg.CORSAllowedOrigins, routes.Handler(admin.Guard(), sameOrigin)))
 	return a, nil
 }
 

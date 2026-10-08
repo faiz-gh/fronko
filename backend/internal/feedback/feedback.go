@@ -17,9 +17,11 @@ const (
 
 // Feedback is a message a signed-in user sent about the product.
 type Feedback struct {
-	ID          int64            `json:"id"`
-	OrgID       *int64           `json:"org_id"`
-	UserID      *int64           `json:"-"`
+	ID     int64  `json:"id"`
+	OrgID  *int64 `json:"org_id"`
+	UserID *int64 `json:"-"`
+	// SenderEmail is "" once the sender deleted their account, and OrgName
+	// once their organisation was deleted.
 	SenderEmail string           `json:"sender_email"`
 	OrgName     string           `json:"org_name"`
 	Category    string           `json:"category"`

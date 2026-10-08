@@ -1,3 +1,12 @@
-# allow crawling everything by default
+# The landing page is public. Signed-in areas and the API are never crawled.
+# Cards (/p/...) stay crawlable so search engines can read each card's own
+# "noindex" (cards are hidden from search unless their holder allows it).
 User-agent: *
-Disallow:
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /api/
+Disallow: /auth/
+Disallow: /login
+Disallow: /set-password
+Disallow: /verify-email
+Disallow: /forgot-password

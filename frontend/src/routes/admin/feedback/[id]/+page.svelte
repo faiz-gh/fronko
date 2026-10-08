@@ -115,13 +115,17 @@
 			<p class="text-[15px] leading-relaxed text-pretty whitespace-pre-wrap">{feedback.message}</p>
 			<dl class="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 border-t pt-4 text-sm">
 				<dt>From</dt>
-				<dd class="text-foreground break-all">{feedback.sender_email}</dd>
+				<dd class="text-foreground break-all">
+					{#if feedback.sender_email}{feedback.sender_email}{:else}<span class="text-muted-foreground"
+							>Deleted account</span
+						>{/if}
+				</dd>
 				<dt>Organisation</dt>
 				<dd class="text-foreground">
 					{#if feedback.org_id}
 						<a href="/admin/orgs/{feedback.org_id}" class="hover:underline">{feedback.org_name}</a>
 					{:else}
-						{feedback.org_name} <span class="text-muted-foreground">(deleted)</span>
+						{feedback.org_name || 'Unknown'} <span class="text-muted-foreground">(deleted)</span>
 					{/if}
 				</dd>
 				{#if feedback.page_path}
@@ -169,19 +173,25 @@
 			</section>
 		{/if}
 
-		<form onsubmit={sendReply} class="flex flex-col gap-3">
-			<Field.Field>
-				<Field.Label for="reply">Reply</Field.Label>
-				<Textarea id="reply" bind:value={reply} rows={5} maxlength={5000} placeholder="Write a reply…" />
-				<Field.Description>
-					Sent by email to {feedback.sender_email}, with their message quoted.
-				</Field.Description>
-				{#if replyError}<Field.Error>{replyError}</Field.Error>{/if}
-			</Field.Field>
-			<Button type="submit" class="self-end" disabled={sending || !reply.trim()}>
-				{#if sending}<Spinner data-icon="inline-start" />{:else}<SendIcon data-icon="inline-start" />{/if}
-				Send reply
-			</Button>
-		</form>
+		{#if !feedback.sender_email}
+			<p class="text-muted-foreground text-sm">
+				The sender deleted their account, so their email address is gone and they can't be replied to.
+			</p>
+		{:else}
+			<form onsubmit={sendReply} class="flex flex-col gap-3">
+				<Field.Field>
+					<Field.Label for="reply">Reply</Field.Label>
+					<Textarea id="reply" bind:value={reply} rows={5} maxlength={5000} placeholder="Write a reply…" />
+					<Field.Description>
+						Sent by email to {feedback.sender_email}, with their message quoted.
+					</Field.Description>
+					{#if replyError}<Field.Error>{replyError}</Field.Error>{/if}
+				</Field.Field>
+				<Button type="submit" class="self-end" disabled={sending || !reply.trim()}>
+					{#if sending}<Spinner data-icon="inline-start" />{:else}<SendIcon data-icon="inline-start" />{/if}
+					Send reply
+				</Button>
+			</form>
+		{/if}
 	{/if}
 </div>

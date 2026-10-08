@@ -187,10 +187,17 @@ func referrerHost(r *http.Request) string {
 	return truncate(strings.ToLower(ref.Hostname()), 255)
 }
 
-// Record stores events for a card's visit. Bots and the card's own
-// organisation are skipped; failures are logged, never shown to visitors.
+// optedOut reports whether the visitor's browser asks not to be tracked:
+// Global Privacy Control or Do Not Track.
+func optedOut(r *http.Request) bool {
+	return r.Header.Get("Sec-GPC") == "1" || r.Header.Get("DNT") == "1"
+}
+
+// Record stores events for a card's visit. Bots, visitors who opted out of
+// tracking and the card's own organisation are skipped; failures are
+// logged, never shown to visitors.
 func (rec *EventRecorder) Record(r *http.Request, profileID, orgID int64, source, session string, events ...CardEvent) {
-	if rec == nil || len(events) == 0 || isBot(r) {
+	if rec == nil || len(events) == 0 || isBot(r) || optedOut(r) {
 		return
 	}
 	if orgID != 0 && rec.viewerOrg(r) == orgID {

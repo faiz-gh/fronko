@@ -19,7 +19,7 @@
 	import VisitorActions from '$lib/features/cards/components/visitor-actions.svelte';
 	import PhoneInput from '$lib/components/shared/phone-input.svelte';
 	import { ACCENTS, normalizeCard, publicUrl, vcardUrl, type CardData, type TapSource } from '$lib/features/cards/card';
-	import { createTracker, visitSource } from '$lib/features/analytics/track';
+	import { createTracker, optedOut, visitSource } from '$lib/features/analytics/track';
 	import { isValidPhone } from '$lib/core/phone';
 	import { cn } from '$lib/utils';
 
@@ -101,6 +101,9 @@
 	let submitted = $state(false);
 	// What the visitor gave the lead form, kept to fill in the booking page.
 	let visitor = $state<{ name: string; email: string } | null>(null);
+	const holderName = $derived(card?.name || slug);
+	const orgName = $derived(profile?.org?.name ?? '');
+	const privacyUrl = $derived(profile?.org?.privacy_url ?? '');
 	// The number is optional, but if one is typed it must be valid.
 	const leadPhoneInvalid = $derived(!!leadPhone && !isValidPhone(leadPhoneCode, leadPhone));
 
@@ -167,6 +170,10 @@
 	{#if card?.bio}
 		<meta name="description" content={card.bio} />
 	{/if}
+	<!-- Cards stay out of search engines unless their holder allows it. -->
+	{#if card && !card.indexable}
+		<meta name="robots" content="noindex, nofollow" />
+	{/if}
 </svelte:head>
 
 <div class={cn(card?.theme === 'dark' && 'dark')} style={card ? `--card-accent: ${ACCENTS[card.accent]}` : undefined}>
@@ -223,10 +230,22 @@
 			{/if}
 		</main>
 
-		<footer class="text-muted-foreground mt-8 text-xs">
+		<footer class="text-muted-foreground mt-8 flex flex-col items-center gap-1.5 text-center text-xs">
 			<a href="/" class="hover:text-foreground inline-flex items-center gap-1.5">
 				Made with <span class="text-foreground font-medium">Fronko</span>
 			</a>
+			{#if card}
+				<p class="text-pretty">
+					{optedOut()
+						? 'Your browser asked not to be tracked, so this visit isn’t counted.'
+						: 'Visits are counted anonymously, without cookies.'}
+					{#if privacyUrl}
+						<a href={privacyUrl} target="_blank" rel="noopener noreferrer" class="hover:text-foreground underline">
+							Privacy notice
+						</a>
+					{/if}
+				</p>
+			{/if}
 		</footer>
 	</div>
 </div>
@@ -251,7 +270,10 @@
 				<Dialog.Header>
 					<Dialog.Title>Share your contact</Dialog.Title>
 					<Dialog.Description>
-						Leave your details for {card?.name || slug}. They'll only be visible to them.
+						Leave your details for {holderName}{orgName ? ` at ${orgName}` : ''} so they can get back to you.
+						{#if privacyUrl}
+							<a href={privacyUrl} target="_blank" rel="noopener noreferrer" class="underline">Privacy notice</a>
+						{/if}
 					</Dialog.Description>
 				</Dialog.Header>
 				<Field.Group>
@@ -279,7 +301,7 @@
 							<Field.Error>Enter a valid number for this country.</Field.Error>
 						{/if}
 					</Field.Field>
-					<Field.Field data-invalid={!!submitError || undefined}>
+					<Field.Field>
 						<Field.Label for="lead-notes"
 							>Message <span class="text-muted-foreground font-normal">(optional)</span></Field.Label
 						>
@@ -290,10 +312,10 @@
 							maxlength={2000}
 							placeholder="Great meeting you at…"
 						/>
-						{#if submitError}
-							<Field.Error>{submitError}</Field.Error>
-						{/if}
 					</Field.Field>
+					{#if submitError}
+						<Field.Error>{submitError}</Field.Error>
+					{/if}
 				</Field.Group>
 				<Dialog.Footer>
 					<Button
@@ -307,6 +329,9 @@
 						Send
 					</Button>
 				</Dialog.Footer>
+				<p class="text-muted-foreground text-center text-xs text-pretty sm:text-left">
+					Fronko never sells or shares your details with anyone but {orgName || holderName}.
+				</p>
 			</form>
 		{/if}
 	</Dialog.Content>

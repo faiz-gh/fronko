@@ -91,3 +91,8 @@ export async function listAllLeads(query: Omit<LeadQuery, 'page' | 'pageSize'> =
 export function deleteLead(id: number): Promise<void> {
 	return apiClient<void>(`/api/me/leads/${id}`, { method: 'DELETE' });
 }
+
+/** Admins only: deletes several leads for good. Returns how many were deleted. */
+export function deleteLeads(ids: number[]): Promise<{ deleted: number }> {
+	return apiClient<{ deleted: number }>('/api/me/leads/delete', { method: 'POST', body: JSON.stringify({ ids }) });
+}

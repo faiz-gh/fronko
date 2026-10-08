@@ -382,3 +382,18 @@ func (r *Store) ListAudit(ctx context.Context, limit, offset int) ([]*AuditEntry
 	}
 	return entries, total, nil
 }
+
+// PurgeOld deletes feedback (with its replies) and audit log entries older
+// than before, and returns how many of each went.
+func (r *Store) PurgeOld(ctx context.Context, before time.Time) (feedback, audit int64, err error) {
+	tag, err := r.db.Exec(ctx, `DELETE FROM feedback WHERE created_at < $1`, before)
+	if err != nil {
+		return 0, 0, err
+	}
+	feedback = tag.RowsAffected()
+	tag, err = r.db.Exec(ctx, `DELETE FROM admin_audit_log WHERE created_at < $1`, before)
+	if err != nil {
+		return feedback, 0, err
+	}
+	return feedback, tag.RowsAffected(), nil
+}

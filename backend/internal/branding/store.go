@@ -23,8 +23,8 @@ func (r *Store) GetOrgBranding(ctx context.Context, orgID int64) (*OrgBranding, 
 	var b OrgBranding
 	var sig []byte
 	err := r.db.QueryRow(ctx,
-		`SELECT name, logo_file, logo_policy, signature FROM organizations WHERE org_id = $1`, orgID,
-	).Scan(&b.Name, &b.LogoFile, &b.LogoPolicy, &sig)
+		`SELECT name, logo_file, logo_policy, signature, privacy_url FROM organizations WHERE org_id = $1`, orgID,
+	).Scan(&b.Name, &b.LogoFile, &b.LogoPolicy, &sig, &b.PrivacyURL)
 	if err != nil {
 		return nil, database.MapError(err)
 	}

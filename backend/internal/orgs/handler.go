@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/faiz-gh/fronko/backend/internal/auth"
@@ -94,6 +95,48 @@ func (h *OrgHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, org)
+}
+
+// Lead retention limits, in days.
+const (
+	minLeadRetentionDays = 30
+	maxLeadRetentionDays = 3650
+	maxPrivacyURLLen     = 2048
+)
+
+// Protected (admins): PUT /api/org/privacy {"privacy_url", "lead_retention_days"}.
+// The privacy notice is linked from every card's contact form; leads older
+// than the retention period are deleted automatically (null keeps them).
+func (h *OrgHandler) UpdatePrivacy(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		PrivacyURL        *string `json:"privacy_url"`
+		LeadRetentionDays *int    `json:"lead_retention_days"`
+	}
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	if req.PrivacyURL != nil {
+		v := strings.TrimSpace(*req.PrivacyURL)
+		req.PrivacyURL = &v
+		if v == "" {
+			req.PrivacyURL = nil
+		} else if u, err := url.Parse(v); err != nil || len(v) > maxPrivacyURLLen ||
+			(u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			httpx.WriteError(w, http.StatusBadRequest, "privacy notice must be a full http(s) URL")
+			return
+		}
+	}
+	if d := req.LeadRetentionDays; d != nil && (*d < minLeadRetentionDays || *d > maxLeadRetentionDays) {
+		httpx.WriteError(w, http.StatusBadRequest, "keep leads for 30 to 3650 days, or forever")
+		return
+	}
+	orgID := auth.PrincipalFrom(r.Context()).OrgID
+	if err := h.store.SetOrgPrivacy(r.Context(), orgID, req.PrivacyURL, req.LeadRetentionDays); err != nil {
+		log.Printf("set org privacy: %v", err)
+		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.Get(w, r)
 }
 
 // Protected (admins): PUT /api/org/handle {"handle"}. Changes the

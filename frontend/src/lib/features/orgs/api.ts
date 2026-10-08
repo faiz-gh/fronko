@@ -10,6 +10,10 @@ export interface Organization {
 	handle: string;
 	/** Storage limit new users start with; null is unlimited. */
 	default_quota_bytes: number | null;
+	/** The organisation's privacy notice, linked from its cards' contact forms. */
+	privacy_url: string | null;
+	/** Leads older than this many days are deleted automatically; null keeps them. */
+	lead_retention_days: number | null;
 	created_at: string;
 	updated_at: string;
 }
@@ -71,6 +75,14 @@ export function updateOrganization(name: string, defaultQuotaBytes: number | nul
  * Admins only. Changes every card link; links already on QR codes, NFC cards
  * and email signatures stop working.
  */
+/** Admins: the privacy notice link and how long leads are kept (null clears either). */
+export function updateOrgPrivacy(privacyUrl: string | null, leadRetentionDays: number | null): Promise<Organization> {
+	return apiClient<Organization>('/api/org/privacy', {
+		method: 'PUT',
+		body: JSON.stringify({ privacy_url: privacyUrl, lead_retention_days: leadRetentionDays })
+	});
+}
+
 export function updateOrgHandle(handle: string): Promise<Organization> {
 	return apiClient<Organization>('/api/org/handle', {
 		method: 'PUT',

@@ -36,6 +36,12 @@ function randomId(): string {
 
 export type Tracker = ReturnType<typeof createTracker>;
 
+/** Global Privacy Control or Do Not Track: the visitor asked not to be tracked. */
+export function optedOut(): boolean {
+	const nav = navigator as Navigator & { globalPrivacyControl?: boolean };
+	return nav.globalPrivacyControl === true || navigator.doNotTrack === '1';
+}
+
 /**
  * Reports what a visitor does on a public card. There are no cookies and
  * nothing is stored: the visit id lives in this tab's memory only, and the
@@ -133,7 +139,9 @@ export function createTracker(org: string, slug: string, source: VisitSource) {
 		source,
 		/** Records the visit and starts watching; call once the card is shown. */
 		start(root: HTMLElement | Document = document) {
-			if (started) return;
+			// Visitors whose browser asks not to be tracked aren't counted at all
+			// (the server checks the same signals).
+			if (started || optedOut()) return;
 			started = true;
 			track({ type: 'view' });
 			if (document.visibilityState === 'visible') visibleSince = performance.now();

@@ -84,6 +84,16 @@
 			</Field.Content>
 			<Switch id="collect" bind:checked={card.collect_leads} />
 		</Field.Field>
+		<Field.Field orientation="horizontal" class="bg-card rounded-xl border p-4">
+			<Field.Content>
+				<Field.Label for="indexable">Show in search engines</Field.Label>
+				<Field.Description>
+					Let Google and others list this card. Off by default, so your details are only seen by people you share the
+					link with.
+				</Field.Description>
+			</Field.Content>
+			<Switch id="indexable" bind:checked={card.indexable} />
+		</Field.Field>
 		{#each [['nfc', 'When someone taps your NFC card', 'NFC tap', 'This is the link on your NFC card.'], ['qr', 'When someone scans your QR code', 'QR code scan', 'Your QR code already points here.']] as const as [via, label, name, hint] (via)}
 			<Field.Field>
 				<Field.Label id="tap-{via}-label">{label}</Field.Label>

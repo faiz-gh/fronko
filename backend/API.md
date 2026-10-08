@@ -27,6 +27,11 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `POST`   | [`/api/me/email/change`](#post-apimeemailchange-) | ✅ | ✅ auth | Start changing a verified email (password + code to the new address) |
 | `POST`   | [`/api/me/email/change/confirm`](#post-apimeemailchangeconfirm-) | ✅ | ✅ auth | Confirm the new email with its code |
 | `PUT`    | [`/api/me/password`](#put-apimepassword-) | ✅ 🔑 | ✅ auth | Change password (or replace a temporary one); signs out other sessions |
+| `GET`    | [`/api/me/export`](#get-apimeexport-) | ✅ 🔑 | ✅ auth | Download everything held about me, as JSON |
+| `GET`    | [`/api/me/account/deletion`](#get-apimeaccountdeletion-) | ✅ 🔑 | | What deleting my account would do |
+| `POST`   | [`/api/me/account/deletion/code`](#post-apimeaccountdeletioncode-) | ✅ 🔑 | ✅ auth | Email a code confirming deletion (accounts without a password) |
+| `POST`   | [`/api/me/ownership/transfer`](#post-apimeownershiptransfer-) | 👑 | ✅ auth | Hand the organisation to someone else; I become an admin |
+| `DELETE` | [`/api/me/account`](#delete-apimeaccount-) | ✅ 🔑 | ✅ auth | Permanently delete my account (an owner: with the organisation, or after handing it over) |
 | `GET`    | [`/api/me/profiles`](#get-apimeprofiles) | ✅ | | Cards I can see |
 | `POST`   | [`/api/me/profiles`](#post-apimeprofiles) | 🛡️ | | Create a card, optionally assigned to a user |
 | `GET`    | [`/api/me/profiles/{id}`](#get-apimeprofilesid) | ✅ | | Get a card |
@@ -34,6 +39,8 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `DELETE` | [`/api/me/profiles/{id}`](#delete-apimeprofilesid) | 🛡️ | | Delete a card and its leads |
 | `GET`    | [`/api/me/profiles/{id}/leads`](#get-apimeprofilesidleads) | ✅ | | List a card's leads (unpaginated) |
 | `GET`    | [`/api/me/leads`](#get-apimeleads) | ✅ | | Paginated leads I can see, with filters |
+| `DELETE` | [`/api/me/leads/{id}`](#delete-apimeleadsid) | 🛡️ | | Delete a lead |
+| `POST`   | [`/api/me/leads/delete`](#post-apimeleadsdelete) | 🛡️ | | Delete many leads at once |
 | `GET`    | [`/api/me/storage`](#get-apimestorage) | ✅ | | Whether uploads work, my usage, and (owner) the bucket settings |
 | `PUT`    | [`/api/me/storage`](#put-apimestorage) | 👑 | | Check, then save storage settings |
 | `POST`   | [`/api/me/storage/test`](#post-apimestoragetest) | 👑 | | Check storage settings without saving |
@@ -57,6 +64,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 | `GET`    | [`/api/org`](#get-apiorg) | 🛡️ | | The organisation |
 | `PUT`    | [`/api/org`](#put-apiorg) | 👑 | | Rename it, set the default storage limit |
 | `PUT`    | [`/api/org/handle`](#put-apiorghandle) | 🛡️ | | Change the handle in every card link |
+| `PUT`    | [`/api/org/privacy`](#put-apiorgprivacy) | 🛡️ | | Privacy notice link and lead retention |
 | `GET`    | [`/api/org/branding`](#get-apiorgbranding) | ✅ | | Logo, logo policy and email signature settings |
 | `PUT`    | [`/api/org/branding`](#put-apiorgbranding) | 🛡️ | | Set the logo, logo policy and signature settings |
 | `GET`    | [`/api/org/users`](#get-apiorgusers) | 🛡️ | | Everyone in the organisation, with totals |
@@ -196,7 +204,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
   "org_handle": "acme",
   "data": { "name": "Faiz", "avatar_file": "90meIH31WrEH0xe9ymyzDA", "documents": [] },
   "files": [{ "id": "90meIH31WrEH0xe9ymyzDA", "kind": "image", "name": "me.png", "size_bytes": 48211 }],
-  "org": { "name": "Acme", "logo_file": "tt24UJovNZgYmyTuoygXhg", "logo_policy": "optional" },
+  "org": { "name": "Acme", "logo_file": "tt24UJovNZgYmyTuoygXhg", "logo_policy": "optional", "privacy_url": "https://acme.example/privacy" },
   "booking": {
     "connection_id": 12,
     "label": "30-min intro",
@@ -459,6 +467,80 @@ Members and admins can't change their email (`PUT /api/me/email`, `POST /api/me/
 | `204` | Password changed |
 | `400` | `"current password is incorrect"`, `"password must be 8-72 characters"` or `"choose a password different from your current one"` |
 
+### `GET /api/me/export` 🔒
+
+Downloads everything Fronko holds about the signed-in person (right of access and data portability) as an attachment, `fronko-{username}-data.json`:
+
+```json
+{
+  "format": "fronko-export/1",
+  "exported_at": "2026-10-08T09:00:00Z",
+  "data": {
+    "account": { "id": 1, "username": "jane", "email": "jane@example.com", "role": "member", "…": "…" },
+    "organisation": { "name": "Acme", "handle": "acme" },
+    "teams": [ { "name": "Sales", "role": "lead", "added_at": "…" } ],
+    "cards": [ { "id": 42, "slug": "jane", "held_by_you": true, "made_by_you": false, "data": { }, "…": "…" } ],
+    "leads": [ { "name": "…", "email": "…", "card": "jane", "received_at": "…" } ],
+    "files": [ { "id": "…", "name": "brochure.pdf", "area": "personal", "size_bytes": 1024, "…": "…" } ],
+    "integrations": [ { "provider": "calendly", "name": "Intro call", "category": "calendar" } ],
+    "feedback": [ { "category": "idea", "message": "…", "sent_at": "…" } ]
+  }
+}
+```
+
+`cards` are the cards the person made or holds; `leads` those that arrived while they held the card; `files` are details only (not contents, which are in the organisation's bucket); `integrations` never include secrets. Analytics aren't included: they're anonymous counts, not about the person.
+
+### `GET /api/me/account/deletion` 🔒
+
+What deleting the account would do, so the dashboard can warn first:
+
+```json
+{
+  "username": "jane", "role": "owner", "has_password": true, "managed": false,
+  "org_name": "Acme", "org_handle": "acme", "sole_member": false,
+  "summary": { "cards_held": 1, "cards_made": 3, "files": 4, "personal_files": 2, "leads": 12,
+               "org_members": 5, "org_cards": 9, "org_leads": 140, "org_files": 30, "org_teams": 2 },
+  "transfer_candidates": [ { "id": 7, "username": "sam" } ]
+}
+```
+
+`owner_username` (members and admins) is who their cards and files pass to. `transfer_candidates` (owner) are the active, verified people who can take over. `managed` is set for people provisioned by SCIM: they're removed by their identity provider, not here.
+
+### `POST /api/me/account/deletion/code` 🔒
+
+For accounts without a password (single sign-on only): emails a 6-digit code (15 minutes, 5 attempts) that confirms the next two endpoints. `204`; `400` `"confirm with your password instead"` for accounts with a password; `429` with `Retry-After` inside the resend cooldown.
+
+### `POST /api/me/ownership/transfer` 🔒
+
+👑 Owner only. `{"user_id": 7, "password": "…"}` (or `"code"` instead of `"password"` for accounts without one). Makes that person the owner and the caller an admin, in one transaction. The organisation's bucket keys are re-encrypted for the new owner. Both are signed out everywhere; the response sets a fresh cookie for the caller and returns their [`User`](#user). The new owner is emailed.
+
+| Status | Body |
+| ------ | ---- |
+| `200` | [`User`](#user), now `admin` |
+| `400` | `"password is incorrect"`, `"invalid or expired code"`, `"choose someone in your organisation"` or `"the new owner must be active and have a verified email"` |
+| `403` | `"only the organisation's owner can hand it over"` |
+
+### `DELETE /api/me/account` 🔒
+
+Permanently deletes the signed-in account, straight away (there's no grace period):
+
+```json
+{ "confirm": "jane", "password": "…", "delete_org": false }
+```
+
+- `confirm` is the username typed out, or the organisation's handle when the organisation is deleted too.
+- `password`, or `code` from [`POST /api/me/account/deletion/code`](#post-apimeaccountdeletioncode-) for accounts without one.
+- **Members and admins:** as when an admin [deletes them](#delete-apiorgusersid): cards they held become unassigned, leads stay with the organisation, files and cards they made pass to the owner. Their email is also removed from feedback they sent.
+- **The owner** must first [hand the organisation over](#post-apimeownershiptransfer-), or send `"delete_org": true`: the organisation and everything in it is deleted (people, cards, leads, analytics, teams, files and integrations), and its files' objects are removed from the bucket first (best effort; other objects in the bucket are left). Feedback its people sent keeps only the message; the platform audit log keeps only the action. An owner who is the organisation's only member always deletes it.
+
+The account's address gets a confirmation email. The response clears the session cookie.
+
+| Status | Body |
+| ------ | ---- |
+| `204` | Deleted |
+| `400` | `"type jane to confirm"`, `"password is incorrect"` or `"invalid or expired code"` |
+| `409` | `{"code": "ownership_transfer_required"}` (an owner with other members, without `delete_org`) or `{"code": "managed_by_idp"}` (a SCIM-provisioned account) |
+
 ---
 
 ## Profiles 🔒
@@ -566,6 +648,14 @@ Returns one page of the leads the caller can see, newest first (ties broken by n
 | Status | Body |
 | ------ | ---- |
 | `400` | `"invalid page"`, `"invalid page_size"`, `"invalid profile_id"`, `"invalid user_id"`, `"search is too long"` or `"since must be an RFC 3339 timestamp"` |
+
+### `DELETE /api/me/leads/{id}`
+
+🛡️ Owners and admins. Deletes one of the organisation's leads, with the lead sync log lines about it (they name the person). Copies already sent to connected tools aren't deleted there. `204`; `404` `"lead not found"`.
+
+### `POST /api/me/leads/delete`
+
+🛡️ Owners and admins. `{"ids": [7, 8, 9]}` (1–500). Deletes those leads as above; ids outside the organisation are ignored. Returns `{"deleted": 3}`.
 
 ---
 
@@ -857,7 +947,8 @@ Owner and admins only (`403` for members). Admins manage members; only the owner
 ### `GET /api/org`
 
 ```json
-{ "id": 9, "name": "Acme", "handle": "acme", "default_quota_bytes": 524288000, "created_at": "…", "updated_at": "…" }
+{ "id": 9, "name": "Acme", "handle": "acme", "default_quota_bytes": 524288000,
+  "privacy_url": "https://acme.example/privacy", "lead_retention_days": 365, "created_at": "…", "updated_at": "…" }
 ```
 
 `default_quota_bytes` is the storage limit new users start with (`null`: unlimited). `handle` is the organisation's part of every card link, `/p/{handle}/{slug}`. Registration makes it from the organisation's name (falling back to the username), adding `-2`, `-3`… when it's taken.
@@ -876,6 +967,17 @@ Every card link changes with it, and links already on QR codes, NFC cards and em
 | ------ | ---- |
 | `400` | `"handle must be 3-32 characters: lowercase letters, numbers and hyphens"` |
 | `409` | `"another organisation already uses that handle"` |
+
+### `PUT /api/org/privacy`
+
+🛡️ Owners and admins. `{"privacy_url": "https://acme.example/privacy", "lead_retention_days": 365}`. Returns the organisation, which carries both fields.
+
+- `privacy_url` (full http(s) URL, or `null`/`""` to clear) is linked from every card's contact form and footer, and sent to visitors as `org.privacy_url` on the [public card](#publicprofile-visitor-view).
+- `lead_retention_days` (30–3650, or `null` to keep leads until someone deletes them): leads older than this are deleted automatically, every few hours, with their lead sync log lines.
+
+| Status | Body |
+| ------ | ---- |
+| `400` | `"privacy notice must be a full http(s) URL"` or `"keep leads for 30 to 3650 days, or forever"` |
 
 ### `GET /api/org/branding`
 
@@ -1452,7 +1554,7 @@ It always answers **`204`** with no body, whether or not anything was stored, so
 - the request carries a valid session for a user in the card's own organisation, so previews don't count;
 - no events are valid.
 
-**Privacy.** No IP address is stored. Each event gets `device` (`mobile`, `tablet` or `desktop`, from the user agent), the referring site's host when it's another site, and a visitor hash: SHA-256 of a random daily salt, the client IP, the user agent and the card id. Salts live in `analytics_salts` and are deleted after a day, so a hash can't be linked back to an address, to the same person on another day, or to the same person on another card. Events are deleted after `ANALYTICS_RETENTION_DAYS` (default 395).
+**Privacy.** No IP address is stored. Each event gets `device` (`mobile`, `tablet` or `desktop`, from the user agent), the referring site's host when it's another site, and a visitor hash: SHA-256 of a random daily salt, the client IP, the user agent and the card id. Salts live in `analytics_salts` and are deleted after a day, so a hash can't be linked back to an address, to the same person on another day, or to the same person on another card. Events are deleted after `ANALYTICS_RETENTION_DAYS` (default 395). Requests with `Sec-GPC: 1` (Global Privacy Control) or `DNT: 1` aren't recorded at all, and the web app doesn't send them.
 
 | Status | Body |
 | ------ | ---- |

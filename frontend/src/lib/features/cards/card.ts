@@ -100,6 +100,8 @@ export interface CardData {
 	accent: AccentKey;
 	theme: 'light' | 'dark';
 	collect_leads: boolean;
+	/** Let search engines list the card. Off by default: a card is a person's details. */
+	indexable: boolean;
 	/** The layout preset last applied; the blocks may have been changed since. */
 	template: TemplateKey;
 	/** What the card shows, in order. */
@@ -238,6 +240,7 @@ export function emptyCard(name = ''): CardData {
 		accent: 'indigo',
 		theme: 'light',
 		collect_leads: true,
+		indexable: false,
 		template: 'classic',
 		blocks: templateBlocks('classic'),
 		tap: { nfc: 'profile', qr: 'profile' },
@@ -311,6 +314,7 @@ export function normalizeCard(raw: unknown): CardData {
 		accent: typeof d.accent === 'string' && d.accent in ACCENTS ? (d.accent as AccentKey) : base.accent,
 		theme: d.theme === 'dark' ? 'dark' : 'light',
 		collect_leads: typeof d.collect_leads === 'boolean' ? d.collect_leads : true,
+		indexable: d.indexable === true,
 		template: typeof d.template === 'string' && d.template in TEMPLATES ? (d.template as TemplateKey) : 'classic',
 		blocks: normalizeBlocks(d.blocks),
 		tap: {
@@ -356,10 +360,15 @@ export function coverSrc(card: Pick<CardData, 'cover_file'>): string | null {
 	return card.cover_file ? new URL(fileUrl(card.cover_file), location.origin).href : null;
 }
 
-/** The card's photo: an uploaded file first, then a pasted URL. Null means show initials. */
+/**
+ * The card's photo: an uploaded file first, then an older pasted URL if it's
+ * on this site. Photos on other sites aren't loaded, since that would tell
+ * their host about every visitor. Null means show initials.
+ */
 export function avatarSrc(card: Pick<CardData, 'avatar_file' | 'avatar_url'>): string | null {
 	if (card.avatar_file) return new URL(fileUrl(card.avatar_file), location.origin).href;
-	return safeUrl(card.avatar_url);
+	const url = safeUrl(card.avatar_url);
+	return url && new URL(url).origin === location.origin ? url : null;
 }
 
 export function displayUrl(input: string): string {

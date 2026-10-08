@@ -122,8 +122,8 @@
 		<AlertDialog.Header>
 			<AlertDialog.Title>Delete {lead?.name}'s details?</AlertDialog.Title>
 			<AlertDialog.Description>
-				The lead is removed for everyone in {session.orgName}, and is no longer included in exports. This can't be
-				undone.
+				The lead is removed for everyone in {session.orgName}, with its lead sync history, and is no longer included in
+				exports. Copies already sent to connected tools (such as a CRM) aren't deleted there. This can't be undone.
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
