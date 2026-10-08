@@ -69,7 +69,7 @@ func New() *Provider {
 
 **Requirements.** List `RequiresPublicURL` if the provider needs callback URLs, and `RequiresSecretsKey` if it stores secrets. (OAuth providers and anything with a `secret` field need `SECRETS_KEY` anyway.) The catalog shows the provider as unavailable, with the reason, until the server has them.
 
-**Categories with one connection.** Calendar, directory and SSO allow one connection per owner across the whole category; you don't need `Multiple` for those. For lead sync, `Multiple: false` limits it to one connection per owner for your provider (HubSpot does this).
+**Categories with one connection.** Directory and SSO allow one connection per owner across the whole category; you don't need `Multiple` for those. Calendar providers set `Multiple: true`: people connect as many booking pages as they like, and each card picks one. For lead sync, `Multiple: false` limits it to one connection per owner for your provider (HubSpot does this).
 
 `Register` checks the manifest at start-up and panics on mistakes (bad id, unknown type, a select with no options, an OAuth provider without `client_id`/`client_secret`), so a broken manifest never ships.
 
@@ -213,7 +213,7 @@ The connection stays **Setup incomplete** until it has a token. Changing the cli
 ## Other capabilities
 
 - **`Tester`** for providers that don't push leads. Calendar providers open the booking page; SAML fetches the metadata. Return a `Result` on success or an error explaining what's wrong.
-- **`BookingLinker`** returns the button a card shows. The core picks the card holder's connection, or the organisation's ([`calendar.go`](../../backend/internal/integrations/providers/calendar/calendar.go)).
+- **`BookingLinker`** turns a connection's settings into the button a card shows ([`calendar.go`](../../backend/internal/integrations/providers/calendar/calendar.go)). The core fills in the connection id, its name (`Label`), the scope and the owner. It shows a page only on cards that chose it (`data.booking_connection_id`), and only if the page belongs to the card's holder or to the organisation.
 - **`Initializer`** runs once before a connection is first saved. It may add internal secrets that aren't manifest fields; they're sealed with the rest and never shown.
 - **`Describer`** returns values people copy into the provider (ACS URL, tenant URL). Build addresses other servers call or post to on `Env.APIURL`, and pages people open on `Env.PublicURL`; they differ when the API has its own domain. They're shown on the connection's page.
 

@@ -22,8 +22,11 @@ type Profile struct {
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 	LeadCount      int64           `json:"lead_count"` // only populated when listing a user's profiles
-	// Booking is the booking page the card shows: its holder's, or else the organisation's.
+	// Booking is the booking page the card chose (data.booking_connection_id), if it can still show it.
 	Booking *Booking `json:"booking"`
+	// BookingOptions are the pages the card can choose from: its holder's
+	// and the organisation's. Only filled for a single card.
+	BookingOptions []Booking `json:"booking_options,omitempty"`
 	// OrgHandle and OrgSuspended are only populated by the public link lookup.
 	OrgHandle    string `json:"-"`
 	OrgSuspended bool   `json:"-"`
@@ -44,6 +47,9 @@ type PublicProfile struct {
 
 // Booking is a booking page connected in Integrations (Calendar Booking).
 type Booking struct {
+	// ConnectionID is the integration connection; Label its name ("30-min intro").
+	ConnectionID int64  `json:"connection_id"`
+	Label        string `json:"label"`
 	// Provider is the integration's id ("calendly"), Name its display name.
 	Provider string `json:"provider"`
 	Name     string `json:"name"`
@@ -51,14 +57,36 @@ type Booking struct {
 	// Prefill maps the page's query parameters to what a visitor gave the
 	// card's lead form: "name", "first_name", "last_name" or "email".
 	Prefill map[string]string `json:"prefill,omitempty"`
-	// Scope is "user" for the holder's own page, "org" for the organisation's default.
+	// Scope is "user" for a person's own page, "org" for the organisation's.
 	Scope string `json:"scope"`
 }
 
-// BookingFinder loads the booking pages connected in an organisation and
-// returns a lookup by card holder (0: the organisation). It's the
+// BookingPages are the booking pages connected in an organisation.
+type BookingPages interface {
+	// For returns the page connectionID if a card held by holderID (0: the
+	// organisation) may show it, or nil.
+	For(holderID, connectionID int64) *Booking
+	// Options are the pages a card held by holderID can choose from.
+	Options(holderID int64) []Booking
+}
+
+// BookingFinder loads an organisation's booking pages. It's the
 // integrations module, wired in by the server.
-type BookingFinder func(ctx context.Context, orgID int64) (func(holderID int64) *Booking, error)
+type BookingFinder func(ctx context.Context, orgID int64) (BookingPages, error)
+
+// bookingConnectionID is the booking page the card data chose, or 0.
+func bookingConnectionID(data json.RawMessage) int64 {
+	var d struct {
+		BookingConnectionID *int64 `json:"booking_connection_id"`
+	}
+	if json.Unmarshal(data, &d) != nil || d.BookingConnectionID == nil {
+		return 0
+	}
+	return *d.BookingConnectionID
+}
+
+// bookingID is the booking page the card chose, or 0.
+func (p *Profile) bookingID() int64 { return bookingConnectionID(p.Data) }
 
 // holderID is who holds the card, or 0 for the organisation.
 func (p *Profile) holderID() int64 {

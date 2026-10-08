@@ -3,7 +3,7 @@
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import QrCodeIcon from '@lucide/svelte/icons/qr-code';
-	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
+	import ChartLineIcon from '@lucide/svelte/icons/chart-line';
 	import CircleIcon from '@lucide/svelte/icons/circle';
 	import IdCardIcon from '@lucide/svelte/icons/id-card';
 	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
@@ -31,11 +31,13 @@
 	import { STATUS_LABEL, userStatus } from '$lib/features/orgs/api';
 	import type { Profile } from '$lib/features/cards/api';
 	import { Button } from '$lib/components/ui/button';
+	import * as Empty from '$lib/components/ui/empty';
+	import LoadError from '$lib/components/shared/load-error.svelte';
+	import PageHeader from '$lib/components/shared/page-header.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as ToggleGroup from '$lib/components/ui/toggle-group';
 	import ActivityFeed from '$lib/features/analytics/components/activity-feed.svelte';
 	import SeriesChart from '$lib/components/shared/charts/series-chart.svelte';
-	import SplitBar from '$lib/components/shared/charts/split-bar.svelte';
 	import StatTile from '$lib/components/shared/charts/stat-tile.svelte';
 	import CardAvatar from '$lib/features/cards/components/card-avatar.svelte';
 	import CardTile from '$lib/features/cards/components/card-tile.svelte';
@@ -222,6 +224,7 @@
 		},
 		{ done: (teams.list?.length ?? 0) > 0, label: 'Group people into teams', href: '/dashboard/teams' }
 	]);
+	const stepsDone = $derived(steps.filter((s) => s.done).length);
 	const setUp = $derived(cards.list !== null && orgUsers.list !== null && steps.every((s) => s.done));
 
 	let qrTarget = $state<Profile | null>(null);
@@ -246,31 +249,27 @@
 </svelte:head>
 
 <div class="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-4 py-6 sm:px-8 lg:px-10 lg:py-10">
-	<header class="flex flex-wrap items-end justify-between gap-4">
-		<div class="flex flex-col gap-1">
-			<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Overview</h1>
-			<p class="text-muted-foreground text-sm">
-				{#if session.isAdmin}
-					Welcome back, {session.username}. Here's how {session.orgName}'s cards are doing.
-				{:else}
-					Welcome back, {session.username}. Here's how your {cards.list?.length === 1 ? 'card is' : 'cards are'} doing.
-				{/if}
-			</p>
-		</div>
-		<div class="flex flex-wrap items-center gap-2">
+	<PageHeader title="Overview">
+		{#snippet description()}
 			{#if session.isAdmin}
-				<Button variant="outline" size="sm" onclick={() => (createUserOpen = true)}>
+				Welcome back, {session.username}. Here's how {session.orgName}'s cards are doing.
+			{:else}
+				Welcome back, {session.username}. Here's how your {cards.list?.length === 1 ? 'card is' : 'cards are'} doing.
+			{/if}
+		{/snippet}
+		{#snippet actions()}
+			{#if session.isAdmin}
+				<Button variant="outline" onclick={() => (createUserOpen = true)}>
 					<UserPlusIcon data-icon="inline-start" />
 					Add person
 				</Button>
-				<Button size="sm" onclick={() => (cards.createOpen = true)}>
+				<Button onclick={() => (cards.createOpen = true)}>
 					<PlusIcon data-icon="inline-start" />
 					New card
 				</Button>
 			{:else if firstCard}
 				<Button
 					variant="outline"
-					size="sm"
 					onclick={() => {
 						qrTarget = firstCard;
 						qrOpen = true;
@@ -279,21 +278,20 @@
 					<QrCodeIcon data-icon="inline-start" />
 					Share
 				</Button>
-				<Button size="sm" href="/dashboard/{firstCard.id}">
+				<Button href="/dashboard/{firstCard.id}">
 					<PencilIcon data-icon="inline-start" />
 					Edit card
 				</Button>
 			{/if}
-		</div>
-	</header>
+		{/snippet}
+	</PageHeader>
 
 	{#if cards.error}
-		<div class="bg-card flex flex-col items-start gap-3 rounded-xl border p-6">
-			<p class="font-medium">Couldn't load your cards</p>
-			<p class="text-muted-foreground text-sm">{cards.error}</p>
-			<Button variant="outline" onclick={() => session.username && cards.load(session.username, true)}>Try again</Button
-			>
-		</div>
+		<LoadError
+			what="your cards"
+			message={cards.error}
+			onretry={() => session.username && cards.load(session.username, true)}
+		/>
 	{:else if !session.isAdmin && cards.list && cards.list.length === 0}
 		<section class="bg-card grid overflow-hidden rounded-2xl border lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
 			<div class="flex flex-col justify-center gap-5 p-8 sm:p-12">
@@ -354,9 +352,33 @@
 							<ArrowRightIcon data-icon="inline-end" />
 						</Button>
 					</div>
-					{#if summary}
+					{#if summary && sourceParts.every((p) => p.value === 0)}
+						<Empty.Root class="border border-dashed py-10">
+							<Empty.Header>
+								<Empty.Media variant="icon"><ChartLineIcon /></Empty.Media>
+								<Empty.Title>No views in the last {range} days</Empty.Title>
+								<Empty.Description>
+									Views show up here once people open a card from its link, QR code or NFC tag.
+								</Empty.Description>
+							</Empty.Header>
+							{#if firstCard}
+								<Empty.Content>
+									<Button
+										variant="outline"
+										onclick={() => {
+											qrTarget = firstCard;
+											qrOpen = true;
+										}}
+									>
+										<QrCodeIcon data-icon="inline-start" />
+										Share a card
+									</Button>
+								</Empty.Content>
+							{/if}
+						</Empty.Root>
+					{:else if summary}
+						<!-- The chart's legend carries each source's total; Analytics has the share breakdown. -->
 						<SeriesChart dates={points.map((p) => p.date)} series={sourceSeries} label="Views by source" height={200} />
-						<SplitBar parts={sourceParts} label="Share of views by source" class="border-t pt-4" />
 					{:else}
 						<Skeleton class="h-56" />
 					{/if}
@@ -424,7 +446,7 @@
 									{#if session.isAdmin}
 										<Button variant="outline" size="sm" onclick={() => (createUserOpen = true)}>
 											<UserPlusIcon data-icon="inline-start" />
-											New user
+											Add person
 										</Button>
 									{/if}
 								</div>
@@ -504,21 +526,30 @@
 			<div class="flex flex-col gap-6">
 				{#if session.isAdmin && !setUp && cards.list !== null && orgUsers.list !== null}
 					<section class="bg-card flex flex-col gap-4 rounded-xl border p-5" aria-labelledby="setup-heading">
-						<div class="flex flex-col gap-1">
-							<h2 id="setup-heading" class="font-semibold">Set up {session.orgName}</h2>
-							<p class="text-muted-foreground text-sm">
-								{steps.filter((s) => s.done).length} of {steps.length} done.
-							</p>
+						<div class="flex flex-col gap-2">
+							<div class="flex items-baseline justify-between gap-2">
+								<h2 id="setup-heading" class="font-semibold">Set up {session.orgName}</h2>
+								<span class="text-muted-foreground tabular text-sm">{stepsDone} of {steps.length} done</span>
+							</div>
+							<div
+								class="bg-muted h-1.5 overflow-hidden rounded-full"
+								role="progressbar"
+								aria-valuemin={0}
+								aria-valuemax={steps.length}
+								aria-valuenow={stepsDone}
+								aria-label="Setup progress"
+							>
+								<div
+									class="bg-brand h-full rounded-full transition-all"
+									style="width: {(stepsDone / steps.length) * 100}%"
+								></div>
+							</div>
 						</div>
+						<!-- Only what's left; finished steps are counted above. -->
 						<ol class="flex flex-col gap-1">
-							{#each steps as step (step.label)}
+							{#each steps.filter((s) => !s.done) as step (step.label)}
 								<li>
-									{#if step.done}
-										<span class="text-muted-foreground flex items-center gap-3 px-2 py-1.5 text-sm line-through">
-											<CircleCheckIcon class="text-brand size-4 shrink-0" />
-											{step.label}
-										</span>
-									{:else if step.href}
+									{#if step.href}
 										<a
 											href={step.href}
 											class="hover:bg-muted flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium"
@@ -582,7 +613,7 @@
 													.join(', ')}
 											</span>
 										</span>
-										<span class="text-muted-foreground text-xs">Users</span>
+										<span class="text-muted-foreground text-xs">People</span>
 									</a>
 								</li>
 							{/if}

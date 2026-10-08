@@ -30,7 +30,7 @@ var categoryInfo = map[Category]CategoryInfo{
 	CategoryLeadSync: {CategoryLeadSync, "Lead Sync",
 		"Send every lead your cards collect to your CRM or automation tool, as soon as it arrives.", false},
 	CategoryCalendar: {CategoryCalendar, "Calendar Booking",
-		"Let people book a meeting with you straight from your card.", true},
+		"Connect your booking pages, then choose which one each card shows.", false},
 	CategoryDirectory: {CategoryDirectory, "Team Member Import",
 		"Add, update and remove people in Fronko automatically from your identity provider.", true},
 	CategorySSO: {CategorySSO, "SAML SSO",

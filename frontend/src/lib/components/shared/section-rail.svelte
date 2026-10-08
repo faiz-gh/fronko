@@ -3,6 +3,8 @@
 
 	export interface RailItem<T extends string = string> {
 		id: T;
+		/** A heading shown above the first item of each run of the same group. */
+		group?: string;
 		label: string;
 		icon: Component;
 		/** One line on what the section holds now. */
@@ -29,6 +31,15 @@
 		class?: string;
 	} = $props();
 
+	let list = $state<HTMLElement | null>(null);
+	// In the narrow scrolling strip, keep the open section in view.
+	$effect(() => {
+		const tab = list?.querySelector<HTMLElement>(`#rail-${CSS.escape(active)}`);
+		if (tab && list && list.scrollWidth > list.clientWidth) {
+			list.scrollTo({ left: tab.offsetLeft - list.clientWidth / 2 + tab.clientWidth / 2, behavior: 'smooth' });
+		}
+	});
+
 	function onkeydown(e: KeyboardEvent, index: number) {
 		const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
 		if (!step) return;
@@ -45,16 +56,29 @@
 	a scrolling strip on narrow ones.
 -->
 <div
+	bind:this={list}
 	role="tablist"
 	aria-label={label}
 	aria-orientation="vertical"
 	class={cn(
-		'-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0 lg:pb-0',
+		'relative -mx-4 flex gap-1 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0 lg:pb-0',
 		className
 	)}
 >
 	{#each items as item, i (item.id)}
 		{@const selected = item.id === active}
+		{#if item.group && item.group !== items[i - 1]?.group}
+			{#if i > 0}
+				<span class="bg-border my-2 w-px shrink-0 lg:hidden" aria-hidden="true"></span>
+			{/if}
+			<span
+				class={cn(
+					'text-muted-foreground hidden px-2.5 pb-1 text-[11px] font-medium tracking-wide uppercase lg:block',
+					i > 0 && 'pt-4'
+				)}
+				aria-hidden="true">{item.group}</span
+			>
+		{/if}
 		<button
 			type="button"
 			role="tab"

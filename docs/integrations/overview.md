@@ -30,12 +30,12 @@ A **connection** is one link to a provider: its settings, its encrypted secrets 
 
 | Scope | Managed by | Example |
 | ----- | ---------- | ------- |
-| **Organisation** | The owner and admins | A HubSpot portal that gets every lead; the organisation's default booking page; SSO |
+| **Organisation** | The owner and admins | A HubSpot portal that gets every lead; booking pages any card can show; SSO |
 | **Personal** | The person who created it | A rep's own Zapier hook for the leads on their cards; their own Calendly page |
 
 Members only see the integrations they can connect for themselves (lead sync webhooks and booking pages). Admins see everything, and can connect both kinds.
 
-**How many.** Some categories allow one connection per owner, whichever provider it's to: one booking page per person (and one organisation default), one directory and one SSO connection per organisation. Lead sync allows several, except HubSpot, which allows one per organisation.
+**How many.** Some categories allow one connection per owner, whichever provider it's to: one directory and one SSO connection per organisation. Booking pages and lead sync allow several, except HubSpot, which allows one per organisation.
 
 **Status.**
 
@@ -79,13 +79,7 @@ Every request an integration makes to an address someone typed in (a webhook URL
 
 ## Calendar booking on cards
 
-A card's "Book a meeting" button comes from Integrations, not from the card:
-
-1. If the card's holder has a personal booking page connected, the card shows it.
-2. Otherwise, if the organisation has a default booking page, the card shows that.
-3. Otherwise there's no button.
-
-Cards held by the organisation (unassigned) always use the default. See [Calendar booking](calendar.md).
+Booking pages are connected in Integrations, as many as people like. Each card then picks one (or none) in the card editor under **Booking**, from its holder's own pages and the organisation's. A card with no choice shows no button. See [Calendar booking](calendar.md).
 
 ## For developers
 

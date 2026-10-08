@@ -2,8 +2,6 @@
 	import { toast } from 'svelte-sonner';
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
-	import SignatureIcon from '@lucide/svelte/icons/signature';
-	import SmartphoneNfcIcon from '@lucide/svelte/icons/smartphone-nfc';
 	import { Button } from '$lib/components/ui/button';
 	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
@@ -18,19 +16,14 @@
 		card = $bindable(),
 		slug = $bindable(),
 		savedSlug,
-		profileId,
-		errors,
-		onnfc
+		errors
 	}: {
 		card: CardData;
 		/** The link being edited. */
 		slug: string;
 		/** The saved link, which the tap links and QR code use until saved. */
 		savedSlug: string;
-		profileId: number;
 		errors: CardErrors;
-		/** Opens the NFC writer. */
-		onnfc: () => void;
 	} = $props();
 
 	const slugInvalid = $derived(errors.slug);
@@ -45,7 +38,12 @@
 	}
 </script>
 
-<FormSection panel id="sharing" title="Sharing" description="Your public address and what visitors can do.">
+<FormSection
+	panel
+	id="sharing"
+	title="Link & tap"
+	description="Your card's address, whether visitors can leave their details, and what a tap or scan opens."
+>
 	<Field.Group class="gap-6">
 		<Field.Field data-invalid={slugInvalid || undefined}>
 			<Field.Label for="slug">Public link</Field.Label>
@@ -133,25 +131,5 @@
 				<Field.Description>{hint} Changes apply as soon as you save; nothing needs re-writing.</Field.Description>
 			</Field.Field>
 		{/each}
-		<Field.Field orientation="horizontal" class="bg-card rounded-xl border p-4">
-			<Field.Content>
-				<Field.Label>NFC card</Field.Label>
-				<Field.Description>Put this card's NFC link on the chip inside your metal or plastic card.</Field.Description>
-			</Field.Content>
-			<Button variant="outline" onclick={onnfc}>
-				<SmartphoneNfcIcon data-icon="inline-start" />
-				Write to NFC card
-			</Button>
-		</Field.Field>
-		<Field.Field orientation="horizontal" class="bg-card rounded-xl border p-4">
-			<Field.Content>
-				<Field.Label>Email signature</Field.Label>
-				<Field.Description>Turn this card into a signature for Gmail, Outlook or Apple Mail.</Field.Description>
-			</Field.Content>
-			<Button variant="outline" href="/dashboard/signatures?card={profileId}">
-				<SignatureIcon data-icon="inline-start" />
-				Create signature
-			</Button>
-		</Field.Field>
 	</Field.Group>
 </FormSection>

@@ -31,10 +31,11 @@ const (
 var Categories = []Category{CategoryLeadSync, CategoryCalendar, CategoryDirectory, CategorySSO}
 
 // Single reports whether an owner may have only one connection in the
-// category, whichever provider it's to: one booking page per person, one
-// directory and one sign-in method per organisation.
+// category, whichever provider it's to: one directory and one sign-in
+// method per organisation. Booking pages aren't: people connect as many as
+// they like and each card picks one.
 func (c Category) Single() bool {
-	return c == CategoryCalendar || c == CategoryDirectory || c == CategorySSO
+	return c == CategoryDirectory || c == CategorySSO
 }
 
 // Scope is who a connection belongs to.

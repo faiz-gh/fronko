@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import LoadError from '$lib/components/shared/load-error.svelte';
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
@@ -33,8 +34,10 @@
 
 	let connections = $state<Connection[] | null>(null);
 	let loadError = $state('');
+	let attempt = $state(0);
 	$effect(() => {
 		const id = providerId;
+		void attempt;
 		if (!session.ready) return;
 		connections = null;
 		loadError = '';
@@ -43,7 +46,7 @@
 			.catch((e) => (loadError = e instanceof Error ? e.message : 'Failed to load connections'));
 	});
 
-	// In categories with one connection per owner (booking pages, directory,
+	// In categories with one connection per owner (directory,
 	// single sign-on), a connection to another provider takes the place.
 	const takenBy = $derived.by((): Partial<Record<Scope, string>> => {
 		const catalog = integrations.catalog;
@@ -126,7 +129,7 @@
 	</a>
 
 	{#if integrations.error && !integrations.catalog}
-		<p class="text-destructive text-sm">{integrations.error}</p>
+		<LoadError what="integrations" message={integrations.error} onretry={() => integrations.refresh()} />
 	{:else if !integrations.catalog}
 		<div class="flex items-center gap-4">
 			<Skeleton class="size-14 rounded-xl" />
@@ -178,8 +181,14 @@
 						</Alert.Root>
 					{/if}
 
+					{#if entry.category === 'calendar' && connections?.length}
+						<p class="text-muted-foreground text-sm">
+							Choose which booking page each card shows in the card editor, under Booking.
+						</p>
+					{/if}
+
 					{#if loadError}
-						<p class="text-destructive text-sm">{loadError}</p>
+						<LoadError what="connections" message={loadError} onretry={() => attempt++} />
 					{:else if connections === null}
 						<Skeleton class="h-64 rounded-xl" />
 					{:else}
@@ -217,7 +226,7 @@
 						{:else if addableScopes.length > 0}
 							<Button variant="outline" class="self-start" onclick={() => (adding = true)}>
 								<PlusIcon data-icon="inline-start" />
-								Add another connection
+								{entry.category === 'calendar' ? 'Add another booking page' : 'Add another connection'}
 							</Button>
 						{/if}
 

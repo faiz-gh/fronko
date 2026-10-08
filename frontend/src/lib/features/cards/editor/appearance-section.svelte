@@ -10,7 +10,12 @@
 	let { card = $bindable() }: { card: CardData } = $props();
 </script>
 
-<FormSection panel id="appearance" title="Appearance" description="How your card looks to visitors.">
+<FormSection
+	panel
+	id="appearance"
+	title="Colours & logo"
+	description="Your card's accent colour, light or dark theme, and the organisation logo."
+>
 	<Field.Group class="gap-6">
 		<Field.Field>
 			<Field.Label>Accent colour</Field.Label>

@@ -191,6 +191,10 @@ type Describer interface {
 
 // Booking is a booking page shown on a card.
 type Booking struct {
+	// ConnectionID and Label are the connection's id and name ("30-min
+	// intro"). Set by the core.
+	ConnectionID int64  `json:"connection_id"`
+	Label        string `json:"label"`
 	// Provider is the provider's id, Name its display name.
 	Provider string `json:"provider"`
 	Name     string `json:"name"`
@@ -198,9 +202,11 @@ type Booking struct {
 	// Prefill maps the booking page's query parameters to what a visitor
 	// may have told the card: "name", "first_name", "last_name" or "email".
 	Prefill map[string]string `json:"prefill,omitempty"`
-	// Scope says whose page it is: the card holder's own, or the
-	// organisation's default. Set by the core.
+	// Scope says whose page it is: a person's own or the organisation's.
+	// Set by the core.
 	Scope Scope `json:"scope"`
+	// OwnerID is the person whose page it is, 0 for the organisation's.
+	OwnerID int64 `json:"-"`
 }
 
 // BookingLinker is implemented by calendar providers.

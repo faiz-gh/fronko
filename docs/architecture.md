@@ -62,7 +62,7 @@ type Scheduled interface  { Tasks() []jobs.Task }                        // peri
 **Dependency rules:**
 
 - Modules import `platform/*` and `auth`, and nothing in `server`.
-- A module uses another module through a small interface or function type, passed in at wiring time. For example, `integrations` takes a `LeadReader` (satisfied by `leads.Store`), and `cards` takes a `BookingFinder` function built from the integrations service.
+- A module uses another module through a small interface or function type, passed in at wiring time. For example, `integrations` takes a `LeadReader` (satisfied by `leads.Store`), and `cards` takes a `BookingFinder` function built from the integrations service, which returns an organisation's booking pages (`BookingPages`: the page a card may show, and the pages it can choose from).
 - Importing another module's types is fine when there's no cycle (`integrations` imports `leads` for `leads.Created`). When there would be one, the interface goes on the consuming side.
 - SQL stays in the module that owns the tables. Shared references (`auth.UserRef`, `auth.TeamRef`, roles) live in `auth`.
 - `platform/*` packages never import a feature module.
@@ -158,9 +158,9 @@ The frontend is a static SvelteKit app (`ssr = false`). The code is grouped by f
 
 ```
 src/lib/
-├── core/                 # api client, session, theme, formatting, nav.ts and settings-tabs.ts registries
+├── core/                 # api client, session, theme, formatting, confirm and unsaved-changes helpers, nav.ts and settings-tabs.ts registries
 ├── components/ui/        # shadcn-svelte primitives (generated)
-├── components/shared/    # components used across features (sidebar, charts, pickers, form layout)
+├── components/shared/    # components used across features (sidebar, page header, load error, confirm dialog, charts, pickers, form layout)
 └── features/<feature>/   # api.ts, types, stores (*.svelte.ts), helpers and components/
 ```
 

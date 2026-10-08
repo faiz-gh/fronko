@@ -68,30 +68,43 @@ func TestIdentityIntegration(t *testing.T) {
 	svc := integrations.NewService(integrations.NewStore(pool), registry, leads.NewStore(pool, nil), orgStore, []byte("k"),
 		integrations.Options{PublicURL: "https://fronko.test", Box: box, AllowPrivate: true})
 
-	t.Run("one booking page per person, with the organisation's as the default", func(t *testing.T) {
+	t.Run("many booking pages; a card shows the one it chose if its holder may", func(t *testing.T) {
 		org, err := svc.Create(ctx, admin, integrations.CreateInput{Provider: "booking-link", Scope: integrations.ScopeOrg,
 			Values: map[string]any{"url": "https://cal.com/acme"}})
 		require.NoError(t, err)
 		assert.Equal(t, integrations.StatusActive, org.Status)
-		_, err = svc.Create(ctx, member, integrations.CreateInput{Provider: "calendly", Scope: integrations.ScopeUser,
-			Values: map[string]any{"url": "https://calendly.com/rep/30min"}})
+		require.NotNil(t, org.UsedByCards)
+		assert.Equal(t, 0, *org.UsedByCards)
+		intro, err := svc.Create(ctx, member, integrations.CreateInput{Provider: "calendly", Scope: integrations.ScopeUser,
+			Name: "30-min intro", Values: map[string]any{"url": "https://calendly.com/rep/30min"}})
 		require.NoError(t, err)
+		demo, err := svc.Create(ctx, member, integrations.CreateInput{Provider: "calendly", Scope: integrations.ScopeUser,
+			Values: map[string]any{"url": "https://calendly.com/rep/demo"}})
+		require.NoError(t, err, "a second page, same provider")
 		_, err = svc.Create(ctx, member, integrations.CreateInput{Provider: "google-calendar", Scope: integrations.ScopeUser,
 			Values: map[string]any{"url": "https://calendar.app.google/x"}})
-		assert.ErrorIs(t, err, integrations.ErrOnlyOne)
-		assert.ErrorContains(t, err, "booking page")
+		require.NoError(t, err, "and another provider")
 
 		bookings, err := svc.Bookings(ctx, owner.OrgID)
 		require.NoError(t, err)
-		assert.Equal(t, "https://calendly.com/rep/30min", bookings.For(rep.ID).URL)
-		assert.Equal(t, "https://cal.com/acme", bookings.For(owner.ID).URL, "no page of their own: the default")
-		assert.Equal(t, "https://cal.com/acme", bookings.For(0).URL)
+		got := bookings.For(rep.ID, intro.ID)
+		require.NotNil(t, got)
+		assert.Equal(t, "https://calendly.com/rep/30min", got.URL)
+		assert.Equal(t, "30-min intro", got.Label)
+		assert.Equal(t, "https://calendly.com/rep/demo", bookings.For(rep.ID, demo.ID).URL)
+		assert.Nil(t, bookings.For(owner.ID, intro.ID), "someone else's page")
+		assert.Nil(t, bookings.For(0, intro.ID), "an organisation card can't show a person's page")
+		assert.Equal(t, "https://cal.com/acme", bookings.For(rep.ID, org.ID).URL, "anyone's card may show the organisation's")
+		assert.Nil(t, bookings.For(rep.ID, 0), "nothing chosen: no button")
+		assert.Len(t, bookings.Options(rep.ID), 4, "their three, then the organisation's")
+		assert.Equal(t, org.ID, bookings.Options(rep.ID)[3].ConnectionID)
+		assert.Len(t, bookings.Options(0), 1)
 
 		_, err = svc.Update(ctx, admin, org.ID, integrations.UpdateInput{Enabled: ptr(false)})
 		require.NoError(t, err)
 		bookings, err = svc.Bookings(ctx, owner.OrgID)
 		require.NoError(t, err)
-		assert.Nil(t, bookings.For(0), "a paused page isn't shown")
+		assert.Nil(t, bookings.For(0, org.ID), "a paused page isn't shown")
 	})
 
 	// SCIM: an Entra connection, its token, and the API behind it.

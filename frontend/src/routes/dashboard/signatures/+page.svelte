@@ -14,6 +14,7 @@
 	import { fileUrl } from '$lib/features/files/api';
 	import { updateProfile } from '$lib/features/cards/api';
 	import { Button } from '$lib/components/ui/button';
+	import PageHeader from '$lib/components/shared/page-header.svelte';
 	import * as Empty from '$lib/components/ui/empty';
 	import * as Field from '$lib/components/ui/field';
 	import { Skeleton } from '$lib/components/ui/skeleton';
@@ -24,6 +25,7 @@
 	import { branding } from '$lib/features/branding/store.svelte';
 	import { downloadBlob, normalizeCard, publicUrl, type CardData } from '$lib/features/cards/card';
 	import { session } from '$lib/core/session.svelte';
+	import { guardUnsaved } from '$lib/core/unsaved.svelte';
 	import { cards } from '$lib/features/cards/store.svelte';
 	import {
 		darkModeHtml,
@@ -94,8 +96,10 @@
 	let darkPreview = $state(false);
 	let copied = $state<'rich' | 'html' | null>(null);
 
+	// Switching cards (?card=) asks the same way as leaving the page.
+	guardUnsaved(() => dirty);
+
 	function select(id: number) {
-		if (dirty && !confirm('You have unsaved signature changes. Switch card anyway?')) return;
 		goto(`?card=${id}`, { replace: true, reset: false });
 	}
 
@@ -215,13 +219,12 @@
 </svelte:head>
 
 <div class="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-4 py-6 sm:px-8 lg:px-10 lg:py-10">
-	<header class="flex flex-col gap-1">
-		<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Email signatures</h1>
-		<p class="text-muted-foreground text-sm">
+	<PageHeader title="Email signatures">
+		{#snippet description()}
 			Turn a card into a signature for Gmail, Outlook or Apple Mail. It uses the card’s details, so update the card to
 			change them.
-		</p>
-	</header>
+		{/snippet}
+	</PageHeader>
 
 	{#if cards.list === null}
 		<Skeleton class="h-96 rounded-xl" />

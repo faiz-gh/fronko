@@ -6,6 +6,8 @@
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import type { Profile } from '$lib/features/cards/api';
 	import { Button } from '$lib/components/ui/button';
+	import LoadError from '$lib/components/shared/load-error.svelte';
+	import PageHeader from '$lib/components/shared/page-header.svelte';
 	import * as Empty from '$lib/components/ui/empty';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
@@ -90,35 +92,34 @@
 </svelte:head>
 
 <div class="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-4 py-6 sm:px-8 lg:px-10 lg:py-10">
-	<header class="flex flex-wrap items-end justify-between gap-4">
-		<div class="flex flex-col gap-1">
-			<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Cards</h1>
-			<p class="text-muted-foreground text-sm">
-				{#if cards.list && !session.isAdmin}
-					{plural(all.length, 'card')}: yours and your teammates’. As a team lead you can edit them all.
-				{:else if cards.list}
-					{plural(all.length, 'card')}{unassigned > 0 ? `, ${unassigned} not assigned to anyone` : ''}. Assign each card
-					to the person who uses it; they can edit everything but the link.
-				{:else}
-					Every card in {session.orgName}.
-				{/if}
-			</p>
-		</div>
-		{#if session.isAdmin}
-			<Button onclick={() => (cards.createOpen = true)}>
-				<PlusIcon data-icon="inline-start" />
-				New card
-			</Button>
-		{/if}
-	</header>
+	<PageHeader title="Cards">
+		{#snippet description()}
+			{#if cards.list && !session.isAdmin}
+				{plural(all.length, 'card')}: yours and your teammates’. You can edit them all; your admins create and assign
+				cards.
+			{:else if cards.list}
+				{plural(all.length, 'card')}{unassigned > 0 ? `, ${unassigned} not assigned to anyone` : ''}. Assign each card
+				to the person who uses it; they can edit everything but the link.
+			{:else}
+				Every card in {session.orgName}.
+			{/if}
+		{/snippet}
+		{#snippet actions()}
+			{#if session.isAdmin}
+				<Button onclick={() => (cards.createOpen = true)}>
+					<PlusIcon data-icon="inline-start" />
+					New card
+				</Button>
+			{/if}
+		{/snippet}
+	</PageHeader>
 
 	{#if cards.error}
-		<div class="bg-card flex flex-col items-start gap-3 rounded-xl border p-6">
-			<p class="font-medium">Couldn't load cards</p>
-			<p class="text-muted-foreground text-sm">{cards.error}</p>
-			<Button variant="outline" onclick={() => session.username && cards.load(session.username, true)}>Try again</Button
-			>
-		</div>
+		<LoadError
+			what="cards"
+			message={cards.error}
+			onretry={() => session.username && cards.load(session.username, true)}
+		/>
 	{:else if cards.list && all.length === 0}
 		<Empty.Root class="bg-card rounded-xl border border-dashed py-20">
 			<Empty.Header>

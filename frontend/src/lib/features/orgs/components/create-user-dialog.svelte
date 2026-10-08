@@ -123,7 +123,7 @@
 		{:else}
 			<form onsubmit={handleSubmit} class="flex flex-col gap-6">
 				<Dialog.Header>
-					<Dialog.Title class="text-lg">New user</Dialog.Title>
+					<Dialog.Title class="text-lg">Add a person</Dialog.Title>
 					<Dialog.Description>
 						They'll use {session.orgName}'s storage and work on the cards you assign them.
 					</Dialog.Description>
@@ -230,7 +230,7 @@
 							!!passwordError}
 					>
 						{#if creating}<Spinner data-icon="inline-start" />{/if}
-						Create user
+						Add person
 					</Button>
 				</Dialog.Footer>
 			</form>

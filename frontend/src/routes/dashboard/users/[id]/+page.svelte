@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import LoadError from '$lib/components/shared/load-error.svelte';
+	import { confirmDialog } from '$lib/core/confirm.svelte';
 	import { toast } from 'svelte-sonner';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import BanIcon from '@lucide/svelte/icons/ban';
@@ -59,6 +61,7 @@
 
 	let user = $state<OrgUser | null>(null);
 	let loadError = $state('');
+	let attempt = $state(0);
 	let granted = $state<LibraryFile[] | null>(null);
 
 	$effect(() => {
@@ -67,6 +70,7 @@
 
 	$effect(() => {
 		const id = userId;
+		void attempt;
 		user = null;
 		granted = null;
 		loadError = '';
@@ -77,7 +81,7 @@
 				email = u.email ?? '';
 				memberships = u.teams.map((t) => ({ team_id: t.id, role: t.role ?? 'member' }));
 			})
-			.catch((e) => (loadError = e instanceof Error ? e.message : 'Failed to load this user'));
+			.catch((e) => (loadError = e instanceof Error ? e.message : 'Failed to load this person'));
 		listFiles({ area: 'granted', userId: id, pageSize: 100 })
 			.then((res) => (granted = res.files))
 			.catch(() => (granted = []));
@@ -160,6 +164,16 @@
 
 	// Cards
 	async function assign(profileId: number, to: number | null) {
+		if (
+			to === null &&
+			!(await confirmDialog({
+				title: `Take this card from ${user?.username}?`,
+				description:
+					'It goes back to the organisation, and they can no longer edit it or see its new leads. Leads they already have stay with them.',
+				confirmLabel: 'Unassign card'
+			}))
+		)
+			return;
 		try {
 			const p = await setCardAssignee(profileId, to);
 			cards.upsert(p);
@@ -172,6 +186,15 @@
 
 	// Granted files
 	async function revoke(file: LibraryFile) {
+		if (
+			!(await confirmDialog({
+				title: `Remove ${user?.username}'s access to ${file.title || file.name}?`,
+				description: 'They can no longer use it on their cards. Cards already using it keep showing it.',
+				confirmLabel: 'Remove access',
+				destructive: true
+			}))
+		)
+			return;
 		try {
 			const { users } = await getFileGrants(file.id);
 			await setFileGrants(file.id, { userIds: users.filter((u) => u.id !== userId).map((u) => u.id) });
@@ -247,14 +270,11 @@
 		class="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1.5 text-sm"
 	>
 		<ArrowLeftIcon class="size-4" />
-		Users
+		People
 	</a>
 
 	{#if loadError}
-		<div class="bg-card flex flex-col items-start gap-3 rounded-xl border p-6">
-			<p class="font-medium">Couldn't load this user</p>
-			<p class="text-muted-foreground text-sm">{loadError}</p>
-		</div>
+		<LoadError what="this person" message={loadError} onretry={() => attempt++} />
 	{:else if !user || !status}
 		<div class="flex items-center gap-4">
 			<Skeleton class="size-14 rounded-full" />

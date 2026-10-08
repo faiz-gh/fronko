@@ -112,6 +112,11 @@ export interface CardData {
 	signature: SignatureSettings;
 	/** How this card's QR code looks. */
 	qr: QrStyle;
+	/**
+	 * The booking page (an Integrations connection id) for the "Book a
+	 * meeting" button; null shows none.
+	 */
+	booking_connection_id: number | null;
 }
 
 export type QrDots = 'square' | 'rounded' | 'dots';
@@ -238,7 +243,8 @@ export function emptyCard(name = ''): CardData {
 		tap: { nfc: 'profile', qr: 'profile' },
 		show_org_logo: true,
 		signature: defaultSignature(),
-		qr: defaultQrStyle()
+		qr: defaultQrStyle(),
+		booking_connection_id: null
 	};
 }
 
@@ -313,7 +319,11 @@ export function normalizeCard(raw: unknown): CardData {
 		},
 		show_org_logo: typeof d.show_org_logo === 'boolean' ? d.show_org_logo : true,
 		signature: normalizeSignature(d.signature),
-		qr: normalizeQrStyle(d.qr)
+		qr: normalizeQrStyle(d.qr),
+		booking_connection_id:
+			typeof d.booking_connection_id === 'number' && Number.isInteger(d.booking_connection_id)
+				? d.booking_connection_id
+				: null
 	};
 }
 
@@ -511,7 +521,7 @@ const CALENDAR_PROVIDERS: Brand[] = [
 	{
 		name: 'Microsoft Bookings',
 		icon: null,
-		hosts: ['outlook.office.com', 'outlook.office365.com', 'outlook.live.com']
+		hosts: ['outlook.office.com', 'outlook.office365.com', 'outlook.live.com', 'bookings.cloud.microsoft']
 	},
 	{ name: 'SavvyCal', icon: null, hosts: ['savvycal.com'] },
 	{ name: 'TidyCal', icon: null, hosts: ['tidycal.com'] },

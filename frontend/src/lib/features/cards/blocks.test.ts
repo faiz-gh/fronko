@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	applyTemplate,
+	ensureBlock,
 	isPreset,
 	MAX_BLOCKS,
 	MAX_GALLERY_IMAGES,
@@ -103,5 +104,21 @@ describe('templates', () => {
 		expect(types(classic)).toEqual(TEMPLATES.classic.blocks);
 		const back = applyTemplate(classic.concat(blocks.filter((b) => b.type === 'event')), 'event');
 		expect(back.find((b) => b.type === 'event')).toMatchObject({ name: 'Expo', hidden: false });
+	});
+});
+
+describe('ensureBlock', () => {
+	it('adds the block after the first anchor that is there', () => {
+		const out = ensureBlock(templateBlocks('portfolio'), 'booking', ['quick_actions', 'bio', 'header']);
+		expect(types(out)).toEqual(['header', 'bio', 'booking', 'gallery', 'links', 'documents', 'actions']);
+	});
+	it('shows a hidden block again instead of adding one', () => {
+		const blocks = templateBlocks('classic').map((b) => (b.type === 'booking' ? { ...b, hidden: true } : b));
+		const out = ensureBlock(blocks, 'booking');
+		expect(out).toHaveLength(blocks.length);
+		expect(out.find((b) => b.type === 'booking')?.hidden).toBe(false);
+	});
+	it('appends when no anchor is there', () => {
+		expect(types(ensureBlock([], 'booking', ['bio']))).toEqual(['booking']);
 	});
 });

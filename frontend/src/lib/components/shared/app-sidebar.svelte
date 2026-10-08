@@ -66,7 +66,12 @@
 
 	<nav class="flex min-h-0 flex-1 flex-col gap-6 px-3 pb-3" aria-label="Dashboard">
 		<div class="flex flex-col gap-0.5">
-			{#each nav as item (item.href)}
+			{#each nav as item, i (item.href)}
+				{#if item.group !== nav[i - 1]?.group}
+					<span class={cn('text-muted-foreground px-2.5 pb-1 text-xs font-medium', i > 0 && 'pt-4')}>
+						{item.group}
+					</span>
+				{/if}
 				<a
 					href={item.href}
 					onclick={onnavigate}

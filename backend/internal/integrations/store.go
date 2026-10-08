@@ -210,6 +210,15 @@ func (s *Store) CountInCategory(ctx context.Context, orgID, userID int64, catego
 	return n, err
 }
 
+// countCardsUsingBooking counts the organisation's cards that chose a
+// booking page connection (card data "booking_connection_id").
+func (s *Store) countCardsUsingBooking(ctx context.Context, orgID, connectionID int64) (int, error) {
+	var n int
+	err := s.db.QueryRow(ctx, `SELECT count(*) FROM profiles
+		WHERE org_id = $1 AND data->'booking_connection_id' = to_jsonb($2::bigint)`, orgID, connectionID).Scan(&n)
+	return n, err
+}
+
 // FindConnections returns the connections in a category that apply to a
 // person: the organisation's and, when userID is set, their own. Only
 // enabled, active ones are returned unless all is set.

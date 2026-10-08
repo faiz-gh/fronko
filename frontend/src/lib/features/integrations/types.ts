@@ -99,6 +99,8 @@ export interface Connection {
 	endpoints: Endpoint[];
 	/** The token the provider calls Fronko with (scim_token providers); null until generated. */
 	token: TokenInfo | null;
+	/** Booking pages only: how many cards show it. */
+	used_by_cards?: number;
 	last_error: string | null;
 	last_error_at: string | null;
 	failure_count: number;

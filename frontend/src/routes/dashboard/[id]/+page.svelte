@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { beforeNavigate, goto } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { fly } from 'svelte/transition';
 	import { toast } from 'svelte-sonner';
@@ -21,6 +21,7 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import SectionRail from '$lib/components/shared/section-rail.svelte';
 	import { timeAgo } from '$lib/core/format';
+	import { guardUnsaved } from '$lib/core/unsaved.svelte';
 	import { session } from '$lib/core/session.svelte';
 	import { getAnalyticsSummary, lastDays, type AnalyticsTotals } from '$lib/features/analytics/api';
 	import { branding } from '$lib/features/branding/store.svelte';
@@ -32,10 +33,12 @@
 	import ProfileCard from '$lib/features/cards/components/profile-card.svelte';
 	import QrDialog from '$lib/features/cards/components/qr-dialog.svelte';
 	import AppearanceSection from '$lib/features/cards/editor/appearance-section.svelte';
+	import BookingSection from '$lib/features/cards/editor/booking-section.svelte';
 	import BrochuresSection from '$lib/features/cards/editor/brochures-section.svelte';
 	import ContactSection from '$lib/features/cards/editor/contact-section.svelte';
 	import LayoutSection from '$lib/features/cards/editor/layout-section.svelte';
 	import LinksSection from '$lib/features/cards/editor/links-section.svelte';
+	import NfcSection from '$lib/features/cards/editor/nfc-section.svelte';
 	import PreviewPanel from '$lib/features/cards/editor/preview-panel.svelte';
 	import ProfileSection from '$lib/features/cards/editor/profile-section.svelte';
 	import QrSection from '$lib/features/cards/editor/qr-section.svelte';
@@ -156,11 +159,11 @@
 		}
 	}
 
-	beforeNavigate((nav) => {
-		// Switching sections only changes the hash; nothing is lost.
-		if (nav.to?.url.pathname === page.url.pathname) return;
-		if (dirty && !confirm('You have unsaved changes. Leave anyway?')) nav.cancel();
-	});
+	// Switching sections only changes the hash; nothing is lost.
+	guardUnsaved(
+		() => dirty,
+		(to) => to.pathname === page.url.pathname
+	);
 
 	// One section of the form shows at a time, picked from the rail. The URL
 	// hash (#contact) remembers it, so links can open a given section.
@@ -175,9 +178,13 @@
 		goto(`#${id}`, { shallow: true, replace: true, reset: false });
 	}
 
+	// The pages this card can show, and the one it shows now (before saving too).
+	const bookingOptions = $derived(profile?.booking_options ?? []);
+	const booking = $derived(bookingOptions.find((o) => o.connection_id === card?.booking_connection_id) ?? null);
+
 	const errorsBySection = $derived(errors ? sectionErrors(errors) : null);
 	const rail = $derived(
-		card && errorsBySection ? railItems(card, `/p/${session.orgHandle}/${slug}`, errorsBySection) : []
+		card && errorsBySection ? railItems(card, `/p/${session.orgHandle}/${slug}`, errorsBySection, bookingOptions) : []
 	);
 	// While the unsaved-changes bar floats over the bottom of the page, keep
 	// focused fields (e.g. tabbing to "Add block") scrolled clear of it.
@@ -216,7 +223,13 @@
 		assigning = true;
 		try {
 			const p = await setCardAssignee(profile.id, to);
-			profile = { ...profile, assigned_user: p.assigned_user };
+			// A new holder has other booking pages to choose from.
+			profile = {
+				...profile,
+				assigned_user: p.assigned_user,
+				booking: p.booking,
+				booking_options: p.booking_options
+			};
 			cards.upsert(p);
 			orgUsers.refresh();
 			toast.success(to === null ? 'Card returned to the organisation' : `Assigned to ${p.assigned_user?.username}`);
@@ -268,7 +281,7 @@
 	<Tabs.Root bind:value={tab} class="gap-0">
 		<header class="border-b px-4 pt-5 sm:px-8 lg:px-10 lg:pt-6">
 			<div class="flex flex-wrap items-center gap-x-4 gap-y-3">
-				<div class="flex min-w-0 flex-1 items-center gap-3">
+				<div class="flex min-w-48 flex-1 items-center gap-3">
 					<CardAvatar {card} fallback={profile.slug} class="size-10 text-sm" />
 					<div class="flex min-w-0 flex-col">
 						<h1 class="truncate text-lg font-semibold tracking-tight sm:text-xl">{card.name || profile.slug}</h1>
@@ -364,7 +377,7 @@
 				</Tabs.Trigger>
 				<a
 					href="/dashboard/analytics?card={profile.id}"
-					class="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1.5 self-center text-sm"
+					class="text-muted-foreground hover:text-foreground ml-auto hidden items-center gap-1.5 self-center text-sm sm:inline-flex"
 					title="Last 30 days"
 				>
 					{#if recentStats}
@@ -395,7 +408,9 @@
 								{#if section === 'profile'}
 									<ProfileSection bind:card slug={profile.slug} {errors} onfile={remember} />
 								{:else if section === 'contact'}
-									<ContactSection bind:card {errors} booking={profile.booking} holder={profile.assigned_user} />
+									<ContactSection bind:card {errors} />
+								{:else if section === 'booking'}
+									<BookingSection bind:card options={bookingOptions} holder={profile.assigned_user} />
 								{:else if section === 'links'}
 									<LinksSection bind:card {errors} />
 								{:else if section === 'brochures'}
@@ -407,14 +422,9 @@
 								{:else if section === 'qr'}
 									<QrSection bind:card slug={profile.slug} />
 								{:else if section === 'sharing'}
-									<SharingSection
-										bind:card
-										bind:slug
-										savedSlug={profile.slug}
-										profileId={profile.id}
-										{errors}
-										onnfc={() => (nfcOpen = true)}
-									/>
+									<SharingSection bind:card bind:slug savedSlug={profile.slug} {errors} />
+								{:else if section === 'nfc'}
+									<NfcSection profileId={profile.id} onnfc={() => (nfcOpen = true)} />
 								{/if}
 							{/if}
 
@@ -458,14 +468,7 @@
 					</div>
 				</div>
 
-				<PreviewPanel
-					{card}
-					savedSlug={profile.slug}
-					{slug}
-					files={fileMeta}
-					booking={profile.booking}
-					bind:mode={previewMode}
-				/>
+				<PreviewPanel {card} savedSlug={profile.slug} {slug} files={fileMeta} {booking} bind:mode={previewMode} />
 			</div>
 		</Tabs.Content>
 
@@ -484,7 +487,7 @@
 	<Dialog.Root bind:open={previewOpen}>
 		<Dialog.Content class="bg-muted max-h-[90svh] overflow-y-auto p-4 sm:max-w-sm">
 			<Dialog.Title class="sr-only">Preview</Dialog.Title>
-			<ProfileCard {card} slug={profile.slug} files={fileMeta} org={branding.value} booking={profile.booking} />
+			<ProfileCard {card} slug={profile.slug} files={fileMeta} org={branding.value} {booking} />
 		</Dialog.Content>
 	</Dialog.Root>
 {/if}

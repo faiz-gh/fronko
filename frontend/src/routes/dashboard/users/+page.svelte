@@ -7,6 +7,7 @@
 	import { ROLE_LABEL, STATUS_LABEL, userStatus, type OrgUser, type UserStatus } from '$lib/features/orgs/api';
 	import { Badge, type BadgeVariant } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import LoadError from '$lib/components/shared/load-error.svelte';
 	import * as Empty from '$lib/components/ui/empty';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
@@ -58,13 +59,13 @@
 </script>
 
 <svelte:head>
-	<title>Users · Fronko</title>
+	<title>People · Fronko</title>
 </svelte:head>
 
 <div class="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-4 py-6 sm:px-8 lg:px-10 lg:py-10">
 	<header class="flex flex-wrap items-end justify-between gap-4">
 		<div class="flex flex-col gap-1">
-			<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Users</h1>
+			<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">People</h1>
 			<p class="text-muted-foreground text-sm">
 				{#if orgUsers.list}
 					{plural(people.length, 'person', 'people')} in {session.orgName}{pending > 0
@@ -77,16 +78,12 @@
 		</div>
 		<Button onclick={() => (createOpen = true)}>
 			<UserPlusIcon data-icon="inline-start" />
-			New user
+			Add person
 		</Button>
 	</header>
 
 	{#if orgUsers.error && !orgUsers.list}
-		<div class="bg-card flex flex-col items-start gap-3 rounded-xl border p-6">
-			<p class="font-medium">Couldn't load users</p>
-			<p class="text-muted-foreground text-sm">{orgUsers.error}</p>
-			<Button variant="outline" onclick={() => orgUsers.refresh()}>Try again</Button>
-		</div>
+		<LoadError what="people" message={orgUsers.error} onretry={() => orgUsers.refresh()} />
 	{:else if orgUsers.list === null}
 		<div class="bg-card flex flex-col gap-5 rounded-xl border p-5">
 			{#each [1, 2, 3, 4] as i (i)}
@@ -115,7 +112,7 @@
 			<Empty.Content>
 				<Button onclick={() => (createOpen = true)}>
 					<UserPlusIcon data-icon="inline-start" />
-					New user
+					Add person
 				</Button>
 			</Empty.Content>
 		</Empty.Root>
@@ -134,7 +131,7 @@
 			<Table.Root>
 				<Table.Header>
 					<Table.Row class="bg-muted/40 hover:bg-muted/40">
-						<Table.Head class="h-10 pl-5">User</Table.Head>
+						<Table.Head class="h-10 pl-5">Person</Table.Head>
 						<Table.Head class="hidden h-10 xl:table-cell">Teams</Table.Head>
 						<Table.Head class="hidden h-10 md:table-cell">Status</Table.Head>
 						<Table.Head class="hidden h-10 text-right sm:table-cell">Cards</Table.Head>

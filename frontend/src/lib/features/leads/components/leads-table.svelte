@@ -174,7 +174,7 @@
 			});
 			const header = ['Name', 'Email', 'Phone', 'Message'];
 			if (!lockedToCard) header.push('Card');
-			if (showUsers) header.push('User');
+			if (showUsers) header.push('Held by');
 			header.push('Received');
 			const rows = all.map((l) => {
 				const base = [l.name, l.email, formatPhone(l.phone_country_code ?? '', l.phone_number ?? ''), l.notes];
@@ -201,7 +201,7 @@
 			<TeamPicker value={team} options={teamOptions} onchange={onteamchange} />
 		{/if}
 		{#if session.isAdmin && onuserchange}
-			<UserPicker value={user} onchange={onuserchange} noneLabel="Organisation" />
+			<UserPicker value={user} onchange={onuserchange} />
 		{/if}
 		<div class="relative order-last min-w-0 basis-full sm:order-none sm:max-w-sm sm:flex-1 sm:basis-auto">
 			<SearchIcon class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
@@ -283,7 +283,7 @@
 							<Table.Head class="hidden h-10 md:table-cell">Card</Table.Head>
 						{/if}
 						{#if showUsers}
-							<Table.Head class="hidden h-10 sm:table-cell">User</Table.Head>
+							<Table.Head class="hidden h-10 sm:table-cell">Held by</Table.Head>
 						{/if}
 						<Table.Head class="hidden h-10 lg:table-cell">Message</Table.Head>
 						<Table.Head class="h-10 pr-5 text-right">Received</Table.Head>
@@ -380,7 +380,7 @@
 											<span class="truncate text-sm">{held.username}</span>
 										</button>
 									{:else}
-										<span class="text-muted-foreground text-sm">Organisation</span>
+										<span class="text-muted-foreground text-sm">Unassigned</span>
 									{/if}
 								</Table.Cell>
 							{/if}

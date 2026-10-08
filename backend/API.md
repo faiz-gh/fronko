@@ -185,7 +185,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 }
 ```
 
-`user_id` is the account that created the card. `assigned_user` is the one user who works on it, or `null` when the organisation holds it. `lead_count` counts every lead for admins, and only the member's own leads for members. `booking` is the booking page the card shows, as on the [public profile](#publicprofile-visitor-view).
+`user_id` is the account that created the card. `assigned_user` is the one user who works on it, or `null` when the organisation holds it. `lead_count` counts every lead for admins, and only the member's own leads for members. `booking` is the booking page the card shows, as on the [public profile](#publicprofile-visitor-view). Single-card responses (get, create, update, assign) also include `booking_options`: the pages the card can choose from, which are the holder's own and then the organisation's, in the same shape. Saving a `data.booking_connection_id` that isn't among them answers `400` ("that booking page isn't available for this card"), unless the card already had it.
 
 ### PublicProfile (visitor view)
 
@@ -198,6 +198,8 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
   "files": [{ "id": "90meIH31WrEH0xe9ymyzDA", "kind": "image", "name": "me.png", "size_bytes": 48211 }],
   "org": { "name": "Acme", "logo_file": "tt24UJovNZgYmyTuoygXhg", "logo_policy": "optional" },
   "booking": {
+    "connection_id": 12,
+    "label": "30-min intro",
     "provider": "calendly",
     "name": "Calendly",
     "url": "https://calendly.com/faiz/30min",
@@ -207,7 +209,7 @@ Every endpoint is served by the Go backend. By default the browser reaches them 
 }
 ```
 
-`booking` is the card's "Book a meeting" page, connected in [Integrations](#integrations-) (Calendar Booking): the card holder's own (`scope: "user"`), or else the organisation's default (`scope: "org"`); `null` when there's neither. `prefill`, when present, maps the page's query parameters to what a visitor gave the lead form (`name`, `first_name`, `last_name`, `email`), so the page can open with them filled in. This replaces the card's old `data.calendar_url`, which is no longer read.
+`booking` is the card's "Book a meeting" page, connected in [Integrations](#integrations-) (Calendar Booking) and chosen by the card's `data.booking_connection_id`. It is `null` when the card chose none, or when the chosen page is gone, paused, or belongs to someone other than the card holder. `connection_id` and `label` are the connection's id and name; `scope` is `"user"` for a person's own page and `"org"` for the organisation's. `prefill`, when present, maps the page's query parameters to what a visitor gave the lead form (`name`, `first_name`, `last_name`, `email`), so the page can open with them filled in. This replaces the card's old `data.calendar_url`, which is no longer read.
 
 `org_handle` and `slug` make up the card's link, `/p/{org_handle}/{slug}`. `org` is the card's organisation: its name, its logo (a public file id, served by [`GET /api/files/{id}`](#get-apifilesid), or `null`) and `logo_policy`. The card shows the logo when the policy is `"required"`, or when it's `"optional"` and `data.show_org_logo` isn't `false`. The organisation's signature settings are not exposed here.
 
@@ -1056,7 +1058,7 @@ Connections to outside services: lead sync, booking pages, SCIM and SAML. The [i
 | `400` | Invalid settings: `{"error":"Payload URL: the URL must use https","field":"url"}`. `field` names the setting at fault, when there is one. Also other mistakes the user can fix (`"fill in Client ID first"`) |
 | `403` | `"you can't manage this connection"`: a member creating an organisation connection, or listing `?scope=org` |
 | `404` | `"connection not found"`, or `"unknown integration"` for a provider id the server doesn't have |
-| `409` | `"you already have a connection to this integration"`, or the category's own message (one booking page per person, one directory and one SSO connection per organisation) |
+| `409` | `"you already have a connection to this integration"`, or the category's own message (one directory and one SSO connection per organisation; booking pages have no limit) |
 | `422` | `"this integration isn't available on this server"` (coming soon, or the site's address / `SECRETS_KEY` missing), `"finish setting up this connection first"` (testing a pending connection), or `"SECRETS_KEY isn't set on this server, so secrets can't be stored"` |
 
 ### Manifest
@@ -1130,6 +1132,7 @@ How a provider describes itself. The catalog serves it, and the page builds the 
 | `secrets` | For each `secret` field, whether it has a value. Secret values are never returned |
 | `authorized` | OAuth connections: whether there's a token |
 | `missing` | Keys of required settings still empty |
+| `used_by_cards` | Booking pages only: how many cards show it |
 | `endpoints` | Values to enter in the provider: `[{key, label, value, help?}]`, such as SAML's ACS URL or SCIM's tenant URL. Empty without `PUBLIC_URL` |
 | `token` | `scim_token` connections: `{hint, created_at, last_used_at}` for the current token (its last 4 characters), or `null` |
 | `last_error`, `failure_count`, `last_synced_at` | Health: the latest failure that retrying didn't fix, failures in a row, and the last successful delivery |

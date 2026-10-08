@@ -75,7 +75,7 @@
 	id="organisation"
 	title="Organisation"
 	description={session.isOwner
-		? 'Shown to your team. New users start with the default storage limit; you can change it per person.'
+		? 'Shown to your team. New people start with the default storage limit; you can change it per person.'
 		: 'Only the owner can change these.'}
 >
 	{#if !org}

@@ -114,7 +114,7 @@ func (h *ProfileHandler) GetPublicProfile(w http.ResponseWriter, r *http.Request
 	} else {
 		public.Org = &branding.PublicOrg{Name: b.Name, LogoFile: b.LogoFile, LogoPolicy: b.LogoPolicy}
 	}
-	public.Booking = h.bookingsFor(r.Context(), profile.OrgID)(profile.holderID())
+	public.Booking = h.bookingsFor(r.Context(), profile.OrgID).For(profile.holderID(), profile.bookingID())
 	used, err := h.files.GetOrgFilesByPublicIDs(r.Context(), profile.OrgID, files.ReferencedIDs(profile.Data))
 	if err != nil {
 		log.Printf("profile files: %v", err)
@@ -138,23 +138,47 @@ func (h *ProfileHandler) getProfile(w http.ResponseWriter, r *http.Request, prof
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return nil, false
 	}
-	profile.Booking = h.bookingsFor(r.Context(), profile.OrgID)(profile.holderID())
+	pages := h.bookingsFor(r.Context(), profile.OrgID)
+	profile.Booking = pages.For(profile.holderID(), profile.bookingID())
+	profile.BookingOptions = pages.Options(profile.holderID())
 	return profile, true
 }
 
-// bookingsFor returns the lookup of the organisation's booking pages. A
-// failure is logged and shows no booking button rather than failing the card.
-func (h *ProfileHandler) bookingsFor(ctx context.Context, orgID int64) func(int64) *Booking {
-	none := func(int64) *Booking { return nil }
+// noBookings is an organisation without booking pages.
+type noBookings struct{}
+
+func (noBookings) For(int64, int64) *Booking { return nil }
+func (noBookings) Options(int64) []Booking   { return []Booking{} }
+
+// bookingsFor returns the organisation's booking pages. A failure is logged
+// and shows no booking button rather than failing the card.
+func (h *ProfileHandler) bookingsFor(ctx context.Context, orgID int64) BookingPages {
 	if h.bookings == nil {
-		return none
+		return noBookings{}
 	}
-	find, err := h.bookings(ctx, orgID)
+	pages, err := h.bookings(ctx, orgID)
 	if err != nil {
 		log.Printf("card bookings: %v", err)
-		return none
+		return noBookings{}
 	}
-	return find
+	return pages
+}
+
+// checkBooking makes sure a booking page the card newly chose is one a card
+// held by holderID may show. The page the card already had stays allowed,
+// so a card that changed hands can still be saved.
+func (h *ProfileHandler) checkBooking(w http.ResponseWriter, r *http.Request, orgID, holderID int64, data, before []byte) bool {
+	id := bookingConnectionID(data)
+	if id == 0 || (before != nil && id == bookingConnectionID(before)) {
+		return true
+	}
+	for _, b := range h.bookingsFor(r.Context(), orgID).Options(holderID) {
+		if b.ConnectionID == id {
+			return true
+		}
+	}
+	httpx.WriteError(w, http.StatusBadRequest, "that booking page isn't available for this card")
+	return false
 }
 
 // checkFiles makes sure every file a card newly points at is one the signed-in
@@ -194,9 +218,9 @@ func (h *ProfileHandler) GetMyProfiles(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	booking := h.bookingsFor(r.Context(), scope.OrgID)
+	pages := h.bookingsFor(r.Context(), scope.OrgID)
 	for _, p := range profiles {
-		p.Booking = booking(p.holderID())
+		p.Booking = pages.For(p.holderID(), p.bookingID())
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, profiles)
@@ -233,6 +257,13 @@ func (h *ProfileHandler) CreateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !h.checkFiles(w, r, req.Data, nil) {
+		return
+	}
+	holder := int64(0)
+	if req.AssignedUserID != nil {
+		holder = *req.AssignedUserID
+	}
+	if !h.checkBooking(w, r, principal.OrgID, holder, req.Data, nil) {
 		return
 	}
 
@@ -286,6 +317,9 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !h.checkFiles(w, r, req.Data, current.Data) {
+		return
+	}
+	if !h.checkBooking(w, r, current.OrgID, current.holderID(), req.Data, current.Data) {
 		return
 	}
 
