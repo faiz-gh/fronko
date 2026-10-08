@@ -144,20 +144,62 @@ func (r *Store) ListLeads(ctx context.Context, scope auth.Scope, f LeadFilter) (
 	return leads, total, nil
 }
 
-// DeleteLead removes a lead from one of the organisation's cards. It returns
-// database.ErrNotFound if there is no such lead in the organisation. Pending
-// lead sync for it finds nothing and stops.
-func (r *Store) DeleteLead(ctx context.Context, leadID, orgID int64) error {
-	tag, err := r.db.Exec(ctx, `
-		DELETE FROM leads l USING profiles p
-		WHERE l.lead_id = $1 AND p.profile_id = l.profile_id AND p.org_id = $2`, leadID, orgID)
-	if err != nil {
-		return err
+// DeleteLeads removes leads from the organisation's cards, with the lead
+// sync log lines about them (they name the person), and returns how many
+// were deleted. Leads outside the organisation are ignored. Pending lead
+// sync for them finds nothing and stops.
+func (r *Store) DeleteLeads(ctx context.Context, leadIDs []int64, orgID int64) (int64, error) {
+	var n int64
+	err := pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			DELETE FROM leads l USING profiles p
+			WHERE l.lead_id = ANY($1) AND p.profile_id = l.profile_id AND p.org_id = $2
+			RETURNING l.lead_id`, leadIDs, orgID)
+		if err != nil {
+			return err
+		}
+		ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+		if err != nil {
+			return err
+		}
+		n = int64(len(ids))
+		return forgetSync(ctx, tx, ids)
+	})
+	return n, err
+}
+
+// forgetSync deletes the lead sync log lines about deleted leads. The
+// foreign key only clears lead_id, and the summary names the person.
+func forgetSync(ctx context.Context, tx pgx.Tx, leadIDs []int64) error {
+	if len(leadIDs) == 0 {
+		return nil
 	}
-	if tag.RowsAffected() == 0 {
-		return database.ErrNotFound
-	}
-	return nil
+	_, err := tx.Exec(ctx, `DELETE FROM integration_activity WHERE lead_id = ANY($1)`, leadIDs)
+	return err
+}
+
+// PurgeExpired deletes the leads older than their organisation's lead
+// retention period (organisations without one keep their leads).
+func (r *Store) PurgeExpired(ctx context.Context) (int64, error) {
+	var n int64
+	err := pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			DELETE FROM leads l USING profiles p, organizations o
+			WHERE p.profile_id = l.profile_id AND o.org_id = p.org_id
+			  AND o.lead_retention_days IS NOT NULL
+			  AND l.created_at < now() - make_interval(days => o.lead_retention_days)
+			RETURNING l.lead_id`)
+		if err != nil {
+			return err
+		}
+		ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+		if err != nil {
+			return err
+		}
+		n = int64(len(ids))
+		return forgetSync(ctx, tx, ids)
+	})
+	return n, err
 }
 
 // SyncDetails is a lead with what lead sync sends alongside it.

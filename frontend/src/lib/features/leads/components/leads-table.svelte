@@ -4,8 +4,11 @@
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import SearchIcon from '@lucide/svelte/icons/search';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import XIcon from '@lucide/svelte/icons/x';
-	import { listAllLeads, listLeads, type Lead } from '$lib/features/leads/api';
+	import { deleteLeads, listAllLeads, listLeads, type Lead } from '$lib/features/leads/api';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { confirmDialog } from '$lib/core/confirm.svelte';
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
@@ -127,6 +130,51 @@
 			});
 	});
 
+	// Admins can select leads to delete them together, e.g. everything one
+	// person sent when they ask to be forgotten.
+	const selectable = $derived(session.isAdmin);
+	let selected = $state(new Set<number>());
+	let deleting = $state(false);
+	const pageIds = $derived((leads ?? []).map((l) => l.id));
+	const allSelected = $derived(pageIds.length > 0 && pageIds.every((id) => selected.has(id)));
+	const someSelected = $derived(!allSelected && pageIds.some((id) => selected.has(id)));
+	function toggle(id: number, on: boolean) {
+		const next = new Set(selected);
+		if (on) next.add(id);
+		else next.delete(id);
+		selected = next;
+	}
+	function toggleAll(on: boolean) {
+		const next = new Set(selected);
+		for (const id of pageIds) {
+			if (on) next.add(id);
+			else next.delete(id);
+		}
+		selected = next;
+	}
+	async function deleteSelected() {
+		const ids = [...selected];
+		const ok = await confirmDialog({
+			title: `Delete ${plural(ids.length, 'lead')}?`,
+			description:
+				'They are removed for good, with their lead sync history. Copies already sent to connected tools (such as a CRM) are not deleted there.',
+			confirmLabel: 'Delete',
+			destructive: true
+		});
+		if (!ok) return;
+		deleting = true;
+		try {
+			const { deleted } = await deleteLeads(ids);
+			toast.success(`Deleted ${plural(deleted, 'lead')}`);
+			selected = new Set();
+			refresh();
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Failed to delete leads');
+		} finally {
+			deleting = false;
+		}
+	}
+
 	/** Refetches this page of leads, and the cards so the lead-count badges catch up too. */
 	function refresh() {
 		reloadToken++;
@@ -223,6 +271,12 @@
 			{/if}
 		</div>
 		<div class="ml-auto flex items-center gap-3">
+			{#if selectable && selected.size > 0}
+				<Button variant="destructive" onclick={deleteSelected} disabled={deleting}>
+					{#if deleting}<Spinner data-icon="inline-start" />{:else}<Trash2Icon data-icon="inline-start" />{/if}
+					Delete {selected.size}
+				</Button>
+			{/if}
 			<Button variant="outline" onclick={refresh} disabled={loading} aria-label="Refresh leads">
 				<RefreshCwIcon data-icon="inline-start" class={cn(loading && 'animate-spin')} />
 				<span class="max-sm:sr-only">Refresh</span>
@@ -278,7 +332,17 @@
 			<Table.Root>
 				<Table.Header>
 					<Table.Row class="bg-muted/40 hover:bg-muted/40">
-						<Table.Head class="h-10 pl-5">Name</Table.Head>
+						{#if selectable}
+							<Table.Head class="h-10 w-10 pl-5">
+								<Checkbox
+									checked={allSelected}
+									indeterminate={someSelected}
+									onCheckedChange={(v) => toggleAll(v === true)}
+									aria-label="Select all leads on this page"
+								/>
+							</Table.Head>
+						{/if}
+						<Table.Head class={cn('h-10', !selectable && 'pl-5')}>Name</Table.Head>
 						{#if showCardColumn}
 							<Table.Head class="hidden h-10 md:table-cell">Card</Table.Head>
 						{/if}
@@ -293,7 +357,16 @@
 					{#each leads as lead (lead.id)}
 						{@const info = showCardColumn ? cardInfo(lead.profile_id) : null}
 						<Table.Row class="cursor-pointer" onclick={() => (openLead = lead)}>
-							<Table.Cell class="py-3 pl-5">
+							{#if selectable}
+								<Table.Cell class="w-10 py-3 pl-5" onclick={(e) => e.stopPropagation()}>
+									<Checkbox
+										checked={selected.has(lead.id)}
+										onCheckedChange={(v) => toggle(lead.id, v === true)}
+										aria-label="Select {lead.name}"
+									/>
+								</Table.Cell>
+							{/if}
+							<Table.Cell class={cn('py-3', !selectable && 'pl-5')}>
 								<div class="flex items-center gap-3">
 									<Avatar.Root class="size-8 text-xs">
 										<Avatar.Fallback class="bg-muted font-semibold">{initials(lead.name)}</Avatar.Fallback>
@@ -401,7 +474,7 @@
 					{:else}
 						<Table.Row class="hover:bg-transparent">
 							<Table.Cell
-								colspan={3 + (showCardColumn ? 1 : 0) + (showUsers ? 1 : 0)}
+								colspan={3 + (showCardColumn ? 1 : 0) + (showUsers ? 1 : 0) + (selectable ? 1 : 0)}
 								class="text-muted-foreground h-32 text-center"
 							>
 								No leads match{search ? ` “${search}”` : ' this filter'}.

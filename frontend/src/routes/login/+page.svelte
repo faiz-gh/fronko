@@ -27,6 +27,7 @@
 
 	const expired = page.url.searchParams.has('expired');
 	const passwordReset = page.url.searchParams.has('reset');
+	const accountDeleted = page.url.searchParams.has('deleted');
 	// Single sign-on sends people back here when it fails, saying why.
 	const ssoError = page.url.searchParams.get('sso_error') ?? '';
 
@@ -152,6 +153,12 @@
 			<CircleAlertIcon />
 			<Alert.Title>Single sign-on didn't work</Alert.Title>
 			<Alert.Description>{ssoError}</Alert.Description>
+		</Alert.Root>
+	{:else if accountDeleted && mode === 'login'}
+		<Alert.Root>
+			<CircleCheckIcon />
+			<Alert.Title>Your account was deleted</Alert.Title>
+			<Alert.Description>We've emailed you a confirmation. Thanks for using Fronko.</Alert.Description>
 		</Alert.Root>
 	{:else if passwordReset && mode === 'login'}
 		<Alert.Root>

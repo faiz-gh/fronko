@@ -95,6 +95,8 @@ Fronko is an open-source alternative to hosted platforms such as Popl and Mobilo
 
 - **Verified sign-up.** Users sign up with a username and an email address, which they confirm with a 6-digit emailed code. They can sign in with either, or with their organisation's single sign-on.
 - **Self-service recovery.** Forgotten passwords are reset with an emailed code. From **Settings**, users can change their email address (the old address is notified) or their password (which signs out every other device).
+- **Your data, your call.** From **Settings**, anyone can download everything Fronko holds about them as JSON, or delete their account. An owner first hands the organisation to someone else, or deletes it with everything in it. Deletion needs the password again and is immediate.
+- **Privacy by default.** Organisations link their own privacy notice from their cards' contact forms and can delete leads automatically after a set time. Card analytics use no cookies, and browsers that send Do Not Track or Global Privacy Control aren't counted. Cards stay out of search engines unless their holder allows it. See [the GDPR audit](docs/compliance/gdpr-audit.md).
 - **Bring your own storage.** Photos and brochures go to the organisation's own S3-compatible bucket. Storage keys are encrypted at rest with AES-256-GCM, buckets stay private, and visitors get short-lived signed links.
 
 ## How it works
@@ -226,7 +228,7 @@ All settings are environment variables, set in `deploy/.env`.
 | `FRONTEND_URL` | | Public origin of the site, such as `https://cards.example.com`. Allowed as a CORS origin (comma-separate several), and the first one is the site's address for integrations unless `PUBLIC_URL` says otherwise. Set it even on a single domain. |
 | `BACKEND_URL` | | Public API URL the browser calls, such as `https://api.cards.example.com`. Leave empty to proxy through the frontend (same-origin). When set, OAuth redirect URLs, SAML ACS URLs and the SCIM base URL are on it. |
 | `COOKIE_SECURE` | | Defaults to `true`. Set to `false` only when testing over plain HTTP. |
-| `SMTP_HOST` | | Outgoing mail server. Without it, emails (including their codes) are only written to the backend log. |
+| `SMTP_HOST` | | Outgoing mail server. Without it, emails aren't sent; in development their contents (including codes) are written to the backend log. |
 | `SMTP_PORT` | | Defaults to `587`. Port `465` uses implicit TLS; other ports upgrade with STARTTLS. |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | | SMTP credentials. |
 | `SMTP_FROM` | With `SMTP_HOST` | Sender address, such as `Fronko <no-reply@example.com>`. Must be an address your provider lets you send from. |

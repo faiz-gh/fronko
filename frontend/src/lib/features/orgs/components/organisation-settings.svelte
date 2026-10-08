@@ -4,13 +4,15 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
+	import * as Select from '$lib/components/ui/select';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import FormSection from '$lib/components/shared/form-section.svelte';
+	import { confirmDialog } from '$lib/core/confirm.svelte';
 	import { session } from '$lib/core/session.svelte';
 	import { SLUG_PATTERN } from '$lib/features/cards/card';
 	import QuotaInput from '$lib/features/files/components/quota-input.svelte';
-	import { getOrganization, updateOrganization, updateOrgHandle, type Organization } from '../api';
+	import { getOrganization, updateOrganization, updateOrgHandle, updateOrgPrivacy, type Organization } from '../api';
 
 	// Organisation (owner edits; admins see it)
 	let org = $state<Organization | null>(null);
@@ -25,6 +27,8 @@
 				orgName = o.name;
 				handle = o.handle;
 				defaultQuota = o.default_quota_bytes;
+				privacyUrl = o.privacy_url ?? '';
+				retention = o.lead_retention_days === null ? 'forever' : String(o.lead_retention_days);
 			})
 			.catch(() => {});
 	});
@@ -44,6 +48,54 @@
 			toast.error(e instanceof Error ? e.message : 'Failed to save');
 		} finally {
 			savingOrg = false;
+		}
+	}
+
+	// Privacy: the notice linked from contact forms, and how long leads are kept.
+	const RETENTION_OPTIONS: { value: string; label: string }[] = [
+		{ value: 'forever', label: 'Until someone deletes them' },
+		{ value: '90', label: '3 months' },
+		{ value: '180', label: '6 months' },
+		{ value: '365', label: '1 year' },
+		{ value: '730', label: '2 years' },
+		{ value: '1095', label: '3 years' }
+	];
+	let privacyUrl = $state('');
+	let retention = $state('forever');
+	let savingPrivacy = $state(false);
+	const retentionOptions = $derived(
+		RETENTION_OPTIONS.some((o) => o.value === retention)
+			? RETENTION_OPTIONS
+			: [...RETENTION_OPTIONS, { value: retention, label: `${retention} days` }]
+	);
+	const retentionDays = $derived(retention === 'forever' ? null : Number(retention));
+	const privacyUrlInvalid = $derived(!!privacyUrl.trim() && !/^https?:\/\/[^\s/]+\.[^\s]+$/i.test(privacyUrl.trim()));
+	const privacyChanged = $derived(
+		!!org && ((privacyUrl.trim() || null) !== org.privacy_url || retentionDays !== org.lead_retention_days)
+	);
+	async function savePrivacy(event: SubmitEvent) {
+		event.preventDefault();
+		if (!privacyChanged || privacyUrlInvalid) return;
+		const shorter =
+			retentionDays !== null && (org?.lead_retention_days === null || retentionDays < (org?.lead_retention_days ?? 0));
+		if (shorter) {
+			const ok = await confirmDialog({
+				title: 'Delete older leads?',
+				description: `Leads older than ${retentionOptions.find((o) => o.value === retention)?.label.toLowerCase()} will be deleted automatically, starting within a few hours. Export any you want to keep first. This can't be undone.`,
+				confirmLabel: 'Save and delete older leads',
+				destructive: true
+			});
+			if (!ok) return;
+		}
+		savingPrivacy = true;
+		try {
+			org = await updateOrgPrivacy(privacyUrl.trim() || null, retentionDays);
+			privacyUrl = org.privacy_url ?? '';
+			toast.success('Privacy settings saved');
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Failed to save');
+		} finally {
+			savingPrivacy = false;
 		}
 	}
 
@@ -158,6 +210,63 @@
 			<div>
 				<Button type="submit" variant="outline" disabled={!handleChanged || handleInvalid || savingHandle}>
 					Change handle
+				</Button>
+			</div>
+		</form>
+	{/if}
+</FormSection>
+
+<FormSection
+	id="privacy"
+	title="Privacy"
+	description="What visitors are told when they leave their details, and how long {session.orgName} keeps them."
+>
+	{#if !org}
+		<Skeleton class="h-24 rounded-xl" />
+	{:else}
+		<form onsubmit={savePrivacy} class="flex flex-col gap-6">
+			<Field.Group class="gap-5">
+				<Field.Field data-invalid={privacyUrlInvalid || undefined} class="sm:max-w-md">
+					<Field.Label for="privacy-url">Privacy notice</Field.Label>
+					<Input
+						id="privacy-url"
+						type="url"
+						inputmode="url"
+						placeholder="https://example.com/privacy"
+						bind:value={privacyUrl}
+						disabled={savingPrivacy}
+						aria-invalid={privacyUrlInvalid || undefined}
+					/>
+					{#if privacyUrlInvalid}
+						<Field.Error>Enter a full link starting with https://</Field.Error>
+					{:else}
+						<Field.Description>
+							Linked from every card's contact form and footer, so visitors can read how you use their details. Your
+							organisation is responsible for the leads it collects.
+						</Field.Description>
+					{/if}
+				</Field.Field>
+				<Field.Field class="sm:max-w-md">
+					<Field.Label for="lead-retention">Keep leads for</Field.Label>
+					<Select.Root type="single" bind:value={retention} disabled={savingPrivacy}>
+						<Select.Trigger id="lead-retention" class="w-full">
+							{retentionOptions.find((o) => o.value === retention)?.label}
+						</Select.Trigger>
+						<Select.Content>
+							{#each retentionOptions as o (o.value)}
+								<Select.Item value={o.value} label={o.label}>{o.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+					<Field.Description>
+						Older leads are deleted automatically, from every card. Keep them only as long as you need them.
+					</Field.Description>
+				</Field.Field>
+			</Field.Group>
+			<div>
+				<Button type="submit" disabled={!privacyChanged || privacyUrlInvalid || savingPrivacy}>
+					{#if savingPrivacy}<Spinner data-icon="inline-start" />{/if}
+					Save privacy settings
 				</Button>
 			</div>
 		</form>

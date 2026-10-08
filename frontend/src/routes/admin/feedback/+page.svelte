@@ -127,8 +127,8 @@
 						</div>
 						<p class="line-clamp-2 text-sm text-pretty whitespace-pre-line">{f.message}</p>
 						<div class="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-							<span>{f.sender_email}</span>
-							<span>{f.org_name}</span>
+							<span>{f.sender_email || 'Deleted account'}</span>
+							<span>{f.org_name || 'Deleted organisation'}</span>
 							{#if f.reply_count}
 								<span class="flex items-center gap-1">
 									<ReplyIcon class="size-3" />

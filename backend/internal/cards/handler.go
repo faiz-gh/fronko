@@ -112,7 +112,7 @@ func (h *ProfileHandler) GetPublicProfile(w http.ResponseWriter, r *http.Request
 	if b, err := h.branding.GetOrgBranding(r.Context(), profile.OrgID); err != nil {
 		log.Printf("profile org branding: %v", err)
 	} else {
-		public.Org = &branding.PublicOrg{Name: b.Name, LogoFile: b.LogoFile, LogoPolicy: b.LogoPolicy}
+		public.Org = &branding.PublicOrg{Name: b.Name, LogoFile: b.LogoFile, LogoPolicy: b.LogoPolicy, PrivacyURL: b.PrivacyURL}
 	}
 	public.Booking = h.bookingsFor(r.Context(), profile.OrgID).For(profile.holderID(), profile.bookingID())
 	used, err := h.files.GetOrgFilesByPublicIDs(r.Context(), profile.OrgID, files.ReferencedIDs(profile.Data))

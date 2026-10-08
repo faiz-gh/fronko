@@ -116,6 +116,19 @@ func (r *Store) GetUserByID(ctx context.Context, id int64) (*User, error) {
 	return r.getUser(ctx, `user_id = $1`, id)
 }
 
+// RehashPassword replaces a password hash with a stronger one for the same
+// password, unless it changed meanwhile. Sessions stay valid.
+func (r *Store) RehashPassword(ctx context.Context, userID int64, oldHash, newHash string) error {
+	_, err := r.db.Exec(ctx, `UPDATE users SET password_hash = $3 WHERE user_id = $1 AND password_hash = $2`,
+		userID, oldHash, newHash)
+	return err
+}
+
+// GetOrgOwner returns the organisation's owner.
+func (r *Store) GetOrgOwner(ctx context.Context, orgID int64) (*User, error) {
+	return r.getUser(ctx, `org_id = $1 AND role = 'owner'`, orgID)
+}
+
 // GetUserInOrg returns the user only if they belong to orgID; otherwise database.ErrNotFound.
 func (r *Store) GetUserInOrg(ctx context.Context, userID, orgID int64) (*User, error) {
 	return r.getUser(ctx, `user_id = $1 AND org_id = $2`, userID, orgID)
@@ -351,7 +364,142 @@ func (r *Store) DeleteOrgUser(ctx context.Context, userID, orgID int64) error {
 		if _, err := tx.Exec(ctx, `UPDATE profiles SET user_id = $2 WHERE user_id = $1`, userID, ownerID); err != nil {
 			return err
 		}
+		if err := forgetUser(ctx, tx, userID); err != nil {
+			return err
+		}
 		_, err = tx.Exec(ctx, `DELETE FROM users WHERE user_id = $1`, userID)
 		return database.MapError(err)
 	})
+}
+
+// forgetUser erases what would outlive a deleted user and still identify
+// them: the email on feedback they sent, and integration log lines about
+// them (single sign-on records "Signed in <email>").
+func forgetUser(ctx context.Context, tx pgx.Tx, userID int64) error {
+	if _, err := tx.Exec(ctx, `UPDATE feedback SET sender_email = NULL WHERE user_id = $1`, userID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `DELETE FROM integration_activity WHERE user_id = $1 AND lead_id IS NULL`, userID)
+	return err
+}
+
+// Rekey re-encrypts an organisation's bucket keys for a new owner, since
+// they're bound to the owner who holds them (see files.StorageService).
+type Rekey func(accessKeyIDEnc, secretAccessKeyEnc []byte) (newAccessKeyIDEnc, newSecretAccessKeyEnc []byte, err error)
+
+// TransferOwnership makes toID the organisation's owner and fromID an admin,
+// moving the organisation's bucket keys (re-encrypted by rekey) to the new
+// owner. Both are signed out everywhere, since their roles changed.
+// database.ErrNotFound unless fromID is the owner and toID an active,
+// verified member of the same organisation.
+func (r *Store) TransferOwnership(ctx context.Context, orgID, fromID, toID int64, rekey Rekey) error {
+	return pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+		var n int
+		if err := tx.QueryRow(ctx, `
+			SELECT COUNT(*) FROM users WHERE org_id = $1 AND (
+				(user_id = $2 AND role = 'owner') OR
+				(user_id = $3 AND role <> 'owner' AND suspended_at IS NULL AND email_verified_at IS NOT NULL))`,
+			orgID, fromID, toID).Scan(&n); err != nil {
+			return err
+		}
+		if n != 2 || fromID == toID {
+			return database.ErrNotFound
+		}
+		// Only one owner at a time (users_one_owner_per_org_idx), so demote first.
+		if _, err := tx.Exec(ctx, `
+			UPDATE users SET role = 'admin', session_version = session_version + 1, updated_at = now()
+			WHERE user_id = $1`, fromID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE users SET role = 'owner', session_version = session_version + 1, updated_at = now()
+			WHERE user_id = $1`, toID); err != nil {
+			return err
+		}
+
+		var idEnc, secretEnc []byte
+		err := tx.QueryRow(ctx, `
+			SELECT access_key_id_enc, secret_access_key_enc FROM user_storage WHERE user_id = $1 FOR UPDATE`,
+			fromID).Scan(&idEnc, &secretEnc)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		newID, newSecret, err := rekey(idEnc, secretEnc)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM user_storage WHERE user_id = $1`, toID); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `
+			UPDATE user_storage SET user_id = $2, access_key_id_enc = $3, secret_access_key_enc = $4, updated_at = now()
+			WHERE user_id = $1`, fromID, toID, newID, newSecret)
+		return err
+	})
+}
+
+// DeletionSummary is what deleting an account would affect, so the
+// dashboard can spell it out first.
+type DeletionSummary struct {
+	// What the user created or holds.
+	CardsHeld     int64 `json:"cards_held"`
+	CardsMade     int64 `json:"cards_made"`
+	Files         int64 `json:"files"`
+	PersonalFiles int64 `json:"personal_files"`
+	Leads         int64 `json:"leads"`
+	// The whole organisation, for an owner deleting it.
+	OrgMembers int64 `json:"org_members"`
+	OrgCards   int64 `json:"org_cards"`
+	OrgLeads   int64 `json:"org_leads"`
+	OrgFiles   int64 `json:"org_files"`
+	OrgTeams   int64 `json:"org_teams"`
+}
+
+// GetDeletionSummary counts what the user has and what their organisation has.
+func (r *Store) GetDeletionSummary(ctx context.Context, userID, orgID int64) (*DeletionSummary, error) {
+	var d DeletionSummary
+	err := r.db.QueryRow(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM profiles WHERE assigned_user_id = $1),
+			(SELECT COUNT(*) FROM profiles WHERE user_id = $1),
+			(SELECT COUNT(*) FROM files WHERE user_id = $1),
+			(SELECT COUNT(*) FROM files WHERE user_id = $1 AND area = 'personal'),
+			(SELECT COUNT(*) FROM leads WHERE assigned_user_id = $1),
+			(SELECT COUNT(*) FROM users WHERE org_id = $2),
+			(SELECT COUNT(*) FROM profiles WHERE org_id = $2),
+			(SELECT COUNT(*) FROM leads l JOIN profiles p ON p.profile_id = l.profile_id WHERE p.org_id = $2),
+			(SELECT COUNT(*) FROM files WHERE org_id = $2),
+			(SELECT COUNT(*) FROM teams WHERE org_id = $2)`, userID, orgID,
+	).Scan(&d.CardsHeld, &d.CardsMade, &d.Files, &d.PersonalFiles, &d.Leads,
+		&d.OrgMembers, &d.OrgCards, &d.OrgLeads, &d.OrgFiles, &d.OrgTeams)
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+// ListTransferCandidates returns who the organisation's ownership could pass
+// to: everyone else who is active and has a verified email, admins first.
+func (r *Store) ListTransferCandidates(ctx context.Context, orgID, ownerID int64) ([]auth.UserRef, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT user_id, username FROM users
+		WHERE org_id = $1 AND user_id <> $2 AND suspended_at IS NULL AND email_verified_at IS NOT NULL
+		ORDER BY role = 'admin' DESC, LOWER(username)`, orgID, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (auth.UserRef, error) {
+		var u auth.UserRef
+		err := row.Scan(&u.ID, &u.Username)
+		return u, err
+	})
+}
+
+// PurgeExpiredCodes deletes one-time codes past their expiry.
+func (r *Store) PurgeExpiredCodes(ctx context.Context) (int64, error) {
+	tag, err := r.db.Exec(ctx, `DELETE FROM email_codes WHERE expires_at < now()`)
+	return tag.RowsAffected(), err
 }

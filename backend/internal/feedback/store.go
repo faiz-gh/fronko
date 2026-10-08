@@ -31,7 +31,7 @@ func (r *Store) CreateFeedback(ctx context.Context, f *Feedback) error {
 }
 
 const feedbackSelect = `
-	SELECT f.feedback_id, f.org_id, f.user_id, f.sender_email, f.org_name, f.category, f.rating, f.message,
+	SELECT f.feedback_id, f.org_id, f.user_id, COALESCE(f.sender_email, ''), COALESCE(f.org_name, ''), f.category, f.rating, f.message,
 	       f.page_path, f.status, f.created_at, f.updated_at,
 	       (SELECT COUNT(*) FROM feedback_replies fr WHERE fr.feedback_id = f.feedback_id)
 	FROM feedback f`

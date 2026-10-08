@@ -59,7 +59,12 @@ func (req *feedbackRequest) validate() string {
 	if utf8.RuneCountInString(req.Message) > maxFeedbackLen {
 		return "message must be at most 5000 characters"
 	}
-	// The page is only context; drop anything that doesn't look like an app path.
+	// The page is only context: keep the path without its query or fragment
+	// (they can carry search terms or tokens), and drop anything that doesn't
+	// look like an app path.
+	if i := strings.IndexAny(req.PagePath, "?#"); i >= 0 {
+		req.PagePath = req.PagePath[:i]
+	}
 	if !strings.HasPrefix(req.PagePath, "/") || len(req.PagePath) > maxPagePathLen ||
 		strings.ContainsFunc(req.PagePath, unicode.IsControl) {
 		req.PagePath = ""

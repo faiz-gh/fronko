@@ -78,6 +78,8 @@ func (c *Codes) IssueTo(ctx context.Context, userID int64, to, purpose string, f
 		msg = mail.ResetPasswordMessage(code, auth.CodeTTL)
 	case auth.PurposeChangeEmail:
 		msg = mail.ChangeEmailMessage(code, auth.CodeTTL)
+	case auth.PurposeDeleteAccount:
+		msg = mail.DeleteAccountCodeMessage(code, auth.CodeTTL)
 	default:
 		msg = mail.VerifyEmailMessage(code, auth.CodeTTL)
 	}

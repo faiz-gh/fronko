@@ -59,3 +59,15 @@ func TestCORS(t *testing.T) {
 		assert.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"))
 	})
 }
+
+func TestSecurityHeaders(t *testing.T) {
+	for _, https := range []bool{false, true} {
+		rec := httptest.NewRecorder()
+		SecurityHeaders(https, http.HandlerFunc(okHandler)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/x", nil))
+		h := rec.Header()
+		assert.Equal(t, "nosniff", h.Get("X-Content-Type-Options"))
+		assert.Equal(t, "DENY", h.Get("X-Frame-Options"))
+		assert.Equal(t, "strict-origin-when-cross-origin", h.Get("Referrer-Policy"))
+		assert.Equal(t, https, h.Get("Strict-Transport-Security") != "", "HSTS only over HTTPS")
+	}
+}

@@ -128,9 +128,11 @@ func freeHandle(ctx context.Context, q database.Querier, base string) (string, e
 func (r *Store) GetOrganization(ctx context.Context, orgID int64) (*Organization, error) {
 	var o Organization
 	err := r.db.QueryRow(ctx,
-		`SELECT org_id, name, handle, default_quota_bytes, created_at, updated_at, suspended_at, suspended_reason
+		`SELECT org_id, name, handle, default_quota_bytes, privacy_url, lead_retention_days,
+		        created_at, updated_at, suspended_at, suspended_reason
 		FROM organizations WHERE org_id = $1`, orgID,
-	).Scan(&o.ID, &o.Name, &o.Handle, &o.DefaultQuotaBytes, &o.CreatedAt, &o.UpdatedAt, &o.SuspendedAt, &o.SuspendedReason)
+	).Scan(&o.ID, &o.Name, &o.Handle, &o.DefaultQuotaBytes, &o.PrivacyURL, &o.LeadRetentionDays,
+		&o.CreatedAt, &o.UpdatedAt, &o.SuspendedAt, &o.SuspendedReason)
 	if err != nil {
 		return nil, database.MapError(err)
 	}
@@ -141,9 +143,18 @@ func (r *Store) GetOrganization(ctx context.Context, orgID int64) (*Organization
 func (r *Store) UpdateOrganization(ctx context.Context, o *Organization) error {
 	err := r.db.QueryRow(ctx, `
 		UPDATE organizations SET name = $2, default_quota_bytes = $3, updated_at = now()
-		WHERE org_id = $1 RETURNING handle, created_at, updated_at`, o.ID, o.Name, o.DefaultQuotaBytes,
-	).Scan(&o.Handle, &o.CreatedAt, &o.UpdatedAt)
+		WHERE org_id = $1 RETURNING handle, privacy_url, lead_retention_days, created_at, updated_at`,
+		o.ID, o.Name, o.DefaultQuotaBytes,
+	).Scan(&o.Handle, &o.PrivacyURL, &o.LeadRetentionDays, &o.CreatedAt, &o.UpdatedAt)
 	return database.MapError(err)
+}
+
+// SetOrgPrivacy saves the organisation's privacy notice link and lead
+// retention period (nil for either clears it).
+func (r *Store) SetOrgPrivacy(ctx context.Context, orgID int64, privacyURL *string, leadRetentionDays *int) error {
+	return database.ExecOne(ctx, r.db, `
+		UPDATE organizations SET privacy_url = $2, lead_retention_days = $3, updated_at = now()
+		WHERE org_id = $1`, orgID, privacyURL, leadRetentionDays)
 }
 
 // SetOrgHandle changes the organisation's link handle. Every card link
@@ -158,4 +169,26 @@ func (r *Store) IsOrgSuspended(ctx context.Context, orgID int64) (bool, error) {
 	var suspended bool
 	err := r.db.QueryRow(ctx, `SELECT suspended_at IS NOT NULL FROM organizations WHERE org_id = $1`, orgID).Scan(&suspended)
 	return suspended, database.MapError(err)
+}
+
+// DeleteOrganization deletes an organisation and, through the foreign keys,
+// everything in it: its people, cards, leads, analytics, teams, files and
+// integrations. What outlives it is anonymised: feedback its people sent
+// keeps only the message, and the platform's audit log keeps only that an
+// action happened. The bucket objects must be removed before this (see
+// files.StorageService.DeleteOrgObjects), while the owner's keys still exist.
+func (r *Store) DeleteOrganization(ctx context.Context, orgID int64) error {
+	return pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `
+			UPDATE feedback SET sender_email = NULL, org_name = NULL
+			WHERE org_id = $1 OR user_id IN (SELECT user_id FROM users WHERE org_id = $1)`, orgID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE admin_audit_log SET detail = detail - 'org_name' - 'reason'
+			WHERE target_type = 'org' AND target_id = $1`, orgID); err != nil {
+			return err
+		}
+		return database.ExecOne(ctx, tx, `DELETE FROM organizations WHERE org_id = $1`, orgID)
+	})
 }

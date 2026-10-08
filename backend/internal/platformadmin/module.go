@@ -3,6 +3,7 @@ package platformadmin
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"time"
 
@@ -50,10 +51,25 @@ func (h *AdminHandler) Guard() func(http.Handler) http.Handler {
 // Each run rewrites today's row, so today's point stays current and the last
 // run of a day becomes that day's final value. Missed runs (the server was
 // down) only leave gaps in the trend.
+//
+// Feedback and the audit log are kept for two years (Retention), then deleted.
 func (h *AdminHandler) Tasks() []jobs.Task {
 	return []jobs.Task{{
 		Name:  "usage snapshot",
 		Every: snapshotInterval,
 		Run:   func(ctx context.Context) error { return h.store.TakeUsageSnapshot(ctx, time.Now()) },
+	}, {
+		Name:  "admin retention",
+		Every: 24 * time.Hour,
+		Run: func(ctx context.Context) error {
+			fb, logs, err := h.store.PurgeOld(ctx, time.Now().Add(-Retention))
+			if fb+logs > 0 {
+				log.Printf("admin retention: deleted %d feedback, %d audit log entries", fb, logs)
+			}
+			return err
+		},
 	}}
 }
+
+// Retention is how long feedback and the admin audit log are kept.
+const Retention = 2 * 365 * 24 * time.Hour

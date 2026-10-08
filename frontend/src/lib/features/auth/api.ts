@@ -105,3 +105,73 @@ export function requestEmailChange(email: string, password: string): Promise<voi
 export function confirmEmailChange(code: string): Promise<AuthUser> {
 	return apiClient<AuthUser>('/api/me/email/change/confirm', { method: 'POST', body: JSON.stringify({ code }) });
 }
+
+/** What deleting the account would do, shown before anything happens. */
+export interface DeletionInfo {
+	username: string;
+	role: Role;
+	has_password: boolean;
+	/** Managed by the organisation's identity provider (SCIM): removed there, not here. */
+	managed: boolean;
+	org_name: string;
+	org_handle: string;
+	/** Who a member's or admin's cards and files pass to. */
+	owner_username?: string;
+	/** The owner is the only person in the organisation. */
+	sole_member: boolean;
+	summary: {
+		cards_held: number;
+		cards_made: number;
+		files: number;
+		personal_files: number;
+		leads: number;
+		org_members: number;
+		org_cards: number;
+		org_leads: number;
+		org_files: number;
+		org_teams: number;
+	};
+	/** Who an owner can hand the organisation to. */
+	transfer_candidates: { id: number; username: string }[];
+}
+
+export function getDeletionInfo(): Promise<DeletionInfo> {
+	return apiClient<DeletionInfo>('/api/me/account/deletion');
+}
+
+/** Emails a code that confirms deleting (or handing over) an account with no password. */
+export function sendDeletionCode(): Promise<void> {
+	return apiClient<void>('/api/me/account/deletion/code', { method: 'POST' });
+}
+
+/** Re-authentication for destructive account actions: the password, or an emailed code. */
+export interface Reauth {
+	password?: string;
+	code?: string;
+}
+
+/** Makes someone else the owner; the caller becomes an admin. Returns the caller's updated account. */
+export function transferOwnership(userId: number, reauth: Reauth): Promise<AuthUser> {
+	return apiClient<AuthUser>('/api/me/ownership/transfer', {
+		method: 'POST',
+		body: JSON.stringify({ user_id: userId, ...reauth })
+	});
+}
+
+/**
+ * Permanently deletes the signed-in account (and, for an owner with
+ * `deleteOrg`, the whole organisation). `confirm` is the username, or the
+ * organisation's handle when deleting the organisation.
+ */
+export function deleteAccount(confirm: string, reauth: Reauth, deleteOrg = false): Promise<void> {
+	return apiClient<void>(
+		'/api/me/account',
+		{ method: 'DELETE', body: JSON.stringify({ confirm, delete_org: deleteOrg, ...reauth }) },
+		{ redirectOnUnauthorized: false }
+	);
+}
+
+/** Everything Fronko holds about the signed-in person, as a JSON document. */
+export function exportMyData(): Promise<unknown> {
+	return apiClient<unknown>('/api/me/export');
+}

@@ -32,9 +32,19 @@ func NewService(jwtSecret string) *Service {
 	}
 }
 
+// passwordCost is the bcrypt work factor for new hashes.
+const passwordCost = 12
+
 func (s *Service) HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), passwordCost)
 	return string(bytes), err
+}
+
+// NeedsRehash reports whether a password hash was made with a lower work
+// factor than new ones get, so it should be replaced at the next sign-in.
+func NeedsRehash(hash string) bool {
+	cost, err := bcrypt.Cost([]byte(hash))
+	return err == nil && cost < passwordCost
 }
 
 func (s *Service) CheckPasswordHash(password, hash string) bool {

@@ -325,6 +325,10 @@ func (h *AdminHandler) ReplyFeedback(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if f.SenderEmail == "" {
+		httpx.WriteError(w, http.StatusConflict, "the sender deleted their account, so there's nobody to reply to")
+		return
+	}
 
 	m := mail.FeedbackReplyMessage(f.Message, req.Body)
 	m.ReplyTo = h.replyTo

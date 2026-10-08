@@ -176,7 +176,7 @@ All configuration comes from environment variables, read once at startup by `con
 | `JOB_WORKERS`   |    | `2` | Background jobs this instance runs at once. `0` queues jobs without running them, for instances that should only serve requests. |
 | `FRONKO_ENV`    |    | `production` | `production` or `development`. Development lets integrations call private and local addresses (a webhook receiver on your machine) and allows `fronko seed`. **Never use development in production.** |
 | `CORS_ALLOWED_ORIGINS` |    | none | Comma-separated browser origins allowed to call the API cross-origin with the session cookie. Leave empty when the frontend's nginx proxies the API (same-origin). In Docker it's set from `FRONTEND_URL`. |
-| `SMTP_HOST`     |    | none | Outgoing mail server. **Unset logs each email (with its code) to stdout instead**, which is only useful in development. |
+| `SMTP_HOST`     |    | none | Outgoing mail server. Unset, emails aren't sent: with `FRONKO_ENV=development` each one (with its code) is logged to stdout; otherwise only the subject and recipient domain are, so codes and temporary passwords never reach the logs. |
 | `SMTP_PORT`     |    | `587` | `465` uses implicit TLS; any other port upgrades with STARTTLS when offered. |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | | none | SMTP credentials. Auth is skipped when the username is empty. Credentials are never sent over an unencrypted connection (except to localhost). |
 | `SMTP_FROM`     | with `SMTP_HOST` | none | Sender, e.g. `Fronko <no-reply@fronko.app>`. |
@@ -305,7 +305,9 @@ Accounts are made from the command line (`./fronko admin create --email …`); t
 
 Raw IP addresses are never stored. Because each salt is deleted after a day, a hash can't be linked to an address, or to the same person on another day or card. `Collect` always answers `204`.
 
-**Retention.** The hourly `analytics retention` task deletes events older than `ANALYTICS_RETENTION_DAYS` and every salt but today's and yesterday's.
+**Retention.** The hourly `analytics retention` task deletes events older than `ANALYTICS_RETENTION_DAYS` and every salt but today's and yesterday's. Requests with `Sec-GPC: 1` or `DNT: 1` are never recorded.
+
+**Other retention tasks.** `expired email codes` (hourly) deletes unused codes past their expiry. `lead retention` (every 6 hours) deletes leads older than their organisation's `lead_retention_days`, when set. `admin retention` (daily) deletes feedback and admin audit log entries older than two years. Integration activity (90 days) and finished jobs (30 days) have their own. The full list, with what each table holds, is in [the GDPR audit](../docs/compliance/gdpr-audit.md).
 
 **Reporting.** `/api/me/analytics/*` limits events exactly like leads (`eventScope`), groups visit-level numbers by session, and computes days and hours in Postgres with `AT TIME ZONE`. Legacy zone names Postgres doesn't know (`Asia/Calcutta`) fall back to a POSIX offset (`posixZone`).
 
@@ -332,6 +334,10 @@ Guides: [overview](../docs/integrations/overview.md), [writing a provider](../do
 | Admin data revealing organisations' content | Admin endpoints read only aggregates; an integration test checks no card data, leads or member names appear | `platformadmin/store.go` |
 | JWT algorithm confusion | `jwt.WithValidMethods(["HS256"])` and `WithExpirationRequired()` | `auth/auth.go` |
 | Weak signing key | Startup fails when `JWT_SECRET` is shorter than 16 chars | `platform/config/config.go` |
+| Password cracking after a database leak | bcrypt with cost 12; older cost-10 hashes are upgraded at the next sign-in | `auth/auth.go`, `account/handler.go` |
+| Clickjacking, MIME sniffing, referrer leaks | Every API response sets `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`, and HSTS when `COOKIE_SECURE`; nginx sets the same on the app's pages | `platform/web/headers.go`, `frontend/docker/default.conf.template` |
+| Codes and temporary passwords in logs | Without SMTP, email bodies are logged only in development | `platform/mail/mail.go` |
+| Someone else deleting an account from an open session | Account deletion and ownership transfer need the password (or an emailed code) again, plus the username or handle typed out | `account/deletion.go` |
 | Username enumeration via timing | Unknown usernames (and SSO-only accounts) still run a bcrypt compare against a dummy hash | `account/handler.go` |
 | Account enumeration via password reset | Forgot-password always answers 204 and sends mail asynchronously | `account/account.go` |
 | Guessing email codes | 5 attempts per code (counted atomically), 15-minute expiry, per-IP rate limit, 60s resend cooldown | `users/codes.go`, `users/store.go` |

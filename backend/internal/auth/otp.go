@@ -26,6 +26,9 @@ const (
 	PurposeResetPassword = "reset_password"
 	// PurposeChangeEmail codes go to the new address of an already verified account.
 	PurposeChangeEmail = "change_email"
+	// PurposeDeleteAccount codes confirm deleting an account that has no
+	// password (single sign-on only).
+	PurposeDeleteAccount = "delete_account"
 )
 
 // NewCode returns a uniformly random 6-digit code.

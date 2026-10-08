@@ -7,6 +7,7 @@ func (h *OrgHandler) Routes(r *app.Routes) {
 	r.Admin("GET /api/org", h.Get)
 	r.Owner("PUT /api/org", h.Update)
 	r.Admin("PUT /api/org/handle", h.UpdateHandle)
+	r.Admin("PUT /api/org/privacy", h.UpdatePrivacy)
 	r.Admin("GET /api/org/users", h.ListUsers)
 	r.Admin("POST /api/org/users", r.AuthLimit(h.CreateUser))
 	r.Admin("GET /api/org/users/{id}", h.GetUser)
