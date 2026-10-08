@@ -317,10 +317,13 @@
 						<Field.Error>{submitError}</Field.Error>
 					{/if}
 				</Field.Group>
-				<Dialog.Footer>
+				<Dialog.Footer class="sm:items-center">
+					<p class="text-muted-foreground text-center text-xs text-pretty sm:mr-auto sm:text-left">
+						Fronko never sells or shares your details with anyone but {orgName || holderName}.
+					</p>
 					<Button
 						type="submit"
-						class="w-full sm:w-auto"
+						class="w-full shrink-0 sm:w-auto"
 						disabled={submitting || !leadName.trim() || !leadEmail.trim() || leadPhoneInvalid}
 					>
 						{#if submitting}
@@ -329,9 +332,6 @@
 						Send
 					</Button>
 				</Dialog.Footer>
-				<p class="text-muted-foreground text-center text-xs text-pretty sm:text-left">
-					Fronko never sells or shares your details with anyone but {orgName || holderName}.
-				</p>
 			</form>
 		{/if}
 	</Dialog.Content>

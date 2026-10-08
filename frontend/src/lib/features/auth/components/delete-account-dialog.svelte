@@ -345,7 +345,8 @@
 									integrations.
 								</li>
 								<li>
-									{plural(info.summary.org_files, 'file')} are deleted from your storage bucket. Anything else in the bucket
+									{plural(info.summary.org_files, 'file')}
+									{info.summary.org_files === 1 ? 'is' : 'are'} deleted from your storage bucket. Anything else in the bucket
 									stays; it's yours to empty.
 								</li>
 								<li>Every card link, QR code and NFC tag stops working. Links already printed can't be fixed.</li>
@@ -356,16 +357,19 @@
 								<li>You're signed out everywhere and can't sign in again.</li>
 								<li>
 									{#if info.summary.cards_held > 0}
-										{plural(info.summary.cards_held, 'card')} you hold go back to {info.org_name}, and their
-										{plural(info.summary.leads, 'lead')} stay with it.
+										{plural(info.summary.cards_held, 'card')} you hold
+										{info.summary.cards_held === 1 ? 'goes' : 'go'} back to {info.org_name}, and
+										{plural(info.summary.leads, 'lead')} on {info.summary.cards_held === 1 ? 'it' : 'them'}
+										{info.summary.leads === 1 ? 'stays' : 'stay'} with {info.org_name}.
 									{:else}
 										Leads and cards stay with {info.org_name}.
 									{/if}
 								</li>
 								{#if info.summary.files > 0}
 									<li>
-										Your {plural(info.summary.files, 'file')} pass to {info.owner_username ?? 'the owner'}, so cards
-										using them keep working.
+										Your {plural(info.summary.files, 'file')}
+										{info.summary.files === 1 ? 'passes' : 'pass'} to {info.owner_username ?? 'the owner'}, so cards
+										using {info.summary.files === 1 ? 'it' : 'them'} keep working.
 									</li>
 								{/if}
 								<li>Your teams, personal integrations and email are removed.</li>
