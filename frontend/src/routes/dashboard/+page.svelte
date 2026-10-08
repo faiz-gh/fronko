@@ -88,6 +88,8 @@
 	// Organisation view
 	const people = $derived(orgUsers.people);
 	const unassigned = $derived((cards.list ?? []).filter((p) => !p.assigned_user));
+	// Only the owner so far: list them, with a nudge to add the team.
+	const solo = $derived(orgUsers.list !== null && people.every((u) => u.role === 'owner'));
 	const settingUp = $derived(people.filter((u) => ['unverified', 'temporary_password'].includes(userStatus(u))));
 
 	// ---- Card analytics for the chosen period -----------------------------------
@@ -98,7 +100,7 @@
 	let activity = $state<ActivityItem[] | null>(null);
 	let cardStats = $state<CardStat[] | null>(null);
 	let teamStats = $state<TeamStat[]>([]);
-	let topPeople = $state<MemberStat[]>([]);
+	let topPeople = $state<MemberStat[] | null>(null);
 	let analyticsError = $state(false);
 
 	let analyticsFor = '';
@@ -131,6 +133,7 @@
 				analyticsError = true;
 				activity = [];
 				cardStats = [];
+				topPeople ??= [];
 			});
 	});
 
@@ -440,7 +443,21 @@
 									>Leaderboard</a
 								>
 							</div>
-							{#if topPeople.length === 0}
+							{#if topPeople === null}
+								<div class="flex flex-col gap-4 px-5 py-4">
+									{#each [1, 2, 3] as i (i)}
+										<div class="flex items-center gap-3">
+											<Skeleton class="size-7 rounded-full" />
+											<Skeleton class="h-3 flex-1" />
+											<Skeleton class="h-3 w-10" />
+										</div>
+									{/each}
+								</div>
+							{:else if topPeople.length === 0 && analyticsError}
+								<p class="text-muted-foreground px-5 py-10 text-center text-sm">
+									People's activity couldn't be loaded right now.
+								</p>
+							{:else if topPeople.length === 0}
 								<div class="flex flex-col items-center gap-3 px-6 py-10 text-center">
 									<p class="text-muted-foreground max-w-xs text-sm">Add your team, then assign them cards.</p>
 									{#if session.isAdmin}
@@ -477,6 +494,15 @@
 										</li>
 									{/each}
 								</ol>
+								{#if solo && session.isAdmin}
+									<div class="flex items-center justify-between gap-3 border-t px-5 py-3">
+										<p class="text-muted-foreground text-sm">Add your team, then assign them cards.</p>
+										<Button variant="outline" size="sm" onclick={() => (createUserOpen = true)}>
+											<UserPlusIcon data-icon="inline-start" />
+											Add person
+										</Button>
+									</div>
+								{/if}
 							{/if}
 						</section>
 					</div>

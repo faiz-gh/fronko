@@ -44,6 +44,8 @@
 				(!q || u.username.toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q))
 		);
 	});
+	// Only the owner so far: show their row plus a prompt to add the team.
+	const solo = $derived(people.every((u) => u.role === 'owner'));
 	const pending = $derived(people.filter((u) => ['unverified', 'temporary_password'].includes(userStatus(u))).length);
 
 	const STATUS_VARIANT: Record<UserStatus, BadgeVariant> = {
@@ -97,35 +99,20 @@
 				</div>
 			{/each}
 		</div>
-	{:else if people.every((u) => u.role === 'owner')}
-		<Empty.Root class="bg-card rounded-xl border border-dashed py-20">
-			<Empty.Header>
-				<Empty.Media variant="icon">
-					<UsersIcon />
-				</Empty.Media>
-				<Empty.Title>Add your team</Empty.Title>
-				<Empty.Description>
-					Create an account for each person, then assign them cards. They'll see only their own cards, leads and files,
-					plus anything you share.
-				</Empty.Description>
-			</Empty.Header>
-			<Empty.Content>
-				<Button onclick={() => (createOpen = true)}>
-					<UserPlusIcon data-icon="inline-start" />
-					Add person
-				</Button>
-			</Empty.Content>
-		</Empty.Root>
 	{:else}
-		<div class="flex flex-wrap items-center gap-2">
-			{#if teams.list?.length}
-				<TeamPicker value={team} options={teams.list} onchange={(v) => (team = v)} />
-			{/if}
-			<div class="relative min-w-0 basis-full sm:max-w-sm sm:flex-1 sm:basis-auto">
-				<SearchIcon class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-				<Input bind:value={query} placeholder="Search username or email" class="pl-9" aria-label="Search users" />
+		{#if !solo}
+			<div class="flex flex-wrap items-center gap-2">
+				{#if teams.list?.length}
+					<TeamPicker value={team} options={teams.list} onchange={(v) => (team = v)} />
+				{/if}
+				<div class="relative min-w-0 basis-full sm:max-w-sm sm:flex-1 sm:basis-auto">
+					<SearchIcon
+						class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
+					/>
+					<Input bind:value={query} placeholder="Search username or email" class="pl-9" aria-label="Search users" />
+				</div>
 			</div>
-		</div>
+		{/if}
 
 		<div class="bg-card overflow-hidden rounded-xl border">
 			<Table.Root>
@@ -209,6 +196,27 @@
 				</Table.Body>
 			</Table.Root>
 		</div>
+
+		{#if solo}
+			<Empty.Root class="bg-card rounded-xl border border-dashed py-12">
+				<Empty.Header>
+					<Empty.Media variant="icon">
+						<UsersIcon />
+					</Empty.Media>
+					<Empty.Title>Add your team</Empty.Title>
+					<Empty.Description>
+						Create an account for each person, then assign them cards. They'll see only their own cards, leads and
+						files, plus anything you share.
+					</Empty.Description>
+				</Empty.Header>
+				<Empty.Content>
+					<Button onclick={() => (createOpen = true)}>
+						<UserPlusIcon data-icon="inline-start" />
+						Add person
+					</Button>
+				</Empty.Content>
+			</Empty.Root>
+		{/if}
 	{/if}
 </div>
 
