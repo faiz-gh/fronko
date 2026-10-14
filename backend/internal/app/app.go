@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package app is the contract between the server and its feature modules.
 //
 // A module (cards, leads, files, …) owns its handlers, its SQL and its types.

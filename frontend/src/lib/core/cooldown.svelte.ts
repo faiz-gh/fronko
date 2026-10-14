@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 /** A countdown in whole seconds, e.g. for "Resend code in 42s". */
 export class Cooldown {
 	remaining = $state(0);

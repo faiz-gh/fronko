@@ -1,3 +1,8 @@
+<!--
+	SPDX-License-Identifier: AGPL-3.0-or-later
+	Copyright (C) 2026 Faiz Ghanchi
+-->
+
 <script lang="ts">
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { initials } from '$lib/features/cards/card';

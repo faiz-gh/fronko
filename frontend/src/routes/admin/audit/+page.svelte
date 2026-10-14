@@ -1,3 +1,8 @@
+<!--
+	SPDX-License-Identifier: AGPL-3.0-or-later
+	Copyright (C) 2026 Faiz Ghanchi
+-->
+
 <script lang="ts">
 	import { listAudit, type AuditEntry } from '$lib/features/admin/api';
 	import { Button } from '$lib/components/ui/button';

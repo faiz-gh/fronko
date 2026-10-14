@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package providers registers every integration provider. Adding one is a
 // new folder under providers/ (or a package beside the core for providers
 // that serve requests, like sso and directory) and one line in All.

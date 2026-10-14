@@ -1,3 +1,8 @@
+<!--
+	SPDX-License-Identifier: AGPL-3.0-or-later
+	Copyright (C) 2026 Faiz Ghanchi
+-->
+
 <script lang="ts">
 	import { fileUrl, type PublicFile } from '$lib/features/files/api';
 	import type { GalleryImage } from '$lib/features/cards/blocks';

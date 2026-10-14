@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package calendar puts a booking page on cards: a "Book a meeting" button
 // that opens the card holder's booking page, or the organisation's default
 // one for cards whose holder hasn't connected their own.

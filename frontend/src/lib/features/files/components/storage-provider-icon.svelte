@@ -1,3 +1,8 @@
+<!--
+	SPDX-License-Identifier: AGPL-3.0-or-later
+	Copyright (C) 2026 Faiz Ghanchi
+-->
+
 <script lang="ts">
 	import DatabaseIcon from '@lucide/svelte/icons/database';
 	import ServerIcon from '@lucide/svelte/icons/server';

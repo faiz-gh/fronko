@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package devseed fills an empty development database with a demo
 // organisation, so a fresh checkout has something to look at:
 //

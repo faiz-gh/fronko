@@ -165,4 +165,4 @@ A maintainer will review your pull request as soon as they can. Small, focused p
 
 ## License
 
-Fronko is licensed under the [GNU General Public License v3.0](LICENSE). By submitting a contribution, you agree that it is licensed under the same terms.
+Fronko is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE). By submitting a contribution, you agree that it is licensed under the same terms.

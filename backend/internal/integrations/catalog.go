@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package integrations connects Fronko to outside services: CRMs that
 // receive leads, booking pages, directories that provision people, and
 // single sign-on.

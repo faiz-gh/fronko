@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 import { getBranding, type OrgBranding } from '$lib/features/orgs/api';
 
 /** The organisation's logo and signature settings, shared by Settings, the editor and Signatures. */

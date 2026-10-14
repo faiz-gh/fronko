@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 import { apiClient } from '$lib/core/api';
 import { cardPath, type CardData } from './card';
 import type { PublicFile } from '$lib/features/files/api';

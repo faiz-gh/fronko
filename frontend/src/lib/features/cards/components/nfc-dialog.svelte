@@ -1,3 +1,8 @@
+<!--
+	SPDX-License-Identifier: AGPL-3.0-or-later
+	Copyright (C) 2026 Faiz Ghanchi
+-->
+
 <script lang="ts">
 	import * as Dialog from '$lib/components/ui/dialog';
 	import NfcWriter from './nfc-writer.svelte';

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 import { getSummary } from './api';
 
 /** Badge counts for the admin sidebar, refreshed when pages change what they count. */

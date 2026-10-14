@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 import { apiClient } from '$lib/core/api';
 
 export type StorageProvider = 'r2' | 'b2' | 's3' | 'minio' | 'other';

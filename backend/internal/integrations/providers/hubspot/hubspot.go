@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package hubspot creates or updates a HubSpot contact for every lead, using
 // the organisation's own HubSpot app (OAuth).
 //

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package server is the composition root: it builds every module with its
 // dependencies, mounts their routes, connects their events and jobs, and runs
 // the HTTP server, the job workers and the periodic tasks until shutdown.

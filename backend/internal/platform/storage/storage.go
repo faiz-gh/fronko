@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package storage talks to a user's own S3-compatible bucket (AWS S3,
 // Cloudflare R2, Backblaze B2, MinIO, ...).
 package storage

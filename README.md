@@ -8,7 +8,7 @@
 
 Share a card with an NFC tap or a QR scan. No app needed to view it, it saves to contacts in one tap, and leads come back to your team.
 
-[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](backend/go.mod)
 [![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte&logoColor=white)](frontend/package.json)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-4169E1?logo=postgresql&logoColor=white)](backend/README.md#prerequisites)
@@ -349,4 +349,6 @@ If you find a security vulnerability, **please do not open a public issue.** Rep
 
 ## License
 
-Fronko is licensed under the [GNU General Public License v3.0](LICENSE).
+Copyright (C) 2026 Faiz Ghanchi.
+
+Fronko is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE). If you run a modified version of Fronko as a network service, the AGPL requires you to offer its users the complete corresponding source code of your version.
