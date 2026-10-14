@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 /** What a confirm dialog asks. */
 export interface ConfirmOptions {
 	title: string;

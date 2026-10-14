@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 import type { Component } from 'svelte';
 import CalendarClockIcon from '@lucide/svelte/icons/calendar-clock';
 import SendIcon from '@lucide/svelte/icons/send';

@@ -1,3 +1,8 @@
+<!--
+	SPDX-License-Identifier: AGPL-3.0-or-later
+	Copyright (C) 2026 Faiz Ghanchi
+-->
+
 <script lang="ts">
 	import { Input } from '$lib/components/ui/input';
 	import { Switch } from '$lib/components/ui/switch';

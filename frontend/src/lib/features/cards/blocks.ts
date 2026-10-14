@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Card layout: an ordered list of blocks. Contact details stay on CardData
 // (they also feed the vCard); blocks decide what shows and in what order, and
 // only the free-content blocks (heading, text, gallery, event) carry data.

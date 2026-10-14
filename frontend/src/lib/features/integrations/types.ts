@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Mirrors backend/internal/integrations: the catalog is driven entirely by
 // each provider's manifest, so a new provider needs no frontend change
 // beyond (optionally) a logo in registry.ts.

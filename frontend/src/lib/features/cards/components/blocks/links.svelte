@@ -1,3 +1,8 @@
+<!--
+	SPDX-License-Identifier: AGPL-3.0-or-later
+	Copyright (C) 2026 Faiz Ghanchi
+-->
+
 <script lang="ts">
 	import ArrowUpRightIcon from '@lucide/svelte/icons/arrow-up-right';
 	import BrandIcon from '$lib/components/shared/brand-icon.svelte';

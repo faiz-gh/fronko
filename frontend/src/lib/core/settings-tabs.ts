@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 import type { Component } from 'svelte';
 import AccountSettings from '$lib/features/auth/components/account-settings.svelte';
 import BrandingSection from '$lib/features/branding/components/branding-section.svelte';

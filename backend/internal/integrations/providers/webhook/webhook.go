@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package webhook sends each lead to a URL as JSON: the generic lead sync
 // that works with any tool able to receive a webhook (Zapier, Make, n8n, or
 // your own code).

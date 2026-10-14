@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package sso is SAML 2.0 single sign-on: Fronko as the service provider
 // for each organisation's identity provider (Okta, Microsoft Entra ID or any
 // SAML 2.0 provider), with people found by their email address and, when

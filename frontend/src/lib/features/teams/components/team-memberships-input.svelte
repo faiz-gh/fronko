@@ -1,3 +1,8 @@
+<!--
+	SPDX-License-Identifier: AGPL-3.0-or-later
+	Copyright (C) 2026 Faiz Ghanchi
+-->
+
 <script lang="ts">
 	import { teamColor, TEAM_ROLE_LABEL, type TeamRole } from '$lib/features/teams/api';
 	import { Switch } from '$lib/components/ui/switch';

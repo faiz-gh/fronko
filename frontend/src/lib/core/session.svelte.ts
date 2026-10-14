@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 import { goto } from '$app/navigation';
 import { logout, me, type AuthUser, type Role } from '$lib/features/auth/api';
 import type { TeamRef } from '$lib/features/teams/api';

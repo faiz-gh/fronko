@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 /**
  * Small previews made in the browser before an upload, so the library can
  * show thumbnails without loading full images or PDFs. Everything here is

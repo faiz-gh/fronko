@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 export type ThemePreference = 'light' | 'dark' | 'system';
 
 /** Also read by the inline script in app.html, which applies the theme before first paint. */

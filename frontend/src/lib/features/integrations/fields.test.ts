@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 import { describe, expect, it } from 'vitest';
 import { canConnect, fieldProblems, generateSecret, initialValues, isEmptyChange, settingsChange } from './fields';
 import type { Field } from './types';

@@ -1,3 +1,8 @@
+<!--
+	SPDX-License-Identifier: AGPL-3.0-or-later
+	Copyright (C) 2026 Faiz Ghanchi
+-->
+
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 	import { reinstateOrg, suspendOrg, type OrgUsage } from '$lib/features/admin/api';

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package directory is Fronko's SCIM 2.0 server: an organisation's identity
 // provider (Microsoft Entra ID, Okta…) adds, updates, deactivates and
 // removes people, and keeps teams in step with its groups.

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 import type { Connection, Field, Manifest, SettingsChange } from './types';
 
 /** Form state for a connection's settings: every non-secret field, plus secrets being typed. */

@@ -1,3 +1,8 @@
+<!--
+	SPDX-License-Identifier: AGPL-3.0-or-later
+	Copyright (C) 2026 Faiz Ghanchi
+-->
+
 <script lang="ts">
 	import MessageSquareIcon from '@lucide/svelte/icons/message-square';
 	import ReplyIcon from '@lucide/svelte/icons/reply';

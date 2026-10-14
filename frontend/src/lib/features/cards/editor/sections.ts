@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 import CalendarCheckIcon from '@lucide/svelte/icons/calendar-check';
 import FileTextIcon from '@lucide/svelte/icons/file-text';
 import LayoutTemplateIcon from '@lucide/svelte/icons/layout-template';

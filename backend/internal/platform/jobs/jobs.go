@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package jobs is a background job queue in Postgres, plus the periodic
 // tasks that keep the app tidy.
 //

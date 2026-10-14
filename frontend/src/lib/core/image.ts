@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 /** Canvas helpers for the crop dialog. All work happens in the browser. */
 
 export interface PixelArea {

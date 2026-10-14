@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package secrets encrypts small values (such as storage credentials) for
 // storage in the database, using AES-256-GCM with a key held outside it.
 package secrets

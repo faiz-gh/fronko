@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 // Package netguard makes outgoing HTTP requests to addresses that users
 // typed in (storage endpoints, webhook URLs, OAuth token endpoints) without
 // letting them reach the server's own network: loopback, private ranges,

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Faiz Ghanchi
+
 import { fileUrl } from '$lib/features/files/api';
 import { showsOrgLogo, type OrgBranding } from '$lib/features/orgs/api';
 import { avatarSrc, displayUrl, linkLabel, safeUrl, type AccentKey, type CardData } from '$lib/features/cards/card';
